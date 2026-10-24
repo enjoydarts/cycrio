@@ -1,0 +1,29 @@
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+
+# Private design drafts and mail evaluation data
+.local/
+private/
+*.eml
+*.mbox
+
+# Generated artifacts
+node_modules/
+.svelte-kit/
+.wrangler/
+build/
+dist/
+bin/
+coverage/
+*.test
+*.out
+
+# OS and editor files
+.DS_Store
+.idea/
+*.swp
