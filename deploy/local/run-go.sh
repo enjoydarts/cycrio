@@ -18,5 +18,6 @@ case "$component" in
   *) echo 'Unknown application component.' >&2; exit 2 ;;
 esac
 
-go build -o "/tmp/cycrio-$component" "./cmd/$component"
+# Bind-mounted runner checkouts may belong to a different user than container root.
+go build -buildvcs=false -o "/tmp/cycrio-$component" "./cmd/$component"
 exec "/tmp/cycrio-$component" "$@"
