@@ -1,0 +1,132 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"slices"
+	"strings"
+	"time"
+
+	"github.com/enjoydarts/cycrio/internal/auth"
+	"github.com/enjoydarts/cycrio/internal/bootstrap"
+	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/health"
+	"github.com/google/uuid"
+)
+
+type PrincipalLookup func(context.Context, string, string) (database.Principal, error)
+
+func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup PrincipalLookup, ready func(context.Context) error) http.Handler {
+	mux := http.NewServeMux()
+	healthHandler := health.NewHandler(ready)
+	mux.Handle("GET /healthz", healthHandler)
+	mux.Handle("GET /readyz", healthHandler)
+	mux.HandleFunc("GET /v1/public/config", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(w, http.StatusOK, struct {
+			Configured     bool   `json:"configured"`
+			PublishableKey string `json:"clerk_publishable_key"`
+		}{config.Configured(), config.ClerkPublishableKey})
+	})
+	protect := func(admin bool, next func(http.ResponseWriter, *http.Request, database.Principal)) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			values := r.Header.Values("Authorization")
+			parts := strings.Fields(r.Header.Get("Authorization"))
+			if !config.Configured() || verifier == nil || len(values) != 1 || len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || len(parts[1]) > 64<<10 {
+				writeError(w, http.StatusUnauthorized, "authentication_required")
+				return
+			}
+			identity, err := verifier.Verify(r.Context(), parts[1])
+			if err != nil {
+				if errors.Is(err, auth.ErrUnavailable) {
+					writeError(w, http.StatusServiceUnavailable, "dependency_unavailable")
+				} else {
+					writeError(w, http.StatusUnauthorized, "authentication_required")
+				}
+				return
+			}
+			p, err := lookup(r.Context(), identity.Issuer, identity.Subject)
+			if err != nil {
+				if errors.Is(err, database.ErrForbidden) {
+					writeError(w, http.StatusForbidden, "access_denied")
+				} else {
+					writeError(w, http.StatusServiceUnavailable, "dependency_unavailable")
+				}
+				return
+			}
+			if admin && p.Role != "platform_admin" {
+				writeError(w, http.StatusForbidden, "access_denied")
+				return
+			}
+			next(w, r, p)
+		}
+	}
+	mux.HandleFunc("GET /v1/me", protect(false, func(w http.ResponseWriter, _ *http.Request, p database.Principal) { writeJSON(w, http.StatusOK, p) }))
+	mux.HandleFunc("GET /v1/admin/status", protect(true, func(w http.ResponseWriter, _ *http.Request, p database.Principal) {
+		writeJSON(w, http.StatusOK, struct {
+			Role string `json:"role"`
+		}{p.Role})
+	}))
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", uuid.NewString())
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
+		if strings.HasPrefix(r.URL.Path, "/v1/") {
+			origin := r.Header.Get("Origin")
+			w.Header().Add("Vary", "Origin")
+			if origin != "" {
+				if !slices.Contains(config.AllowedOrigins, origin) {
+					writeError(w, http.StatusForbidden, "access_denied")
+					return
+				}
+				w.Header().Set("Access-Control-Allow-Origin", origin)
+			}
+			if r.Method == http.MethodOptions {
+				probe := r.Clone(r.Context())
+				probe.Method = http.MethodGet
+				if _, pattern := mux.Handler(probe); pattern == "/" {
+					writeError(w, http.StatusNotFound, "not_found")
+					return
+				}
+				if origin == "" || r.Header.Get("Access-Control-Request-Method") != "GET" {
+					writeError(w, http.StatusForbidden, "access_denied")
+					return
+				}
+				for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
+					if h := strings.ToLower(strings.TrimSpace(header)); h != "" && h != "authorization" && h != "content-type" {
+						writeError(w, http.StatusForbidden, "access_denied")
+						return
+					}
+				}
+				w.Header().Add("Vary", "Access-Control-Request-Method")
+				w.Header().Add("Vary", "Access-Control-Request-Headers")
+				w.Header().Set("Access-Control-Allow-Methods", "GET")
+				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+			if r.Method != http.MethodGet && r.Method != http.MethodHead && origin == "" {
+				writeError(w, http.StatusForbidden, "access_denied")
+				return
+			}
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+		defer cancel()
+		mux.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func writeJSON(w http.ResponseWriter, status int, data any) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(data)
+}
+
+func writeError(w http.ResponseWriter, status int, code string) {
+	writeJSON(w, status, struct {
+		Code      string `json:"code"`
+		RequestID string `json:"request_id"`
+	}{code, w.Header().Get("X-Request-ID")})
+}

@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token
+.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token configure-auth grant-admin allow-user revoke-admin disable-user test-integration
 
 up:
 	$(COMPOSE) up -d --build --wait --wait-timeout 600
@@ -21,6 +21,7 @@ check:
 	$(COMPOSE) config --quiet
 	$(COMPOSE) run --rm --no-deps api go test ./...
 	$(COMPOSE) run --rm --no-deps api go vet ./...
+	$(COMPOSE) run --rm --no-deps web npm test
 	$(COMPOSE) run --rm --no-deps web npm run check
 	$(COMPOSE) run --rm --no-deps web npm run lint
 	$(COMPOSE) run --rm --no-deps web npm run build
@@ -48,3 +49,13 @@ db-shell:
 hatchet-token:
 	$(COMPOSE) run --rm --no-deps -e HATCHET_ROTATE_TOKEN=true hatchet-init
 	$(COMPOSE) restart api worker
+
+configure-auth:
+	$(COMPOSE) run --rm --no-deps -T manage configure-auth
+	$(COMPOSE) restart api
+
+grant-admin allow-user revoke-admin disable-user:
+	$(COMPOSE) run --rm --no-deps -T manage $@ -user-id '$(USER_ID)'
+
+test-integration:
+	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration ./internal/database

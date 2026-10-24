@@ -14,7 +14,7 @@ fi
 component="${1:?component is required}"
 shift
 case "$component" in
-  api|worker|devcheck) ;;
+  api|worker|devcheck|manage) ;;
   *) echo 'Unknown application component.' >&2; exit 2 ;;
 esac
 

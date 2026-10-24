@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -10,7 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/enjoydarts/cycrio/internal/health"
+	"github.com/enjoydarts/cycrio/internal/auth"
+	"github.com/enjoydarts/cycrio/internal/bootstrap"
+	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/httpapi"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -22,12 +26,23 @@ func main() {
 }
 
 func run() error {
+	bootstrapPath := flag.String("bootstrap-file", ".local/bootstrap.json", "public sign-in bootstrap configuration")
+	flag.Parse()
+	config, err := bootstrap.Load(*bootstrapPath)
+	if err != nil {
+		return err
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if os.Getenv("DATABASE_URL") == "" {
 		return errors.New("DATABASE_URL is required")
 	}
-	pool, err := pgxpool.New(ctx, os.Getenv("DATABASE_URL"))
+	poolConfig, err := pgxpool.ParseConfig(os.Getenv("DATABASE_URL"))
+	if err != nil {
+		return errors.New("database configuration failed")
+	}
+	poolConfig.MaxConns = 5
+	pool, err := pgxpool.NewWithConfig(ctx, poolConfig)
 	if err != nil {
 		return errors.New("database configuration failed")
 	}
@@ -36,7 +51,9 @@ func run() error {
 	if addr == "" {
 		addr = ":8080"
 	}
-	server := &http.Server{Addr: addr, Handler: health.NewHandler(pool.Ping), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	store := database.NewStore(pool)
+	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

@@ -1,0 +1,4 @@
+{
+  "clerk_publishable_key": "pk_test_ZXhhbXBsZS5jbGVyay5hY2NvdW50cy5kZXYk",
+  "allowed_origins": ["http://localhost:3100"]
+}

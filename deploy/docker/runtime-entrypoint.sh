@@ -13,6 +13,6 @@ fi
 component="${1:-api}"
 shift
 case "$component" in
-  api|worker|devcheck) exec "/app/$component" "$@" ;;
+  api|worker|devcheck|manage) exec "/app/$component" "$@" ;;
   *) echo 'Unknown application component.' >&2; exit 2 ;;
 esac

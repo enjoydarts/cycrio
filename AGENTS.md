@@ -2,7 +2,7 @@
 
 ## プロジェクト構成
 
-Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。現在は開発用起動基盤の段階で、メール処理・管理画面などの業務機能は未実装です。
+Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・運用/疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、SQL migration は `internal/database/migrations/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。現在は起動・Clerk認証・利用許可・管理者権限の基盤まで実装済みで、メール処理・AI設定画面などの業務機能は未実装です。
 
 アプリ認証は Clerk の Google ログイン限定、アプリからのメール送信は Resend を使います。アプリログインと、Gmail 等のメール取得用認可は分けて設計してください。
 
@@ -10,13 +10,17 @@ Cycrio はメール連携型のサブスクリプション管理サービスで�
 
 ## ビルド・テスト・ローカル開発
 
-`make up` で全コンポーネントを起動、`make check` で Go テスト・vet と Web の型検査・整形検査・静的ビルド、`make smoke` で実際の Hatchet ジョブ実行、`make fmt` で整形します。Go 変更後は `make restart` で再ビルド・再起動します。各コマンドはリポジトリ直下から実行してください。
+`make up` で全コンポーネントとmigrationを起動、`make check` で Go テスト・vet と Web のテスト・型検査・整形検査・静的ビルド、`make test-integration` で一時schemaのDB統合テスト、`make smoke` で実際の Hatchet ジョブ実行、`make fmt` で整形します。Go 変更後は `make restart` で再ビルド・再起動します。各コマンドはリポジトリ直下から実行してください。
 
 実行・整形・検証は `docker compose` / `make` 経由で行い、ホストの Go・Node・npm に依存しないでください。開発用 Hatchet も Compose でローカル起動します。既存の別プロジェクトのコンテナ・volume は操作しないでください。
 
 ## コーディング規約・命名
 
 Go は gofmt、TypeScript / Svelte は `web/.prettierrc.json` の Prettier 設定に従います。意味の明確な名前と一貫した配置を使い、モジュールごとの責務を小さく保ってください。
+
+ツール・SDK・ライブラリ・コンテナは、導入・更新時に公式の配布元で確認した最新安定版を使用し、具体的なバージョンとlockfileで固定してください。プレリリースを通常採用せず、互換性のため最新版を使えない場合は理由を説明してユーザーへ確認してください。DBのメジャー更新では既存データを保持し、移行・復元を検証してください。
+
+現在の例外として、TypeScript 7はSvelteKit 3.1.0 / svelte-check 4.7.7の対応範囲外のため、ユーザー承認済みの6.0.3を使います。フロントはSvelteKit 3の`#lib`と`$app/env/public`を使い、環境変数は`web/src/env.ts`で明示します。
 
 ## 編集・検証ルール
 

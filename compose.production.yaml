@@ -30,7 +30,11 @@ x-runtime: &runtime
 services:
   api:
     <<: *runtime
-    command: [api]
+    command: [api, -bootstrap-file, /run/secrets/bootstrap]
+    secrets:
+      - database_url
+      - hatchet_token
+      - bootstrap
     ports:
       - 127.0.0.1:${API_PORT:-8090}:8080
 
@@ -38,7 +42,23 @@ services:
     <<: *runtime
     command: [worker]
 
+  migrate:
+    <<: *runtime
+    profiles: [tools]
+    command: [manage, migrate]
+    restart: "no"
+    environment:
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
+    secrets:
+      - migration_database_url
+    healthcheck:
+      disable: true
+
 secrets:
+  bootstrap:
+    file: ${CYCRIO_BOOTSTRAP_FILE:-./.local/production/bootstrap.json}
+  migration_database_url:
+    file: ${CYCRIO_MIGRATION_DATABASE_URL_FILE:-./.local/production/migration_database_url}
   database_url:
     file: ${CYCRIO_DATABASE_URL_FILE:-./.local/production/database_url}
   hatchet_token:
