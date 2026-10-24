@@ -27,12 +27,12 @@
     padding: 2.5rem 0 4rem;
   }
   .back {
-    color: #65785f;
+    color: var(--color-action);
     text-decoration: none;
     font-size: 0.8rem;
   }
   .eyebrow {
-    color: #7a8872;
+    color: var(--color-muted);
     font-size: 0.65rem;
     letter-spacing: 0.12em;
     margin-top: 2.5rem;
@@ -45,7 +45,7 @@
   }
   .description {
     font-size: 0.85rem;
-    color: #718069;
+    color: var(--color-muted);
     margin-bottom: 2rem;
     line-height: 1.9;
   }

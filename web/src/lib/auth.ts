@@ -48,8 +48,11 @@ async function loadClerk(key: string): Promise<AuthSDK> {
       afterSignOutUrl: '/',
       appearance: {
         variables: {
-          colorPrimary: '#1b5744',
-          colorText: '#183f33',
+          colorPrimary: 'var(--color-action)',
+          colorText: 'var(--color-text)',
+          colorTextSecondary: 'var(--color-muted)',
+          colorBackground: 'var(--color-surface)',
+          colorSuccess: 'var(--color-action)',
           borderRadius: '0.85rem',
         },
         elements: {

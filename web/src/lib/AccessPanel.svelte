@@ -189,10 +189,10 @@
 <style>
   .access-card {
     padding: clamp(1.5rem, 4vw, 2.75rem);
-    background: #fff;
-    border: 1px solid #dfe7df;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
     border-radius: 1.5rem;
-    box-shadow: 0 12px 50px #183f3307;
+    box-shadow: 0 12px 50px var(--color-shadow);
     min-width: 0;
   }
   .card-heading {
@@ -202,13 +202,13 @@
     margin-bottom: 2rem;
   }
   .section-label {
-    color: #728078;
+    color: var(--color-muted);
     font-size: 0.68rem;
     font-weight: 650;
     letter-spacing: 0.17em;
   }
   .small-mark {
-    color: #8b9b90;
+    color: var(--color-action);
     font-size: 1.5rem;
   }
   h2 {
@@ -220,7 +220,7 @@
   }
   .body-copy {
     margin: 0 0 1.6rem;
-    color: #617067;
+    color: var(--color-muted);
     line-height: 1.9;
     font-size: 0.9rem;
   }
@@ -231,25 +231,25 @@
     place-items: center;
     margin-bottom: 1.6rem;
     border-radius: 50%;
-    background: #f0f4ed;
-    color: #59734a;
+    background: var(--brand-background);
+    color: var(--color-action);
     font-size: 1.65rem;
   }
   .status-symbol.success {
-    color: #1b5744;
-    background: #e8f2e9;
+    color: var(--color-action-hover);
+    background: var(--brand-accent);
   }
   .status-badge {
     display: inline-block;
-    color: #526f45;
+    color: var(--color-action);
     font-size: 0.73rem;
     font-weight: 600;
   }
   .notice {
-    border-left: 2px solid #bacbb2;
+    border-left: 2px solid var(--brand-accent);
     padding: 0.15rem 0 0.15rem 1rem;
     margin: 1.8rem 0;
-    color: #5a6c5d;
+    color: var(--color-muted);
     font-size: 0.8rem;
     line-height: 1.85;
   }
@@ -278,32 +278,32 @@
     transition: background 0.15s;
   }
   .primary {
-    color: white;
-    background: #1b5744;
+    color: var(--color-surface);
+    background: var(--color-action);
   }
   .primary:hover {
-    background: #124332;
+    background: var(--color-action-hover);
   }
   .secondary {
-    color: #52685b;
-    background: #fff;
-    border-color: #dce5dc;
+    color: var(--color-action);
+    background: var(--color-surface);
+    border-color: var(--color-border);
   }
   .secondary:hover {
-    background: #f5f8f3;
+    background: var(--color-surface-soft);
   }
   .identity,
   .account-details {
     padding: 1rem;
     margin: 1.5rem 0;
-    background: #f5f7f2;
+    background: var(--color-surface-soft);
     border-radius: 0.7rem;
   }
   .identity span {
     display: block;
     margin-bottom: 0.6rem;
     font-size: 0.75rem;
-    color: #647364;
+    color: var(--color-muted);
   }
   code {
     overflow-wrap: anywhere;
@@ -316,7 +316,7 @@
     margin-top: 1rem;
   }
   dt {
-    color: #647364;
+    color: var(--color-muted);
     margin-bottom: 0.3rem;
   }
   dd {
@@ -339,25 +339,25 @@
     padding: 1rem 0;
   }
   .login-note {
-    color: #78857b;
+    color: var(--color-subtle);
     font-size: 0.72rem;
     line-height: 1.9;
     margin: 1.5rem 0 0;
     padding-top: 1.25rem;
-    border-top: 1px solid #edf0e9;
+    border-top: 1px solid var(--color-border);
   }
   .text-link {
     display: block;
     margin-top: 1.25rem;
-    color: #1b5744;
+    color: var(--color-action);
     font-size: 0.85rem;
     text-align: center;
   }
   .loader {
     width: 1.1rem;
     height: 1.1rem;
-    border: 2px solid #c4d1bd;
-    border-top-color: #1b5744;
+    border: 2px solid var(--brand-accent);
+    border-top-color: var(--color-action);
     border-radius: 50%;
     animation: spin 1s linear infinite;
   }

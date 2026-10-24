@@ -1,0 +1,16 @@
+:root {
+  color-scheme: light;
+  --brand-primary: #22c55e;
+  --brand-secondary: #0f766e;
+  --brand-accent: #a7f3d0;
+  --brand-background: #ecfdf5;
+  --color-text: #103c3b;
+  --color-muted: #496962;
+  --color-subtle: #526f67;
+  --color-action: var(--brand-secondary);
+  --color-action-hover: #115e59;
+  --color-surface: #ffffff;
+  --color-surface-soft: #f5fcf8;
+  --color-border: #cde9dd;
+  --color-shadow: #0f766e0a;
+}

@@ -16,7 +16,7 @@
     <h1>毎月の支出に、<br />見通しを。</h1>
     <p class="lead">メールとつながる、<br />サブスクリプション管理サービス。</p>
     <div class="service-note">
-      <span aria-hidden="true">↻</span>
+      <img src="/brand/cycrio-mark-128.png" width="36" height="36" alt="" />
       <p>
         Cycrio は現在開発中です。<br
         />まずは、安心して使えるログインの入口から。
@@ -52,13 +52,13 @@
     font-size: 0.57rem;
     font-weight: 600;
     letter-spacing: 0.09em;
-    color: #687c61;
+    color: var(--color-action);
   }
   .eyebrow span {
     display: block;
     width: 1.6rem;
     height: 1px;
-    background: #8ca26c;
+    background: var(--brand-secondary);
     flex-shrink: 0;
   }
   h1 {
@@ -70,7 +70,7 @@
   }
   .lead {
     margin: 1.75rem 0 2rem;
-    color: #637462;
+    color: var(--color-muted);
     font-size: 0.98rem;
     line-height: 2;
   }
@@ -80,16 +80,15 @@
     gap: 0.9rem;
     max-width: 24rem;
     padding-top: 1.5rem;
-    border-top: 1px solid #dce5d7;
+    border-top: 1px solid var(--color-border);
   }
-  .service-note > span {
-    color: #7e9664;
-    font-size: 2rem;
-    font-weight: 300;
+  .service-note > img {
+    flex-shrink: 0;
+    object-fit: contain;
   }
   .service-note p {
     margin: 0;
-    color: #77816f;
+    color: var(--color-subtle);
     font-size: 0.74rem;
     line-height: 1.9;
   }
@@ -102,7 +101,7 @@
   .access-note .line {
     width: 0.25rem;
     height: 2rem;
-    background: #a5b786;
+    background: var(--brand-primary);
     border-radius: 1px;
   }
   .access-note p {
@@ -112,7 +111,7 @@
     line-height: 1.9;
   }
   .access-note p span {
-    color: #85907f;
+    color: var(--color-subtle);
     font-size: 0.68rem;
     font-weight: 400;
   }
