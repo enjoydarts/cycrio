@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate Compose files
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.production.yaml config --quiet
+      - name: Build development toolchains
+        run: docker compose build api web
+      - name: Go and Web checks
+        run: make check
+      - name: Build production Go runtime
+        run: docker compose -f compose.production.yaml build
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Start complete local stack
+        run: make up
+      - name: API, Web, and Hatchet worker smoke test
+        run: make smoke
+      - name: Reconnect after restart
+        run: |
+          docker compose restart api worker
+          docker compose up -d --wait --wait-timeout 180
+          make smoke
+      - name: Show service status
+        if: always()
+        run: docker compose ps -a
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --tail=100 api worker hatchet hatchet-init
+      - name: Stop project
+        if: always()
+        run: docker compose down --volumes

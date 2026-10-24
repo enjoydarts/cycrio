@@ -1,0 +1,13 @@
+.git
+.local
+.env
+.env.*
+!.env.example
+**/node_modules
+**/.svelte-kit
+**/build
+**/dist
+**/coverage
+private
+*.eml
+*.mbox

@@ -1,0 +1,45 @@
+name: cycrio-production
+
+x-runtime: &runtime
+  image: ${CYCRIO_IMAGE:-cycrio:production}
+  build:
+    context: .
+    dockerfile: deploy/docker/go.Dockerfile
+    target: runtime
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:uid=10001,gid=10001,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  environment:
+    DATABASE_URL_FILE: /run/secrets/database_url
+    HATCHET_CLIENT_TOKEN_FILE: /run/secrets/hatchet_token
+    HATCHET_CLIENT_TLS_STRATEGY: tls
+  secrets:
+    - database_url
+    - hatchet_token
+  healthcheck:
+    test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/readyz]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+    start_period: 20s
+
+services:
+  api:
+    <<: *runtime
+    command: [api]
+    ports:
+      - 127.0.0.1:${API_PORT:-8090}:8080
+
+  worker:
+    <<: *runtime
+    command: [worker]
+
+secrets:
+  database_url:
+    file: ${CYCRIO_DATABASE_URL_FILE:-./.local/production/database_url}
+  hatchet_token:
+    file: ${CYCRIO_HATCHET_TOKEN_FILE:-./.local/production/hatchet_token}

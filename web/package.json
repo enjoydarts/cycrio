@@ -1,0 +1,30 @@
+{
+  "name": "cycrio-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev --host 0.0.0.0 --port 5173",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "build": "vite build",
+    "lint": "prettier --check .",
+    "format": "prettier --write ."
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  },
+  "devDependencies": {
+    "@opentelemetry/api": "1.10.0",
+    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/kit": "3.1.0",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
+    "@types/node": "22.20.5",
+    "prettier": "3.9.10",
+    "prettier-plugin-svelte": "4.1.1",
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.7",
+    "typescript": "6.0.3",
+    "vite": "8.3.5",
+    "wrangler": "4.152.0"
+  }
+}

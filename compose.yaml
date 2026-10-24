@@ -1,0 +1,160 @@
+name: cycrio
+
+x-hatchet-environment: &hatchet-environment
+  DATABASE_URL: postgres://hatchet:hatchet-local@hatchet-postgres:5432/hatchet?sslmode=disable
+  SERVER_AUTH_COOKIE_DOMAIN: localhost
+  SERVER_AUTH_COOKIE_INSECURE: "true"
+  SERVER_AUTH_SET_EMAIL_VERIFIED: "true"
+  SERVER_GRPC_BIND_ADDRESS: 0.0.0.0
+  SERVER_GRPC_INSECURE: "true"
+  SERVER_GRPC_PORT: "7077"
+  SERVER_GRPC_BROADCAST_ADDRESS: hatchet:7077
+  SERVER_INTERNAL_CLIENT_INTERNAL_GRPC_BROADCAST_ADDRESS: hatchet:7077
+  SERVER_URL: http://localhost:${HATCHET_UI_PORT:-8888}
+  SERVER_MSGQUEUE_KIND: postgres
+
+x-go: &go
+  build:
+    context: .
+    dockerfile: deploy/docker/go.Dockerfile
+    target: development
+  init: true
+  working_dir: /app
+  volumes:
+    - .:/app
+    - go_modules:/go/pkg/mod
+    - go_build:/root/.cache/go-build
+    - hatchet_token:/run/hatchet:ro
+  environment: &go-environment
+    DATABASE_URL: postgres://cycrio:cycrio-local@postgres:5432/cycrio?sslmode=disable
+    HATCHET_CLIENT_TOKEN_FILE: /run/hatchet/token
+    HATCHET_CLIENT_SERVER_URL: http://hatchet:8888
+    HATCHET_CLIENT_TLS_STRATEGY: none
+  depends_on:
+    postgres:
+      condition: service_healthy
+    hatchet-init:
+      condition: service_completed_successfully
+
+services:
+  postgres:
+    image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres-local
+      POSTGRES_DB: cycrio
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/local/init-database.sql:/docker-entrypoint-initdb.d/01-cycrio.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d cycrio]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  hatchet-postgres:
+    image: postgres:16@sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d
+    command: [postgres, -c, max_connections=200]
+    environment:
+      POSTGRES_USER: hatchet
+      POSTGRES_PASSWORD: hatchet-local
+      POSTGRES_DB: hatchet
+    volumes:
+      - hatchet_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U hatchet -d hatchet]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  hatchet:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.110.5@sha256:cc81f078a5285d7d2051ec4a4fa459d033e1face4ca5983d82612b00da6e3fa3
+    environment: *hatchet-environment
+    ports:
+      - 127.0.0.1:${HATCHET_UI_PORT:-8888}:8888
+      - 127.0.0.1:${HATCHET_GRPC_PORT:-7077}:7077
+    volumes:
+      - hatchet_config:/config
+    depends_on:
+      hatchet-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD-SHELL, wget -q -O /dev/null http://127.0.0.1:8888/api/ready]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  hatchet-init:
+    image: ghcr.io/hatchet-dev/hatchet/hatchet-lite:v0.110.5@sha256:cc81f078a5285d7d2051ec4a4fa459d033e1face4ca5983d82612b00da6e3fa3
+    entrypoint: [/bin/sh, /scripts/init-hatchet.sh]
+    environment: *hatchet-environment
+    volumes:
+      - hatchet_config:/config:ro
+      - hatchet_token:/token
+      - ./deploy/local/init-hatchet.sh:/scripts/init-hatchet.sh:ro
+    depends_on:
+      hatchet:
+        condition: service_healthy
+
+  api:
+    <<: *go
+    command: [sh, /app/deploy/local/run-go.sh, api]
+    ports:
+      - 127.0.0.1:${API_PORT:-8090}:8080
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/readyz]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 60s
+
+  worker:
+    <<: *go
+    command: [sh, /app/deploy/local/run-go.sh, worker]
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/readyz]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 60s
+
+  web:
+    build:
+      context: ./web
+      target: development
+    init: true
+    working_dir: /app
+    command: [sh, -c, 'npm ci --no-audit --no-fund && exec npm run dev -- --host 0.0.0.0']
+    environment:
+      PUBLIC_API_BASE_URL: http://localhost:${API_PORT:-8090}
+    ports:
+      - 127.0.0.1:${WEB_PORT:-3100}:5173
+    volumes:
+      - ./web:/app
+      - web_modules:/app/node_modules
+    healthcheck:
+      test: [CMD, node, -e, 'fetch("http://127.0.0.1:5173").then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))']
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+
+  devcheck:
+    <<: *go
+    profiles: [tools]
+    command: [sh, /app/deploy/local/run-go.sh, devcheck]
+    depends_on:
+      api:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  hatchet_postgres_data:
+  hatchet_config:
+  hatchet_token:
+  go_modules:
+  go_build:
+  web_modules:
