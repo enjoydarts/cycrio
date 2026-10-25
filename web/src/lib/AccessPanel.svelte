@@ -4,11 +4,13 @@
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { createAPI } from './api';
   import { createAuthController, type AuthState } from './auth';
+  import AdminCredentials from './AdminCredentials.svelte';
 
   let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' } = $props();
   let authState = $state<AuthState>({ status: 'loading' });
   let signUp = $derived(page.url.searchParams.get('sign_up') === 'true');
   let controller: ReturnType<typeof createAuthController> | undefined;
+  const api = createAPI(PUBLIC_API_BASE_URL);
   const errors = {
     authentication_required:
       'ログインの有効期限が切れた可能性があります。もう一度ログインしてください。',
@@ -18,13 +20,9 @@
   };
 
   onMount(() => {
-    controller = createAuthController(
-      createAPI(PUBLIC_API_BASE_URL),
-      mode,
-      (next) => {
-        authState = next;
-      },
-    );
+    controller = createAuthController(api, mode, (next) => {
+      authState = next;
+    });
     void controller.start();
     return () => controller?.dispose();
   });
@@ -144,14 +142,18 @@
           </dd>
         </div>
       </dl>
-      <div class="notice">
-        <strong>現在はログイン基盤の開発段階です</strong>
-        <p>
-          {mode === 'admin'
-            ? 'AI 設定・API キー管理・原価集計は、今後実装予定です。'
-            : 'メール連携・サブスクリプションの管理機能は、今後実装予定です。'}
-        </p>
-      </div>
+      {#if mode === 'admin'}
+        <AdminCredentials
+          {api}
+          token={async () => (await controller?.getToken()) ?? null}
+          onDenied={() => {
+            void controller?.refresh();
+          }}
+        />
+      {:else}<div class="notice">
+          <strong>現在はログイン基盤の開発段階です</strong>
+          <p>メール連携・サブスクリプションの管理機能は、今後実装予定です。</p>
+        </div>{/if}
       {#if mode === 'home' && authState.user.role === 'platform_admin'}<a
           class="button primary"
           href="/admin">管理者ページへ <span aria-hidden="true">→</span></a

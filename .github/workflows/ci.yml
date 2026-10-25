@@ -36,7 +36,7 @@ jobs:
         run: make up
       - name: API, Web, and Hatchet worker smoke test
         run: make smoke
-      - name: Identity database integration tests
+      - name: Authentication and credential integration tests
         run: make test-integration
       - name: Reconnect after restart
         run: |

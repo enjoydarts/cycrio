@@ -34,16 +34,31 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	}
 	command := args[0]
 	switch command {
-	case "configure-auth", "migrate", "allow-user", "grant-admin", "revoke-admin", "disable-user":
+	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user":
 	default:
 		return errors.New("unknown management command")
 	}
 	flags := flag.NewFlagSet("manage", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
 	path := flags.String("bootstrap-file", ".local/bootstrap.json", "public sign-in configuration")
+	keyringPath := flags.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	subject := flags.String("user-id", "", "Clerk user ID")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid command options")
+	}
+	if command == "init-keyring" {
+		return initializeKeyring(ctx, *keyringPath, func(ctx context.Context) (bool, error) {
+			dsn := os.Getenv("DATABASE_URL")
+			if dsn == "" {
+				return false, errors.New("database connection is required")
+			}
+			pool, err := pgxpool.New(ctx, dsn)
+			if err != nil {
+				return false, errors.New("database connection failed")
+			}
+			defer pool.Close()
+			return database.NewCredentialRepository(pool).HasEncryptedCredentials(ctx)
+		}, out)
 	}
 	if command == "configure-auth" {
 		scanner := bufio.NewScanner(in)

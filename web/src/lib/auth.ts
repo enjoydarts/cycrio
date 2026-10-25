@@ -1,10 +1,5 @@
 import type { Clerk } from '@clerk/clerk-js';
-import {
-  ApiError,
-  type createAPI,
-  type CurrentUser,
-  type ErrorCode,
-} from './api.ts';
+import { ApiError, type createAPI, type CurrentUser } from './api.ts';
 
 export type AuthSDK = {
   user: { id: string } | null | undefined;
@@ -25,7 +20,21 @@ export type AuthState =
   | { status: 'allowed'; user: CurrentUser }
   | { status: 'pending'; clerkUserId: string }
   | { status: 'denied' }
-  | { status: 'error'; code: ErrorCode; signedIn: boolean };
+  | {
+      status: 'error';
+      code:
+        'authentication_required' | 'access_denied' | 'dependency_unavailable';
+      signedIn: boolean;
+    };
+
+function authError(
+  error: unknown,
+): 'authentication_required' | 'access_denied' | 'dependency_unavailable' {
+  return error instanceof ApiError &&
+    (error.code === 'authentication_required' || error.code === 'access_denied')
+    ? error.code
+    : 'dependency_unavailable';
+}
 
 let cachedClerk: { key: string; promise: Promise<AuthSDK> } | undefined;
 
@@ -112,8 +121,7 @@ export function createAuthController(
         emit({ status: 'allowed', user: identity });
     } catch (error) {
       if (disposed || generation !== current.id) return;
-      const code =
-        error instanceof ApiError ? error.code : 'dependency_unavailable';
+      const code = authError(error);
       if (code === 'access_denied') {
         emit(
           mode === 'admin'
@@ -160,7 +168,7 @@ export function createAuthController(
       if (disposed || current.signal.aborted) return;
       emit({
         status: 'error',
-        code: error instanceof ApiError ? error.code : 'dependency_unavailable',
+        code: authError(error),
         signedIn: Boolean(sdk?.user && sdk.session),
       });
     }
@@ -169,6 +177,12 @@ export function createAuthController(
   return {
     start,
     refresh,
+    async getToken() {
+      if (disposed || !sdk?.user || !sdk.session) return null;
+      const session = sdk.session;
+      const token = await session.getToken();
+      return !disposed && sdk.session === session && sdk.user ? token : null;
+    },
     mountAuth(node: HTMLDivElement, signUp = false) {
       if (!sdk || disposed) return () => {};
       const currentSDK = sdk;

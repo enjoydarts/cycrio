@@ -13,8 +13,10 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
+	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/httpapi"
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -27,10 +29,15 @@ func main() {
 
 func run() error {
 	bootstrapPath := flag.String("bootstrap-file", ".local/bootstrap.json", "public sign-in bootstrap configuration")
+	keyringPath := flag.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	flag.Parse()
 	config, err := bootstrap.Load(*bootstrapPath)
 	if err != nil {
 		return err
+	}
+	keyring, err := secretstore.Load(*keyringPath)
+	if err != nil {
+		return errors.New("encryption keyring unavailable; initialize or restore the keyring before starting the API")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -53,7 +60,8 @@ func run() error {
 	}
 	store := database.NewStore(pool)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

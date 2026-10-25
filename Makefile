@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token configure-auth grant-admin allow-user revoke-admin disable-user test-integration
+.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token configure-auth init-keyring grant-admin allow-user revoke-admin disable-user test-integration
 
 up:
 	$(COMPOSE) up -d --build --wait --wait-timeout 600
@@ -54,8 +54,11 @@ configure-auth:
 	$(COMPOSE) run --rm --no-deps -T manage configure-auth
 	$(COMPOSE) restart api
 
+init-keyring:
+	$(COMPOSE) run --rm --no-deps -T manage init-keyring
+
 grant-admin allow-user revoke-admin disable-user:
 	$(COMPOSE) run --rm --no-deps -T manage $@ -user-id '$(USER_ID)'
 
 test-integration:
-	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration ./internal/database
+	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration ./internal/database ./internal/httpapi

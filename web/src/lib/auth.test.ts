@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createAPI } from './api.ts';
+import { ApiError, createAPI } from './api.ts';
 import { createAuthController, type AuthSDK, type AuthState } from './auth.ts';
 
 function fixture(response: (url: string) => Response, signedIn = true) {
@@ -261,6 +261,42 @@ test('Clerk load errors expose a fixed dependency error', async () => {
     status: 'error',
     code: 'dependency_unavailable',
     signedIn: false,
+  });
+  controller.dispose();
+});
+
+test('management uses the existing current Clerk session and cannot get a token after disposal', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'home',
+    f.changed,
+    async () => f.sdk,
+  );
+  assert.equal(await controller.getToken(), null);
+  await controller.start();
+  f.sdk.session = { getToken: async () => 'fresh-session' };
+  assert.equal(await controller.getToken(), 'fresh-session');
+  controller.dispose();
+  assert.equal(await controller.getToken(), null);
+});
+
+test('auth views normalize management-only error codes', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  f.api.me = async () => {
+    throw new ApiError('conflict');
+  };
+  const controller = createAuthController(
+    f.api,
+    'home',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  assert.deepEqual(f.states.at(-1), {
+    status: 'error',
+    code: 'dependency_unavailable',
+    signedIn: true,
   });
   controller.dispose();
 });

@@ -18,7 +18,11 @@ import (
 
 type PrincipalLookup func(context.Context, string, string) (database.Principal, error)
 
-func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup PrincipalLookup, ready func(context.Context) error) http.Handler {
+func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup PrincipalLookup, ready func(context.Context) error, options ...Option) http.Handler {
+	var settings handlerOptions
+	for _, option := range options {
+		option(&settings)
+	}
 	mux := http.NewServeMux()
 	healthHandler := health.NewHandler(ready)
 	mux.Handle("GET /healthz", healthHandler)
@@ -68,6 +72,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 			Role string `json:"role"`
 		}{p.Role})
 	}))
+	registerCredentials(mux, settings.credentials, protect)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", uuid.NewString())
@@ -85,12 +90,26 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 			}
 			if r.Method == http.MethodOptions {
 				probe := r.Clone(r.Context())
-				probe.Method = http.MethodGet
-				if _, pattern := mux.Handler(probe); pattern == "/" {
-					writeError(w, http.StatusNotFound, "not_found")
+				requested := r.Header.Get("Access-Control-Request-Method")
+				probe.Method = requested
+				_, pattern := mux.Handler(probe)
+				if pattern == "/" || pattern == "" {
+					knownPath := false
+					for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+						probe.Method = method
+						if _, found := mux.Handler(probe); found != "/" && found != "" {
+							knownPath = true
+							break
+						}
+					}
+					if !knownPath {
+						writeError(w, http.StatusNotFound, "not_found")
+						return
+					}
+					writeError(w, http.StatusForbidden, "access_denied")
 					return
 				}
-				if origin == "" || r.Header.Get("Access-Control-Request-Method") != "GET" {
+				if origin == "" || !slices.Contains([]string{"GET", "PUT", "DELETE"}, requested) {
 					writeError(w, http.StatusForbidden, "access_denied")
 					return
 				}
@@ -102,7 +121,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 				}
 				w.Header().Add("Vary", "Access-Control-Request-Method")
 				w.Header().Add("Vary", "Access-Control-Request-Headers")
-				w.Header().Set("Access-Control-Allow-Methods", "GET")
+				w.Header().Set("Access-Control-Allow-Methods", requested)
 				w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 				w.WriteHeader(http.StatusNoContent)
 				return

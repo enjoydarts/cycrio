@@ -6,7 +6,7 @@ Cycrio（サイクリオ）は、日本語の請求・更新メールからサ�
 
 ## 開発状況
 
-Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、DBマイグレーションを追加しています。メール取得・AI解析・契約画面・キー管理画面は次の実装段階です。
+Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、DBマイグレーション、管理者専用のAPIキー登録・暗号化保存を実装しています。メール取得・AI解析・契約画面・使用ユーザー別原価集計は次の実装段階です。
 
 個人利用MVPから始め、将来の商用SaaS化を見据えて所有者分離・管理者権限・AI原価管理を設計します。一般ユーザー向けの公開開始は別途判断します。
 
@@ -32,7 +32,7 @@ Docker Composeによる開発環境に、Clerkログイン、利用許可・管�
 make up
 ```
 
-`.env`の作成やHatchetアカウントの準備は不要です。DB初期化・Hatchet起動・Worker接続用トークンの発行を自動実行します。初回はイメージ・依存関係の取得とGoビルドに時間がかかります。
+`.env`の作成やHatchetアカウントの準備は不要です。DB初期化・Hatchet起動・Worker接続用トークンの発行・DB外の暗号化鍵の初期生成を自動実行します。初回はイメージ・依存関係の取得とGoビルドに時間がかかります。
 
 | 接続先 | URL |
 |---|---|
@@ -52,6 +52,7 @@ Hatchet管理画面の開発用ログインは`admin@example.com` / `Admin123!!`
 | `hatchet` | Hatchet LiteのAPI・Engine・管理画面 |
 | `hatchet-postgres` | Hatchet専用DBとメッセージキュー |
 | `hatchet-init` | 初回の接続トークン発行。正常終了後は停止状態でよい |
+| `keyring-init` | migration後、暗号化鍵を初回だけ生成。既存の鍵は保持。正常終了後は停止状態でよい |
 | `devcheck` | `make smoke`から起動する疎通確認CLI |
 
 Clerkは次の手順で開発用アカウントへ接続します。Resend・外部AIは後続段階で接続し、起動・疎通確認では外部AIを呼び出しません。
@@ -66,6 +67,24 @@ Clerkは次の手順で開発用アカウントへ接続します。Resend・外
 初期公開設定はGit対象外の`.local/bootstrap.json`へ保存されます。セッション検証は設定済みClerkインスタンスの公開JWKSを使い、APIはClerkのSecret Keyを要求しません。認証未設定でも開発環境は起動しますが、保護されたAPIは利用できません。GoogleログインはGmail取得の許可を意味しません。
 
 一般利用者の許可は`make allow-user USER_ID=user_...`、管理者権限の解除は`make revoke-admin USER_ID=user_...`、利用停止は`make disable-user USER_ID=user_...`です。最初にアクセスした人を自動で管理者にする仕組みや、認証を省略する開発用ログインはありません。許可済みユーザーの状態・権限は毎APIリクエストでDBから確認します。
+
+## 管理者のAPIキー設定
+
+1. 管理者としてGoogleログインし、`/admin`を開きます。
+2. Liquid AI（D1）、OpenRouter、OpenAI、Anthropic、Resendのうち、利用するサービスのキーを入力して登録します。未使用サービスへの登録は不要です。
+3. 変更するときは新しいキーを入力して更新します。保存済みの値は再表示できません。無効化すると、そのサービスの過去のキーも内部利用できなくなります。
+
+画面に表示するのは登録状態、更新日時、版番号と最新50件の操作履歴です。APIキーの環境変数・URL・ブラウザー保存領域での設定経路はありません。入力は保存操作後に消去します。古い画面から更新した場合は競合として拒否し、再読み込み後に操作します。管理APIも毎回DBの現在の管理者権限を確認します。
+
+この段階はキー管理のみです。登録はプロバイダーへの接続成功を意味しません。モデル選択、接続テスト、AI呼出しと使用ユーザー別月次原価は次の工程で接続します。登録・更新だけで外部AIやResendを呼び出すことはありません。
+
+## 暗号化鍵の保管・復元
+
+ローカルの暗号化鍵はGit対象外の`.local/secrets/keyring.json`です。APIキーはAES-256-GCMで暗号化してDBに保存し、プラットフォーム所有・用途・プロバイダー・資格情報ID・版番号を認証データへ束縛します。Go標準の[ランダムnonce付きGCM](https://pkg.go.dev/crypto/cipher#NewGCMWithRandomNonce)を使用します。DB更新と秘密を含まない監査履歴は同時に保存します。
+
+鍵ファイルは通常の再起動や`make up`で変わりません。**DBのバックアップとは別に、鍵ファイルもアクセス制限した場所へバックアップしてください。** `.local/`を消すとDBのvolumeだけが残る場合があります。暗号化済みの資格情報があるのに鍵を失った場合、初期化処理は新しい鍵を作らず停止します。元の鍵を同じ場所へ復元し、権限を`0600`または`0400`にしてから`make up`を再実行してください。APIキーを登録し直すだけで失った鍵の暗号文を復号できるようにはなりません。
+
+鍵の更新は、旧鍵を`keys`に保持したまま、新しいランダム32バイト鍵を一意のIDで追加して`active_key_id`を変更し、APIを再起動します。ファイル形式は`{"active_key_id":"key-id","keys":{"key-id":"base64-encoded-32-byte-key"}}`です。旧暗号文の再暗号化・旧鍵の削除は、この段階では自動実行しません。旧鍵を使うデータが残っている間は、その鍵を削除しないでください。APIキーの通常更新と、暗号化鍵の更新は別の操作です。
 
 Clerk設定の公式手順：[Google接続](https://clerk.com/docs/guides/configure/auth-strategies/social-connections/google)、[公開鍵によるJWT検証](https://clerk.com/docs/guides/sessions/manual-jwt-verification)。実際のGoogleログイン確認には本人のClerk設定が必要です。
 
@@ -88,6 +107,7 @@ Clerk設定の公式手順：[Google接続](https://clerk.com/docs/guides/config
 | `make build-production` | 本番用GoランタイムイメージとWeb静的成果物をビルド |
 | `make preview-static` | 静的成果物をCloudflareローカルランタイムで配信（http://localhost:3199） |
 | `make configure-auth` | Clerk公開設定を対話入力してAPIを再起動 |
+| `make init-keyring` | 暗号化鍵を初回生成、または既存鍵を検証。通常は`make up`から自動実行 |
 
 Goの特定テストを実行する例：
 
@@ -110,7 +130,7 @@ deploy/local/    開発DB・Hatchet初期化とGo起動処理
 cmd/manage/      migration・初期ログイン設定・利用許可の運用CLI
 ```
 
-アプリDB、Hatchet DB、Hatchetの署名・暗号設定、接続トークンは別々のnamed volumeへ保存します。GoキャッシュとWeb依存もvolumeで再利用します。`docker compose down --volumes`はこれらを削除するため、データを消す意図があるときだけ使用してください。
+アプリDB、Hatchet DB、Hatchetの署名・暗号設定、接続トークンは別々のnamed volumeへ保存します。アプリの暗号化鍵はvolumeとは別の`.local/secrets/keyring.json`です。GoキャッシュとWeb依存もvolumeで再利用します。`docker compose down --volumes`はvolume内のデータを削除するため、データを消す意図があるときだけ使用してください。
 
 環境変数はポートなど起動に必要なものへ絞ります。トークン・モデル・運用設定は可能な限り管理者専用画面で扱い、秘密値は暗号化保存する方針です。今回のHatchetローカルトークンは自動生成した専用volume、将来の管理画面が必要とするDB接続・復号鍵などは基盤設定として管理します。AI APIキーを`.env`やCIへ追加しないでください。
 
@@ -118,7 +138,17 @@ cmd/manage/      migration・初期ログイン設定・利用許可の運用CLI
 
 `compose.production.yaml`は開発用とは独立したAPI・Workerのみの構成です。Goは非rootユーザーで実行し、読み取り専用ファイルシステム・secretファイル・TLSを使用します。PostgreSQLとHatchet Liteを本番用定義から起動せず、専用DB・最小権限ロールとHatchet Cloudを接続先とします。
 
-デプロイ時はmigration用接続ファイルを用意し、`docker compose -f compose.production.yaml run --rm migrate`をAPI・Worker更新より先に実行します。通常のAPIにDDL権限を与えません。APIには本番Clerkの公開設定を`.local/production/bootstrap.json`（`CYCRIO_BOOTSTRAP_FILE`で変更可）から読み取り専用secretとして渡します。ファイルはコンテナのUID/GID 10001が読み取れる所有者・権限にしてください。
+デプロイ時はmigration用接続ファイルを用意し、`docker compose -f compose.production.yaml run --rm migrate`をAPI・Worker更新より先に実行します。通常のAPIにDDL権限を与えません。APIには本番Clerkの公開設定を`.local/production/bootstrap.json`（`CYCRIO_BOOTSTRAP_FILE`で変更可）から読み取り専用secretとして渡します。暗号化鍵は`.local/production/keyring.json`を`/run/secrets/keyring`へ読み取り専用で渡します。ファイルはコンテナのUID/GID 10001が読み取れる所有者にし、鍵の権限は`0600`または`0400`にしてください。開発用の鍵を本番へコピーしないでください。
+
+本番用の空DBにmigrationを適用した後、UID/GID 10001が書き込める専用の`.local/production/`を準備し、同じ本番接続先に対して初期鍵を生成できます。既存DBの場合は先に元の鍵を復元します。
+
+```sh
+docker compose -f compose.production.yaml run --rm --no-deps \
+  -v "$PWD/.local/production:/keyring-output" \
+  migrate manage init-keyring -keyring-file /keyring-output/keyring.json
+```
+
+作成した鍵は別保管先へバックアップしてからAPIを起動します。この操作は本番で自動再生成する仕組みではありません。
 
 ## 依存バージョン
 

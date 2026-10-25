@@ -2,7 +2,7 @@
 
 ## プロジェクト構成
 
-Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・運用/疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、SQL migration は `internal/database/migrations/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。現在は起動・Clerk認証・利用許可・管理者権限の基盤まで実装済みで、メール処理・AI設定画面などの業務機能は未実装です。
+Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・運用/疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、SQL migration は `internal/database/migrations/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。現在は起動・Clerk認証・利用許可・管理者権限と管理者専用APIキー管理を実装済みです。メール処理・AIモデル設定・接続テスト・原価集計などの業務機能は未実装です。
 
 アプリ認証は Clerk の Google ログイン限定、アプリからのメール送信は Resend を使います。アプリログインと、Gmail 等のメール取得用認可は分けて設計してください。
 
@@ -54,6 +54,8 @@ GitHub の公開リポジトリは `enjoydarts/cycrio`、既定ブランチは `
 認証情報や個人用の設定はコミットしないでください。設定導入時はダミー値入りのサンプルを用意し、生成物とローカル環境ファイルを `.gitignore` に追加してください。
 
 環境変数は最低限にし、管理画面を起動する前に必要な DB 接続・復号鍵等の基盤設定へ限定してください。必要なトークン・モデル選択・運用設定は、可能な限り管理者専用画面で登録・更新・無効化できるように実装します。秘密値は暗号化保存し、一般ユーザーへの公開・保存後の平文再表示・ログ出力を禁止してください。新しい設定を安易に環境変数へ追加せず、管理画面で扱えるか先に検討し、判断が必要な場合はユーザーへ質問してください。
+
+資格情報は `internal/credentials`、暗号化鍵は `internal/secretstore` で管理します。ローカル鍵 `.local/secrets/keyring.json` はDBとは別に保持し、暗号化済みデータがある場合に自動再生成しないでください。管理APIはメタデータだけを返し、変更と監査を同一トランザクションにします。通常のキー更新では旧版を保持しますが、無効化後の旧版を再登録で復活させないでください。
 
 ## Codex・superpowers の利用
 
