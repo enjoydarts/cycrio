@@ -16,6 +16,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
+	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
@@ -71,8 +73,15 @@ func run() error {
 		}
 		return AITestOutput{Status: "recorded"}, nil
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
+	mail := mailruntime.New(pool, keyring)
+	mailTask := client.NewStandaloneTask(mailProbeTaskName, func(ctx hatchet.Context, input mailaccounts.Lease) (MailProbeOutput, error) {
+		if err := mail.Run(ctx, input); err != nil {
+			return MailProbeOutput{Status: "failed"}, errors.New("mail connection check unavailable")
+		}
+		return MailProbeOutput{Status: "handled"}, nil
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	name := "cycrio-worker-" + uuid.NewString()
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask), hatchet.WithSlots(2))
+	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask), hatchet.WithSlots(2))
 	if err != nil {
 		return errors.New("Hatchet worker registration failed")
 	}
@@ -87,6 +96,10 @@ func run() error {
 	}, 10*time.Second)
 	go dispatchAITests(ctx, execution.Claim, func(ctx context.Context, input airuntime.Lease) error {
 		_, err := aiTask.RunNoWait(ctx, input)
+		return err
+	}, 10*time.Second)
+	go dispatchMailProbes(ctx, mail.Claim, func(ctx context.Context, input mailaccounts.Lease) error {
+		_, err := mailTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
 	ready := func(ctx context.Context) error {

@@ -83,7 +83,7 @@ async function loadClerk(key: string): Promise<AuthSDK> {
 
 export function createAuthController(
   api: ReturnType<typeof createAPI>,
-  mode: 'home' | 'admin' | 'callback',
+  mode: 'home' | 'admin' | 'callback' | 'mail',
   changed: (state: AuthState) => void,
   load: (key: string) => Promise<AuthSDK> = loadClerk,
 ) {

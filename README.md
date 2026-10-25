@@ -6,7 +6,7 @@ Cycrio（サイクリオ）は、日本語の請求・更新メールからサ�
 
 ## 開発状況
 
-Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、APIキーの暗号化保存、DBモデルカタログ・価格履歴、AI実行設定・接続テスト・有効化、使用ユーザー別の月次原価を実装しています。メール取得と実メールへのAI解析・契約画面は次の実装段階です。
+Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、APIキーの暗号化保存、DBモデルカタログ・価格履歴、AI実行設定・接続テスト・有効化、使用ユーザー別の月次原価、本人のFastmail接続管理を実装しています。メール本文の取得と実メールへのAI解析・契約画面は次の実装段階です。
 
 個人利用MVPから始め、将来の商用SaaS化を見据えて所有者分離・管理者権限・AI原価管理を設計します。一般ユーザー向けの公開開始は別途判断します。
 
@@ -68,6 +68,20 @@ Clerkは次の手順で開発用アカウントへ接続します。起動・通
 
 一般利用者の許可は`make allow-user USER_ID=user_...`、管理者権限の解除は`make revoke-admin USER_ID=user_...`、利用停止は`make disable-user USER_ID=user_...`です。最初にアクセスした人を自動で管理者にする仕組みや、認証を省略する開発用ログインはありません。許可済みユーザーの状態・権限は毎APIリクエストでDBから確認します。
 
+## 自分のFastmail連携
+
+利用許可済みのユーザーは、ホームの「自分のメール連携へ」または`http://localhost:3100/mail`から、自分の接続を設定できます。管理者も自分の接続だけを扱います。ClerkのGoogleログインと、メール取得用の資格情報は別です。
+
+1. 「Fastmail を追加」を選び、表示名・Fastmailの完全なログインメールアドレス・メール利用を許可した専用アプリパスワードを入力して保存します。通常のFastmailパスワードは使いません。
+2. 「接続を確認する」を押します。Workerが固定の`imap.fastmail.com:993`へ暗黙TLSで接続し、認証とフォルダー一覧取得だけを行います。保存だけでは接続しません。
+3. 対象フォルダーを選んで「フォルダー選択を保存」を押します。名前で絞り込んでも表示外の選択は保持します。選択不可（NoSelect）や取得不能のフォルダーは選べません。選択なしでも保存できます。
+
+この段階では、フォルダーを保存してもメール同期・本文取得・既読化・AI送信を開始しません。接続確認は明示操作でだけ実行します。受付結果が不明な場合の「同じ接続確認を再送する」は同じ要求IDを使い、重複作成を防ぎます。
+
+ログイン名とアプリパスワードは所有者・接続・資格情報版を束縛してDBに暗号化保存し、保存後は再表示しません。接続情報を更新すると以前の確認結果と選択をリセットします。連携解除は確認後に行い、過去の資格情報と進行中の要求も無効化します。再接続には新しい値を入力してください。古い画面からの更新は競合として拒否し、通常の再読み込みでは編集中入力を保持します。
+
+接続は本人ごとに最大10件。確認処理には30秒・応答1MiB・1000フォルダーの上限があります。認証拒否・TLS失敗・時間切れ等は固定の理由で表示し、生のサーバー応答を保存・表示しません。実アカウントでの確認にはIMAP対応プランと専用アプリパスワードが必要です。[Fastmail公式設定](https://www.fastmail.help/hc/en-us/articles/1500000278342-Server-names-and-ports)
+
 ## 管理者のAPIキー設定
 
 1. 管理者としてGoogleログインし、`/admin`を開きます。
@@ -120,7 +134,7 @@ OpenRouterの「原価を再照合」は保存済み生成IDの料金取得だ�
 
 ## 暗号化鍵の保管・復元
 
-ローカルの暗号化鍵はGit対象外の`.local/secrets/keyring.json`です。APIキーはAES-256-GCMで暗号化してDBに保存し、プラットフォーム所有・用途・プロバイダー・資格情報ID・版番号を認証データへ束縛します。Go標準の[ランダムnonce付きGCM](https://pkg.go.dev/crypto/cipher#NewGCMWithRandomNonce)を使用します。DB更新と秘密を含まない監査履歴は同時に保存します。
+ローカルの暗号化鍵はGit対象外の`.local/secrets/keyring.json`です。APIキーとメール接続情報はAES-256-GCMで暗号化してDBに保存し、用途・所有者・接続・資格情報ID・版番号等を認証データへ束縛します。Go標準の[ランダムnonce付きGCM](https://pkg.go.dev/crypto/cipher#NewGCMWithRandomNonce)を使用します。DB更新と秘密を含まない監査履歴は同時に保存します。
 
 鍵ファイルは通常の再起動や`make up`で変わりません。**DBのバックアップとは別に、鍵ファイルもアクセス制限した場所へバックアップしてください。** `.local/`を消すとDBのvolumeだけが残る場合があります。暗号化済みの資格情報があるのに鍵を失った場合、初期化処理は新しい鍵を作らず停止します。元の鍵を同じ場所へ復元し、権限を`0600`または`0400`にしてから`make up`を再実行してください。APIキーを登録し直すだけで失った鍵の暗号文を復号できるようにはなりません。
 
@@ -139,7 +153,7 @@ Clerk設定の公式手順：[Google接続](https://clerk.com/docs/guides/config
 | `make ps` / `make logs` | 起動状態 / ログを確認 |
 | `make restart` | API・Workerをソースから再ビルドして再起動 |
 | `make check` | Goテスト・vet、Webテスト・型検査・整形検査・静的ビルド |
-| `make test-integration` | 一時schemaでmigration・認可・秘密管理・AI設定・実行台帳・原価集計をDB検証 |
+| `make test-integration` | 一時schemaでmigration・認可・秘密管理・AI原価・メール接続とフォルダー管理をDB検証 |
 | `make smoke` | API・Web疎通と、Hatchet経由でのWorker実行・DB接続 |
 | `make fmt` | Go / TypeScript / Svelteを整形 |
 | `make db-shell` | migration用ロールでアプリDBへ接続 |
@@ -172,6 +186,8 @@ cmd/manage/      migration・初期ログイン設定・利用許可の運用CLI
 
 アプリDB、Hatchet DB、Hatchetの署名・暗号設定、接続トークンは別々のnamed volumeへ保存します。アプリの暗号化鍵はvolumeとは別の`.local/secrets/keyring.json`です。GoキャッシュとWeb依存もvolumeで再利用します。`docker compose down --volumes`はvolume内のデータを削除するため、データを消す意図があるときだけ使用してください。
 
+DBコンテナにも[initプロセス](https://docs.docker.com/reference/compose-file/services/#init)を使い、孤立した子プロセスをPostgreSQL本体に回収させない構成にしています。起動時の`npm ci`が完了してから`make check`を実行し、同じDBを使う通常の統合テストとrace検出は順番に実行してください。
+
 環境変数はポートなど起動に必要なものへ絞ります。トークン・モデル・運用設定は可能な限り管理者専用画面で扱い、秘密値は暗号化保存する方針です。今回のHatchetローカルトークンは自動生成した専用volume、将来の管理画面が必要とするDB接続・復号鍵などは基盤設定として管理します。AI APIキーを`.env`やCIへ追加しないでください。
 
 ## 本番向け構成
@@ -194,6 +210,8 @@ docker compose -f compose.production.yaml run --rm --no-deps \
 
 導入・更新時に最新安定版を確認して固定します。現在はGo 1.27.3、Node 26.12.1、npm 12.2.1、PostgreSQL 18.6、Hatchet 0.114.0、Clerk Go 2.7.0 / JS 6.40.1 / UI 1.41.2です。TypeScriptは、最新版7にSvelteKit・svelte-checkが未対応のため、承認済みの6.0.3を使用します。
 
+IMAPクライアントはユーザー承認済みの`go-imap v2.0.0-beta.8`に固定しています。安定版v1では初期接続中のエラーログを事前に制御できないため、初期化時からログ出力を設定できるv2をプレリリースの例外として採用しました。プロトコルのdebug出力は有効化しません。
+
 PostgreSQL 16からこの構成へ更新する場合は、[開発DBの移行手順](deploy/local/upgrade-postgres.md)に従って既存データを退避・復元してから起動してください。18用volumeは16用とは別で、旧volumeのデータを自動移行するものではありません。
 
 起動時の基盤接続情報は、サーバー上のsecretファイルを`CYCRIO_DATABASE_URL_FILE` / `CYCRIO_HATCHET_TOKEN_FILE`で指定します。既定の配置先は`.local/production/database_url` / `.local/production/hatchet_token`です。秘密値をイメージやGitに含めないでください。管理画面で設定可能な運用トークンの扱いは、その機能の実装時にDB暗号化保存へ統合します。
@@ -204,7 +222,7 @@ Webの本番成果物は`web/build/`です。`web/wrangler.jsonc`でCloudflare W
 docker compose run --rm --no-deps web npm run build
 ```
 
-現在は起動基盤のみのため、本番サービスとしての公開は業務機能・認証・バックアップ等の検証後に行います。
+本番サービスとしての公開は、実メール処理・バックアップ・運用等の検証後に行います。
 
 ## コントリビューション
 

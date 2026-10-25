@@ -4,6 +4,7 @@ go 1.27.3
 
 require (
 	github.com/clerk/clerk-sdk-go/v2 v2.7.0
+	github.com/emersion/go-imap/v2 v2.0.0-beta.8
 	github.com/google/uuid v1.6.0
 	github.com/hatchet-dev/hatchet v0.114.0
 	github.com/jackc/pgx/v5 v5.11.0
@@ -21,6 +22,8 @@ require (
 	github.com/cockroachdb/logtags v0.0.0-20230118201751-21c54148d20b // indirect
 	github.com/cockroachdb/redact v1.1.5 // indirect
 	github.com/creasty/defaults v1.11.0 // indirect
+	github.com/emersion/go-message v0.18.2 // indirect
+	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
 	github.com/getkin/kin-openapi v0.149.0 // indirect

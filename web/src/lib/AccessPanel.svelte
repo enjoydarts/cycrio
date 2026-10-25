@@ -11,14 +11,18 @@
   import { createAIRuntimeAPI } from './airuntime-api';
   import AIRuntime from './AIRuntime.svelte';
   import AIUsage from './AIUsage.svelte';
+  import MailAccounts from './MailAccounts.svelte';
+  import { createMailAPI } from './mail-api';
 
-  let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' } = $props();
+  let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' | 'mail' } =
+    $props();
   let authState = $state<AuthState>({ status: 'loading' });
   let signUp = $derived(page.url.searchParams.get('sign_up') === 'true');
   let controller: ReturnType<typeof createAuthController> | undefined;
   const api = createAPI(PUBLIC_API_BASE_URL);
   const catalogAPI = createCatalogAPI(PUBLIC_API_BASE_URL);
   const runtimeAPI = createAIRuntimeAPI(PUBLIC_API_BASE_URL);
+  const mailAPI = createMailAPI(PUBLIC_API_BASE_URL);
   let settingsPanel = $state<'models' | 'runtime'>('models');
   let adminPanel = $state<'credentials' | 'catalog' | 'settings' | 'usage'>(
     'credentials',
@@ -51,7 +55,8 @@
 
 <section
   class="access-card"
-  class:admin-workspace={mode === 'admin' && authState.status === 'allowed'}
+  class:admin-workspace={(mode === 'admin' || mode === 'mail') &&
+    authState.status === 'allowed'}
   aria-label={mode === 'admin'
     ? '管理者のアクセス確認'
     : 'アカウントのアクセス確認'}
@@ -135,13 +140,15 @@
         >ログアウト</button
       >
     {:else if authState.status === 'allowed'}
-      {#if mode !== 'admin'}
+      {#if mode === 'home'}
         <div class="status-symbol success" aria-hidden="true">✓</div>
         <span class="status-badge">利用許可済み</span>
         <h2>ログインできました</h2>
         <p class="body-copy">サーバーでアカウントの利用許可を確認しました。</p>
-      {:else}<span class="status-badge">管理者アクセス確認済み</span>{/if}
-      <details class="login-details" open={mode !== 'admin'}>
+      {:else}<span class="status-badge"
+          >{mode === 'admin' ? '管理者アクセス確認済み' : '利用許可済み'}</span
+        >{/if}
+      <details class="login-details" open={mode === 'home'}>
         <summary>ログイン情報</summary>
         <dl class="account-details">
           <div>
@@ -158,7 +165,15 @@
           </div>
         </dl>
       </details>
-      {#if mode === 'admin'}
+      {#if mode === 'mail'}
+        {#key authState.user.id}<MailAccounts
+            api={mailAPI}
+            token={async () => (await controller?.getToken()) ?? null}
+            onDenied={() => {
+              void controller?.refresh();
+            }}
+          />{/key}
+      {:else if mode === 'admin'}
         <nav class="admin-navigation" aria-label="管理機能">
           <button
             aria-pressed={adminPanel === 'credentials'}
@@ -243,13 +258,20 @@
               />{/if}{/if}
         </div>
       {:else}<div class="notice">
-          <strong>現在はログイン基盤の開発段階です</strong>
-          <p>メール連携・サブスクリプションの管理機能は、今後実装予定です。</p>
+          <strong>Fastmail の連携設定を始められます</strong>
+          <p>
+            接続情報の保存・接続確認・フォルダー選択をご利用いただけます。メール同期とサブスクリプションの管理機能は今後実装予定です。
+          </p>
         </div>{/if}
       {#if mode === 'home' && authState.user.role === 'platform_admin'}<a
           class="button primary"
           href="/admin">管理者ページへ <span aria-hidden="true">→</span></a
         >{:else if mode === 'admin'}<a class="button primary" href="/"
+          >ホームに戻る <span aria-hidden="true">→</span></a
+        >{/if}
+      {#if mode !== 'mail'}<a class="button primary" href="/mail"
+          >自分のメール連携へ <span aria-hidden="true">→</span></a
+        >{:else}<a class="button primary" href="/"
           >ホームに戻る <span aria-hidden="true">→</span></a
         >{/if}
       <button class="button secondary" onclick={() => controller?.signOut()}

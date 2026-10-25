@@ -102,6 +102,23 @@ test('allowed user identity comes from the server', async () => {
   controller.dispose();
 });
 
+test('mail route permits ordinary allowed users without checking administrator status', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'mail',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  assert.equal(f.states.at(-1)?.status, 'allowed');
+  assert.equal(
+    f.requests.some((url) => url.includes('/admin/')),
+    false,
+  );
+  controller.dispose();
+});
+
 test('403 on the home page is permission pending and shows only own Clerk ID', async () => {
   const f = fixture(() => new Response(null, { status: 403 }));
   const controller = createAuthController(

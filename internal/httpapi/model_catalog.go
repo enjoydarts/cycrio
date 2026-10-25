@@ -157,11 +157,15 @@ func registerModelCatalog(mux *http.ServeMux, service ModelCatalogService, prote
 // Inspect object members before typed decoding; encoding/json alone accepts
 // duplicate keys and case-insensitive struct field names.
 func readAdminJSON(w http.ResponseWriter, r *http.Request, target any, required ...string) error {
+	return readBoundedJSON(w, r, target, 16<<10, required...)
+}
+
+func readBoundedJSON(w http.ResponseWriter, r *http.Request, target any, maxBytes int64, required ...string) error {
 	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || media != "application/json" {
 		return modelcatalog.ErrInvalid
 	}
-	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
+	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBytes))
 	opening, err := d.Token()
 	if err != nil || opening != json.Delim('{') {
 		return modelcatalog.ErrInvalid

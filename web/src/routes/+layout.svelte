@@ -5,7 +5,11 @@
   let { children } = $props();
 </script>
 
-<div class="site-shell" class:admin-shell={page.url.pathname === '/admin'}>
+<div
+  class="site-shell"
+  class:admin-shell={page.url.pathname === '/admin' ||
+    page.url.pathname === '/mail'}
+>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Cycrio ホーム"
       ><img

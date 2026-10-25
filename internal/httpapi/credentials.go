@@ -23,6 +23,7 @@ type handlerOptions struct {
 	credentials CredentialService
 	catalog     ModelCatalogService
 	runtime     AIRuntimeService
+	mail        MailAccountService
 }
 type Option func(*handlerOptions)
 
