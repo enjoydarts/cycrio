@@ -1,10 +1,11 @@
 <script lang="ts">
   import '#lib/brand.css';
+  import { page } from '$app/state';
 
   let { children } = $props();
 </script>
 
-<div class="site-shell">
+<div class="site-shell" class:admin-shell={page.url.pathname === '/admin'}>
   <header class="site-header">
     <a class="brand" href="/" aria-label="Cycrio ホーム"
       ><img
@@ -66,6 +67,14 @@
     justify-content: space-between;
     gap: 1rem;
     border-bottom: 1px solid var(--color-border);
+  }
+  .site-shell.admin-shell {
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(1rem, 2.5vw, 3rem);
+  }
+  .admin-shell .site-header {
+    min-height: 5rem;
   }
   .brand {
     display: flex;

@@ -73,6 +73,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		}{p.Role})
 	}))
 	registerCredentials(mux, settings.credentials, protect)
+	registerModelCatalog(mux, settings.catalog, protect)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", uuid.NewString())
@@ -95,7 +96,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 				_, pattern := mux.Handler(probe)
 				if pattern == "/" || pattern == "" {
 					knownPath := false
-					for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete} {
+					for _, method := range []string{http.MethodGet, http.MethodPut, http.MethodDelete, http.MethodPost} {
 						probe.Method = method
 						if _, found := mux.Handler(probe); found != "/" && found != "" {
 							knownPath = true
@@ -109,7 +110,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 					writeError(w, http.StatusForbidden, "access_denied")
 					return
 				}
-				if origin == "" || !slices.Contains([]string{"GET", "PUT", "DELETE"}, requested) {
+				if origin == "" || !slices.Contains([]string{"GET", "PUT", "DELETE", "POST"}, requested) {
 					writeError(w, http.StatusForbidden, "access_denied")
 					return
 				}

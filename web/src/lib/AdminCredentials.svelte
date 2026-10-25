@@ -298,6 +298,7 @@
   }
   .provider-list {
     display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
     gap: 1rem;
     margin-top: 1.25rem;
   }

@@ -19,7 +19,10 @@ type CredentialService interface {
 	Audit(context.Context) ([]credentials.AuditEntry, error)
 }
 
-type handlerOptions struct{ credentials CredentialService }
+type handlerOptions struct {
+	credentials CredentialService
+	catalog     ModelCatalogService
+}
 type Option func(*handlerOptions)
 
 func WithCredentials(service CredentialService) Option {

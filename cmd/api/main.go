@@ -13,6 +13,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
+	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/httpapi"
@@ -61,7 +62,7 @@ func run() error {
 	store := database.NewStore(pool)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
 	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring))), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

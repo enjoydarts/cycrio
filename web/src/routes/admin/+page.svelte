@@ -22,9 +22,8 @@
   main {
     flex: 1;
     width: 100%;
-    max-width: 35rem;
-    margin: 0 auto;
-    padding: 2.5rem 0 4rem;
+    min-width: 0;
+    padding: 1.5rem 0 3rem;
   }
   .back {
     color: var(--color-action);
@@ -35,7 +34,7 @@
     color: var(--color-muted);
     font-size: 0.65rem;
     letter-spacing: 0.12em;
-    margin-top: 2.5rem;
+    margin-top: 1.5rem;
   }
   h1 {
     font-size: 1.8rem;
@@ -46,7 +45,7 @@
   .description {
     font-size: 0.85rem;
     color: var(--color-muted);
-    margin-bottom: 2rem;
+    margin-bottom: 1.25rem;
     line-height: 1.9;
   }
 </style>

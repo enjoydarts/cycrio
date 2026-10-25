@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -25,6 +28,12 @@ func main() {
 }
 
 func run() error {
+	keyringPath := flag.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
+	flag.Parse()
+	keyring, err := secretstore.Load(*keyringPath)
+	if err != nil {
+		return errors.New("encryption keyring unavailable")
+	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if os.Getenv("DATABASE_URL") == "" {
@@ -43,8 +52,15 @@ func run() error {
 	task := client.NewStandaloneTask(infrastructure.TaskName, func(ctx hatchet.Context, input infrastructure.Input) (infrastructure.Output, error) {
 		return infrastructure.Check(ctx, input, pool.Ping)
 	})
+	catalog := catalogruntime.New(pool, keyring)
+	catalogTask := client.NewStandaloneTask(catalogTaskName, func(ctx hatchet.Context, input CatalogSyncInput) (CatalogSyncOutput, error) {
+		if err := catalog.SyncProvider(ctx, input.Provider, input.LeaseID); err != nil {
+			return CatalogSyncOutput{Status: "failed"}, errors.New("catalog synchronization failed")
+		}
+		return CatalogSyncOutput{Status: "ok"}, nil
+	}, hatchet.WithRetries(0))
 	name := "cycrio-worker-" + uuid.NewString()
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task), hatchet.WithSlots(2))
+	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask), hatchet.WithSlots(2))
 	if err != nil {
 		return errors.New("Hatchet worker registration failed")
 	}
@@ -53,6 +69,10 @@ func run() error {
 		return errors.New("Hatchet worker start failed")
 	}
 	defer func() { _ = cleanup() }()
+	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
+		_, err := catalogTask.RunNoWait(ctx, input)
+		return err
+	}, 10*time.Second)
 	ready := func(ctx context.Context) error {
 		if err := pool.Ping(ctx); err != nil {
 			return errors.New("database unavailable")

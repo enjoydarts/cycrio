@@ -5,12 +5,19 @@
   import { createAPI } from './api';
   import { createAuthController, type AuthState } from './auth';
   import AdminCredentials from './AdminCredentials.svelte';
+  import ModelCatalog from './ModelCatalog.svelte';
+  import AIModelSettings from './AIModelSettings.svelte';
+  import { createCatalogAPI } from './catalog-api';
 
   let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' } = $props();
   let authState = $state<AuthState>({ status: 'loading' });
   let signUp = $derived(page.url.searchParams.get('sign_up') === 'true');
   let controller: ReturnType<typeof createAuthController> | undefined;
   const api = createAPI(PUBLIC_API_BASE_URL);
+  const catalogAPI = createCatalogAPI(PUBLIC_API_BASE_URL);
+  let adminPanel = $state<'credentials' | 'catalog' | 'settings'>(
+    'credentials',
+  );
   const errors = {
     authentication_required:
       'ログインの有効期限が切れた可能性があります。もう一度ログインしてください。',
@@ -39,6 +46,7 @@
 
 <section
   class="access-card"
+  class:admin-workspace={mode === 'admin' && authState.status === 'allowed'}
   aria-label={mode === 'admin'
     ? '管理者のアクセス確認'
     : 'アカウントのアクセス確認'}
@@ -48,7 +56,11 @@
       >{mode === 'admin' ? 'ADMINISTRATION' : 'YOUR ACCOUNT'}</span
     ><span class="small-mark" aria-hidden="true">↗</span>
   </div>
-  <div aria-live="polite" aria-atomic="true" class="status-content">
+  <div
+    aria-live={authState.status === 'allowed' ? 'off' : 'polite'}
+    aria-atomic="true"
+    class="status-content"
+  >
     {#if authState.status === 'loading' || authState.status === 'checking' || authState.status === 'redirecting'}
       <div class="status-symbol" aria-hidden="true">
         <span class="loader"></span>
@@ -118,38 +130,78 @@
         >ログアウト</button
       >
     {:else if authState.status === 'allowed'}
-      <div class="status-symbol success" aria-hidden="true">✓</div>
-      <span class="status-badge"
-        >{mode === 'admin' ? '管理者アクセス確認済み' : '利用許可済み'}</span
-      >
-      <h2>{mode === 'admin' ? '管理者ページ' : 'ログインできました'}</h2>
-      <p class="body-copy">
-        {mode === 'admin'
-          ? 'サーバーで管理者権限を確認しました。'
-          : 'サーバーでアカウントの利用許可を確認しました。'}
-      </p>
-      <dl class="account-details">
-        <div>
-          <dt>ユーザー ID</dt>
-          <dd><code>{authState.user.id}</code></dd>
-        </div>
-        <div>
-          <dt>権限</dt>
-          <dd>
-            {authState.user.role === 'platform_admin'
-              ? '管理者'
-              : '一般ユーザー'}
-          </dd>
-        </div>
-      </dl>
+      {#if mode !== 'admin'}
+        <div class="status-symbol success" aria-hidden="true">✓</div>
+        <span class="status-badge">利用許可済み</span>
+        <h2>ログインできました</h2>
+        <p class="body-copy">サーバーでアカウントの利用許可を確認しました。</p>
+      {:else}<span class="status-badge">管理者アクセス確認済み</span>{/if}
+      <details class="login-details" open={mode !== 'admin'}>
+        <summary>ログイン情報</summary>
+        <dl class="account-details">
+          <div>
+            <dt>ユーザー ID</dt>
+            <dd><code>{authState.user.id}</code></dd>
+          </div>
+          <div>
+            <dt>権限</dt>
+            <dd>
+              {authState.user.role === 'platform_admin'
+                ? '管理者'
+                : '一般ユーザー'}
+            </dd>
+          </div>
+        </dl>
+      </details>
       {#if mode === 'admin'}
-        <AdminCredentials
-          {api}
-          token={async () => (await controller?.getToken()) ?? null}
-          onDenied={() => {
-            void controller?.refresh();
-          }}
-        />
+        <nav class="admin-navigation" aria-label="管理機能">
+          <button
+            aria-pressed={adminPanel === 'credentials'}
+            onclick={() => {
+              adminPanel = 'credentials';
+            }}>API キー</button
+          >
+          <button
+            aria-pressed={adminPanel === 'catalog'}
+            onclick={() => {
+              adminPanel = 'catalog';
+            }}>モデルカタログ</button
+          >
+          <button
+            aria-pressed={adminPanel === 'settings'}
+            onclick={() => {
+              adminPanel = 'settings';
+            }}>AI 設定</button
+          >
+        </nav>
+        <div
+          role="region"
+          aria-label={adminPanel === 'credentials'
+            ? 'API キー管理'
+            : adminPanel === 'catalog'
+              ? 'モデルカタログ管理'
+              : 'AI 設定管理'}
+        >
+          {#if adminPanel === 'credentials'}<AdminCredentials
+              {api}
+              token={async () => (await controller?.getToken()) ?? null}
+              onDenied={() => {
+                void controller?.refresh();
+              }}
+            />{:else if adminPanel === 'catalog'}<ModelCatalog
+              api={catalogAPI}
+              token={async () => (await controller?.getToken()) ?? null}
+              onDenied={() => {
+                void controller?.refresh();
+              }}
+            />{:else}<AIModelSettings
+              api={catalogAPI}
+              token={async () => (await controller?.getToken()) ?? null}
+              onDenied={() => {
+                void controller?.refresh();
+              }}
+            />{/if}
+        </div>
       {:else}<div class="notice">
           <strong>現在はログイン基盤の開発段階です</strong>
           <p>メール連携・サブスクリプションの管理機能は、今後実装予定です。</p>
@@ -189,6 +241,32 @@
 </section>
 
 <style>
+  .admin-navigation {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1.5rem;
+  }
+  .admin-navigation button {
+    flex: 1 1 6rem;
+    min-width: 0;
+    padding: 0.65rem 0.4rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+    color: var(--color-action);
+    font: inherit;
+    font-size: 0.8rem;
+    cursor: pointer;
+  }
+  .admin-navigation button[aria-pressed='true'] {
+    background: var(--color-action);
+    color: var(--color-surface);
+  }
+  .admin-navigation button:focus-visible {
+    outline: 2px solid var(--color-action-hover);
+    outline-offset: 3px;
+  }
   .access-card {
     padding: clamp(1.5rem, 4vw, 2.75rem);
     background: var(--color-surface);
@@ -196,6 +274,49 @@
     border-radius: 1.5rem;
     box-shadow: 0 12px 50px var(--color-shadow);
     min-width: 0;
+  }
+  .admin-workspace {
+    padding: clamp(1rem, 2vw, 2rem);
+    border-radius: 1rem;
+  }
+  .admin-workspace .card-heading {
+    margin-bottom: 0.75rem;
+  }
+  .admin-workspace .admin-navigation {
+    margin-top: 1rem;
+  }
+  .admin-workspace .admin-navigation button {
+    flex: 0 1 auto;
+    padding-inline: 1.25rem;
+    font-size: 0.88rem;
+  }
+  .admin-workspace .button {
+    display: inline-flex;
+    width: auto;
+    min-width: 8rem;
+    padding-inline: 1rem;
+    margin-right: 0.5rem;
+  }
+  .login-details {
+    color: var(--color-muted);
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+  }
+  .login-details summary {
+    cursor: pointer;
+  }
+  .admin-workspace .account-details {
+    margin: 0.75rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem 2rem;
+  }
+  .admin-workspace .account-details div + div {
+    margin-top: 0;
+  }
+  .access-card:not(.admin-workspace) {
+    max-width: 35rem;
+    margin-inline: auto;
   }
   .card-heading {
     display: flex;
