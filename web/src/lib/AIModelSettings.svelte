@@ -133,7 +133,7 @@
   <h3 id="ai-settings-heading">AI 設定の下書き</h3>
   <p class="muted">
     一次判定は Liquid AI D1、二次処理は OpenRouter / OpenAI / Anthropic
-    のカタログから選択します。接続テスト・有効化は次工程です。
+    のカタログから選択します。モデル選択を保存後、「実行・接続」で実行設定の保存・接続テスト・有効化を行ってください。
   </p>
   <div class="feedback" aria-live="polite" aria-atomic="true">
     {#if busy}<p>読み込み・保存中です。</p>{/if}{#if view.error}<p

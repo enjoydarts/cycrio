@@ -8,6 +8,9 @@
   import ModelCatalog from './ModelCatalog.svelte';
   import AIModelSettings from './AIModelSettings.svelte';
   import { createCatalogAPI } from './catalog-api';
+  import { createAIRuntimeAPI } from './airuntime-api';
+  import AIRuntime from './AIRuntime.svelte';
+  import AIUsage from './AIUsage.svelte';
 
   let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' } = $props();
   let authState = $state<AuthState>({ status: 'loading' });
@@ -15,7 +18,9 @@
   let controller: ReturnType<typeof createAuthController> | undefined;
   const api = createAPI(PUBLIC_API_BASE_URL);
   const catalogAPI = createCatalogAPI(PUBLIC_API_BASE_URL);
-  let adminPanel = $state<'credentials' | 'catalog' | 'settings'>(
+  const runtimeAPI = createAIRuntimeAPI(PUBLIC_API_BASE_URL);
+  let settingsPanel = $state<'models' | 'runtime'>('models');
+  let adminPanel = $state<'credentials' | 'catalog' | 'settings' | 'usage'>(
     'credentials',
   );
   const errors = {
@@ -173,6 +178,12 @@
               adminPanel = 'settings';
             }}>AI 設定</button
           >
+          <button
+            aria-pressed={adminPanel === 'usage'}
+            onclick={() => {
+              adminPanel = 'usage';
+            }}>原価</button
+          >
         </nav>
         <div
           role="region"
@@ -180,7 +191,9 @@
             ? 'API キー管理'
             : adminPanel === 'catalog'
               ? 'モデルカタログ管理'
-              : 'AI 設定管理'}
+              : adminPanel === 'usage'
+                ? 'AI 利用原価管理'
+                : 'AI 設定管理'}
         >
           {#if adminPanel === 'credentials'}<AdminCredentials
               {api}
@@ -194,13 +207,40 @@
               onDenied={() => {
                 void controller?.refresh();
               }}
-            />{:else}<AIModelSettings
-              api={catalogAPI}
+            />{:else if adminPanel === 'usage'}<AIUsage
+              api={runtimeAPI}
               token={async () => (await controller?.getToken()) ?? null}
               onDenied={() => {
                 void controller?.refresh();
               }}
-            />{/if}
+            />{:else}
+            <nav class="admin-navigation" aria-label="AI 設定の操作">
+              <button
+                aria-pressed={settingsPanel === 'models'}
+                onclick={() => {
+                  settingsPanel = 'models';
+                }}>モデル選択</button
+              ><button
+                aria-pressed={settingsPanel === 'runtime'}
+                onclick={() => {
+                  settingsPanel = 'runtime';
+                }}>実行・接続</button
+              >
+            </nav>
+            {#if settingsPanel === 'models'}<AIModelSettings
+                api={catalogAPI}
+                token={async () => (await controller?.getToken()) ?? null}
+                onDenied={() => {
+                  void controller?.refresh();
+                }}
+              />{:else}<AIRuntime
+                api={runtimeAPI}
+                catalog={catalogAPI}
+                token={async () => (await controller?.getToken()) ?? null}
+                onDenied={() => {
+                  void controller?.refresh();
+                }}
+              />{/if}{/if}
         </div>
       {:else}<div class="notice">
           <strong>現在はログイン基盤の開発段階です</strong>

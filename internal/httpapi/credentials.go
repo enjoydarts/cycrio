@@ -22,6 +22,7 @@ type CredentialService interface {
 type handlerOptions struct {
 	credentials CredentialService
 	catalog     ModelCatalogService
+	runtime     AIRuntimeService
 }
 type Option func(*handlerOptions)
 

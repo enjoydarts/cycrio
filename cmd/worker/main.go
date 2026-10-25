@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/airuntimeconfig"
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
@@ -59,8 +61,18 @@ func run() error {
 		}
 		return CatalogSyncOutput{Status: "ok"}, nil
 	}, hatchet.WithRetries(0))
+	execution := airuntimeconfig.New(pool, keyring)
+	aiTask := client.NewStandaloneTask(aiTestTaskName, func(ctx hatchet.Context, input airuntime.Lease) (AITestOutput, error) {
+		if err := execution.Run(ctx, input); err != nil {
+			if errors.Is(err, airuntime.ErrConflict) {
+				return AITestOutput{Status: "ignored"}, nil
+			}
+			return AITestOutput{Status: "failed"}, errors.New("AI connection test unavailable")
+		}
+		return AITestOutput{Status: "recorded"}, nil
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	name := "cycrio-worker-" + uuid.NewString()
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask), hatchet.WithSlots(2))
+	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask), hatchet.WithSlots(2))
 	if err != nil {
 		return errors.New("Hatchet worker registration failed")
 	}
@@ -71,6 +83,10 @@ func run() error {
 	defer func() { _ = cleanup() }()
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)
+		return err
+	}, 10*time.Second)
+	go dispatchAITests(ctx, execution.Claim, func(ctx context.Context, input airuntime.Lease) error {
+		_, err := aiTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
 	ready := func(ctx context.Context) error {
