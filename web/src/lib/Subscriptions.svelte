@@ -119,6 +119,7 @@
           onchange={(e) =>
             goto(
               link({
+                q: search,
                 status: e.currentTarget.value as SubscriptionFilter['status'],
                 offset: 0,
               }),
@@ -133,6 +134,7 @@
           onchange={(e) =>
             goto(
               link({
+                q: search,
                 sort: e.currentTarget.value as SubscriptionFilter['sort'],
                 offset: 0,
               }),
