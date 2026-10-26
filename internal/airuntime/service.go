@@ -98,26 +98,26 @@ func (s *Service) Run(ctx context.Context, lease Lease) error {
 		defer cancel()
 		return s.repo.FinishTest(saveCtx, lease, completion)
 	}
-	first, outcome, recordErr := s.call(ctx, execution, lease, "classification", execution.Profile.Primary, classifierInstructions)
-	completion.PrimaryOutcome = &outcome
+	first, primaryOutcome, recordErr := s.call(ctx, execution, lease, "classification", execution.Profile.Primary, classifierInstructions)
+	completion.PrimaryOutcome = &primaryOutcome
 	if recordErr != nil {
 		completion.State = "unknown"
 		_ = finish()
 		return ErrUnavailable
 	}
-	if outcome != "success" {
+	if primaryOutcome != "success" {
 		return finish()
 	}
 	label := first.Classification.Label
 	completion.Classification = &label
-	second, outcome, recordErr := s.call(ctx, execution, lease, "extraction", execution.Profile.Secondary, extractorInstructions)
-	completion.SecondaryOutcome = &outcome
+	second, secondaryOutcome, recordErr := s.call(ctx, execution, lease, "extraction", execution.Profile.Secondary, extractorInstructions)
+	completion.SecondaryOutcome = &secondaryOutcome
 	if recordErr != nil {
 		completion.State = "unknown"
 		_ = finish()
 		return ErrUnavailable
 	}
-	if outcome != "success" {
+	if secondaryOutcome != "success" {
 		return finish()
 	}
 	count := len(second.Extraction.Events)
