@@ -17,6 +17,10 @@ import (
 // Every editable member is explicit, including unknown values represented by null.
 // Token inspection rejects duplicates before encoding/json can discard them.
 func readSubscriptionJSON(w http.ResponseWriter, r *http.Request, target any, keys []string, nonNull ...string) error {
+	return readSubscriptionJSONOptional(w, r, target, keys, nil, nonNull...)
+}
+
+func readSubscriptionJSONOptional(w http.ResponseWriter, r *http.Request, target any, keys, optional []string, nonNull ...string) error {
 	media, _, e := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if e != nil || media != "application/json" {
 		return subscriptions.ErrInvalid
@@ -48,7 +52,7 @@ func readSubscriptionJSON(w http.ResponseWriter, r *http.Request, target any, ke
 	}
 	for _, key := range keys {
 		raw, exists := values[key]
-		if !exists || slices.Contains(nonNull, key) && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		if !exists && !slices.Contains(optional, key) || exists && slices.Contains(nonNull, key) && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 			return subscriptions.ErrInvalid
 		}
 	}

@@ -191,7 +191,7 @@ func TestBillingScheduleRangeAndOwnerForeignKeys(t *testing.T) {
 		t.Fatal(e)
 	}
 	// Composite references cannot attach another owner's schedule to this contract.
-	_, e = f.runtime.pool.Exec(ctx, `INSERT INTO billing_schedule_settings SELECT $1,subscription_id,interval_unit,interval_count,anchor_date,month_end,stale,manual_next_override,manual_next_override_at,confirmed_as_of,confirmed_candidate,algorithm_version,confirmed_version,confirmed_at,updated_at FROM billing_schedule_settings WHERE owner_id=$2`, f.other, f.owner)
+	_, e = f.runtime.pool.Exec(ctx, `INSERT INTO billing_schedule_settings SELECT $1,subscription_id,interval_unit,interval_count,anchor_date,month_end,stale,manual_next_override,manual_next_override_at,confirmed_as_of,confirmed_candidate,algorithm_version,confirmed_version,confirmed_at,updated_at,history_evidence FROM billing_schedule_settings WHERE owner_id=$2`, f.other, f.owner)
 	var pgerr interface{ SQLState() string }
 	if !errors.As(e, &pgerr) || pgerr.SQLState() != "23503" {
 		t.Fatal(e)

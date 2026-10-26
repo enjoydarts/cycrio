@@ -31,6 +31,10 @@ func (f *scheduleFixture) Preview(_ context.Context, o, id string, r billingsche
 	f.record(o, id)
 	return billingschedule.Preview{Rule: r}, f.err
 }
+func (f *scheduleFixture) HistoryPreview(_ context.Context, o, id string, filter billingschedule.HistoryFilter) (billingschedule.HistoryPreview, error) {
+	f.record(o, id)
+	return billingschedule.HistoryPreview{Filter: filter}, f.err
+}
 func (f *scheduleFixture) Save(_ context.Context, o, id string, in billingschedule.SaveInput) (billingschedule.SaveResult, error) {
 	f.record(o, id)
 	return billingschedule.SaveResult{}, f.err
@@ -108,11 +112,65 @@ func TestBillingScheduleHTTPStrictInputAndReasons(t *testing.T) {
 			t.Fatal(w.Code, w.Body.String())
 		}
 	}
-	for _, reason := range []string{"version_conflict", "preview_expired", "preview_changed", "request_conflict", "ended", "private SQL"} {
+	for _, reason := range []string{"version_conflict", "preview_expired", "preview_changed", "request_conflict", "history_changed", "ended", "private SQL"} {
 		f := &scheduleFixture{err: &billingschedule.Conflict{Reason: reason}}
 		w := credentialRequest(scheduleHandler(f, "user"), "PUT", schedulePath, scheduleBody, "Bearer valid", "http://localhost:3100", "application/json")
 		if w.Code != 409 || reason != "private SQL" && !strings.Contains(w.Body.String(), `"reason":"`+reason+`"`) || strings.Contains(w.Body.String(), "private SQL") {
 			t.Fatal(reason, w.Code, w.Body.String())
+		}
+	}
+}
+
+func TestBillingScheduleHistoryStrictHTTP(t *testing.T) {
+	path := schedulePath + "/history-preview"
+	body := `{"start_date":"2024-01-01","currency":"JPY"}`
+	for _, role := range []string{"user", "platform_admin", "disabled"} {
+		for _, token := range []string{"", "Bearer valid"} {
+			f := &scheduleFixture{}
+			w := credentialRequest(scheduleHandler(f, role), "POST", path, body, token, "http://localhost:3100", "application/json")
+			want := 200
+			if token == "" {
+				want = 401
+			} else if role == "disabled" {
+				want = 403
+			}
+			if w.Code != want || want >= 400 && f.calls != 0 || want == 200 && f.owner != subscriptionUUID {
+				t.Fatal(w.Code, w.Body.String(), f)
+			}
+		}
+	}
+	for _, bad := range []string{`{}`, `{"start_date":"2024-01-01","currency":"jpy"}`, `{"start_date":"2024-02-30","currency":"JPY"}`, `{"start_date":null,"currency":"JPY"}`, `{"start_date":"2024-01-01","currency":"JPY","currency":"USD"}`, `{"start_date":"2024-01-01","currency":"JPY","samples":[]}`, body + body} {
+		f := &scheduleFixture{}
+		w := credentialRequest(scheduleHandler(f, "user"), "POST", path, bad, "Bearer valid", "http://localhost:3100", "application/json")
+		if w.Code != 400 || f.calls != 0 {
+			t.Fatal(bad, w.Code, w.Body.String())
+		}
+	}
+	for _, suffix := range []string{"?", "?currency=JPY"} {
+		f := &scheduleFixture{}
+		w := credentialRequest(scheduleHandler(f, "user"), "POST", path+suffix, body, "Bearer valid", "http://localhost:3100", "application/json")
+		if w.Code != 400 || f.calls != 0 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	f := &scheduleFixture{err: billingschedule.ErrNotFound}
+	w := credentialRequest(scheduleHandler(f, "user"), "POST", path, body, "Bearer valid", "http://localhost:3100", "application/json")
+	if w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	basis := `{"filter":` + body + `,"token":"` + strings.Repeat("a", 64) + `","algorithm_version":"history-exact-v1"}`
+	for _, valid := range []bool{true, false} {
+		values := []string{basis}
+		if !valid {
+			values = []string{`null`, `{}`, strings.Replace(basis, `"token":`, `"extra":1,"token":`, 1), strings.Replace(basis, `"token":`, `"token":"`+strings.Repeat("a", 64)+`","token":`, 1), strings.Replace(basis, `"currency":"JPY"`, `"currency":"JPY","currency":"USD"`, 1), strings.Replace(basis, `"currency":"JPY"`, `"currency":"JPY","extra":1`, 1), strings.Replace(basis, `"algorithm_version":"history-exact-v1"`, `"algorithm_version":"unknown"`, 1), strings.Replace(basis, `"filter":`+body, `"filter":{"start_date":"2024-01-01"}`, 1)}
+		}
+		for _, value := range values {
+			f := &scheduleFixture{}
+			save := strings.TrimSuffix(scheduleBody, "}") + `,"history_basis":` + value + `}`
+			w := credentialRequest(scheduleHandler(f, "user"), "PUT", schedulePath, save, "Bearer valid", "http://localhost:3100", "application/json")
+			if valid && (w.Code != 200 || f.calls != 1) || !valid && (w.Code != 400 || f.calls != 0) {
+				t.Fatal(value, w.Code, w.Body.String())
+			}
 		}
 	}
 }

@@ -81,12 +81,13 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	var target string
 	var same bool
 	var ruleJSON []byte
-	e = tx.QueryRow(ctx, `SELECT subscription_id,request_doc=$3::jsonb,request_id,applied_version,rule_doc,to_char(as_of,'YYYY-MM-DD'),to_char(candidate_date,'YYYY-MM-DD'),algorithm_version,created_at FROM billing_schedule_requests WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&target, &same, &receipt.RequestID, &receipt.AppliedVersion, &ruleJSON, &receipt.AsOf, &receipt.CandidateDate, &receipt.AlgorithmVersion, &receipt.CreatedAt)
+	var evidenceJSON []byte
+	e = tx.QueryRow(ctx, `SELECT subscription_id,request_doc=$3::jsonb,request_id,applied_version,rule_doc,to_char(as_of,'YYYY-MM-DD'),to_char(candidate_date,'YYYY-MM-DD'),algorithm_version,created_at,history_evidence FROM billing_schedule_requests WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&target, &same, &receipt.RequestID, &receipt.AppliedVersion, &ruleJSON, &receipt.AsOf, &receipt.CandidateDate, &receipt.AlgorithmVersion, &receipt.CreatedAt, &evidenceJSON)
 	if e == nil {
 		if !same || !strings.EqualFold(target, id) {
 			return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "request_conflict"}
 		}
-		if json.Unmarshal(ruleJSON, &receipt.Rule) != nil {
+		if json.Unmarshal(ruleJSON, &receipt.Rule) != nil || len(evidenceJSON) > 0 && json.Unmarshal(evidenceJSON, &receipt.HistoryEvidence) != nil {
 			return billingschedule.SaveResult{}, billingschedule.ErrUnavailable
 		}
 		s, e := scheduleSubscription(ctx, tx, owner, id, false)
@@ -116,6 +117,25 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	if s.Status == "ended" {
 		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "ended"}
 	}
+	var evidence *billingschedule.HistoryEvidence
+	if in.HistoryBasis != nil {
+		p, e := scheduleHistory(ctx, tx, owner, s, in.HistoryBasis.Filter, today)
+		if e != nil {
+			return billingschedule.SaveResult{}, e
+		}
+		if p.Token == "" || p.Token != in.HistoryBasis.Token {
+			return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "history_changed"}
+		}
+		member := false
+		for _, c := range p.Candidates {
+			member = member || c.Rule == in.Rule
+		}
+		if !member {
+			return billingschedule.SaveResult{}, billingschedule.ErrInvalid
+		}
+		evidence = &billingschedule.HistoryEvidence{HistoryBasis: billingschedule.HistoryBasis{Filter: p.Filter, Token: p.Token, AlgorithmVersion: p.AlgorithmVersion}, AsOf: p.AsOf, Samples: p.Samples, SelectedRule: in.Rule}
+		evidenceJSON, _ = json.Marshal(evidence)
+	}
 	candidate, e := billingschedule.Next(in.Rule, today)
 	if e != nil {
 		return billingschedule.SaveResult{}, e
@@ -127,8 +147,8 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	if e != nil {
 		return billingschedule.SaveResult{}, scheduleError(e)
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO billing_schedule_settings(owner_id,subscription_id,interval_unit,interval_count,anchor_date,month_end,confirmed_as_of,confirmed_candidate,algorithm_version,confirmed_version) VALUES($1,$2,$3,$4,$5::text::date,$6,$7::text::date,$8::text::date,$9,$10)
- ON CONFLICT(owner_id,subscription_id) DO UPDATE SET interval_unit=EXCLUDED.interval_unit,interval_count=EXCLUDED.interval_count,anchor_date=EXCLUDED.anchor_date,month_end=EXCLUDED.month_end,confirmed_as_of=EXCLUDED.confirmed_as_of,confirmed_candidate=EXCLUDED.confirmed_candidate,algorithm_version=EXCLUDED.algorithm_version,confirmed_version=EXCLUDED.confirmed_version,stale=false,manual_next_override=false,manual_next_override_at=NULL,confirmed_at=clock_timestamp(),updated_at=clock_timestamp()`, owner, id, in.IntervalUnit, in.IntervalCount, in.AnchorDate, in.MonthEnd, today, *candidate, billingschedule.AlgorithmVersion, s.Version+1)
+	_, e = tx.Exec(ctx, `INSERT INTO billing_schedule_settings(owner_id,subscription_id,interval_unit,interval_count,anchor_date,month_end,confirmed_as_of,confirmed_candidate,algorithm_version,confirmed_version,history_evidence) VALUES($1,$2,$3,$4,$5::text::date,$6,$7::text::date,$8::text::date,$9,$10,$11)
+ ON CONFLICT(owner_id,subscription_id) DO UPDATE SET interval_unit=EXCLUDED.interval_unit,interval_count=EXCLUDED.interval_count,anchor_date=EXCLUDED.anchor_date,month_end=EXCLUDED.month_end,confirmed_as_of=EXCLUDED.confirmed_as_of,confirmed_candidate=EXCLUDED.confirmed_candidate,algorithm_version=EXCLUDED.algorithm_version,confirmed_version=EXCLUDED.confirmed_version,history_evidence=EXCLUDED.history_evidence,stale=false,manual_next_override=false,manual_next_override_at=NULL,confirmed_at=clock_timestamp(),updated_at=clock_timestamp()`, owner, id, in.IntervalUnit, in.IntervalCount, in.AnchorDate, in.MonthEnd, today, *candidate, billingschedule.AlgorithmVersion, s.Version+1, evidenceJSON)
 	if e != nil {
 		return billingschedule.SaveResult{}, scheduleError(e)
 	}
@@ -138,8 +158,8 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	}
 	snapshot, _ := json.Marshal(s)
 	ruleJSON, _ = json.Marshal(in.Rule)
-	receipt = billingschedule.Receipt{RequestID: in.RequestID, AppliedVersion: s.Version, Rule: in.Rule, AsOf: today, CandidateDate: *candidate, AlgorithmVersion: billingschedule.AlgorithmVersion}
-	e = tx.QueryRow(ctx, `INSERT INTO billing_schedule_requests(owner_id,actor_id,subscription_id,request_id,request_doc,applied_version,rule_doc,as_of,candidate_date,algorithm_version,subscription_snapshot) VALUES($1,$1,$2,$3,$4,$5,$6,$7::text::date,$8::text::date,$9,$10) RETURNING request_id,created_at`, owner, id, in.RequestID, raw, s.Version, ruleJSON, today, *candidate, billingschedule.AlgorithmVersion, snapshot).Scan(&receipt.RequestID, &receipt.CreatedAt)
+	receipt = billingschedule.Receipt{HistoryEvidence: evidence, RequestID: in.RequestID, AppliedVersion: s.Version, Rule: in.Rule, AsOf: today, CandidateDate: *candidate, AlgorithmVersion: billingschedule.AlgorithmVersion}
+	e = tx.QueryRow(ctx, `INSERT INTO billing_schedule_requests(owner_id,actor_id,subscription_id,request_id,request_doc,applied_version,rule_doc,as_of,candidate_date,algorithm_version,subscription_snapshot,history_evidence) VALUES($1,$1,$2,$3,$4,$5,$6,$7::text::date,$8::text::date,$9,$10,$11) RETURNING request_id,created_at`, owner, id, in.RequestID, raw, s.Version, ruleJSON, today, *candidate, billingschedule.AlgorithmVersion, snapshot, evidenceJSON).Scan(&receipt.RequestID, &receipt.CreatedAt)
 	if e != nil {
 		return billingschedule.SaveResult{}, scheduleError(e)
 	}

@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"github.com/enjoydarts/cycrio/internal/billingschedule"
@@ -39,12 +40,16 @@ func scheduleSubscription(ctx context.Context, tx pgx.Tx, owner, id string, lock
 func scheduleSettings(ctx context.Context, tx pgx.Tx, owner, id string) (*billingschedule.Settings, bool, error) {
 	var s billingschedule.Settings
 	var manual bool
-	e := tx.QueryRow(ctx, `SELECT interval_unit,interval_count,to_char(anchor_date,'YYYY-MM-DD'),month_end,stale,to_char(confirmed_as_of,'YYYY-MM-DD'),to_char(confirmed_candidate,'YYYY-MM-DD'),algorithm_version,confirmed_version,confirmed_at,updated_at,manual_next_override FROM billing_schedule_settings WHERE owner_id=$1 AND subscription_id=$2`, owner, id).Scan(&s.Rule.IntervalUnit, &s.Rule.IntervalCount, &s.Rule.AnchorDate, &s.Rule.MonthEnd, &s.Stale, &s.ConfirmedAsOf, &s.ConfirmedCandidate, &s.AlgorithmVersion, &s.ConfirmedVersion, &s.ConfirmedAt, &s.UpdatedAt, &manual)
+	var evidenceJSON []byte
+	e := tx.QueryRow(ctx, `SELECT interval_unit,interval_count,to_char(anchor_date,'YYYY-MM-DD'),month_end,stale,to_char(confirmed_as_of,'YYYY-MM-DD'),to_char(confirmed_candidate,'YYYY-MM-DD'),algorithm_version,confirmed_version,confirmed_at,updated_at,manual_next_override,history_evidence FROM billing_schedule_settings WHERE owner_id=$1 AND subscription_id=$2`, owner, id).Scan(&s.Rule.IntervalUnit, &s.Rule.IntervalCount, &s.Rule.AnchorDate, &s.Rule.MonthEnd, &s.Stale, &s.ConfirmedAsOf, &s.ConfirmedCandidate, &s.AlgorithmVersion, &s.ConfirmedVersion, &s.ConfirmedAt, &s.UpdatedAt, &manual, &evidenceJSON)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return nil, false, nil
 	}
 	if e != nil {
 		return nil, false, scheduleError(e)
+	}
+	if len(evidenceJSON) > 0 && json.Unmarshal(evidenceJSON, &s.HistoryEvidence) != nil {
+		return nil, false, billingschedule.ErrUnavailable
 	}
 	return &s, manual, nil
 }
