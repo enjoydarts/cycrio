@@ -55,6 +55,14 @@ const api = (patch: Partial<BillingAPI> = {}): BillingAPI => ({
   ...patch,
 });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
+function deferred<T>() {
+  let resolve!: (value: T) => void, reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => {
+    resolve = done;
+    reject = fail;
+  });
+  return { promise, resolve, reject };
+}
 test('billing manual draft starts without invented facts and JST month crosses UTC boundary', () => {
   assert.deepEqual(blankBilling(), {
     kind: '',
@@ -745,4 +753,295 @@ test('summary newest URL filters win and denied picker clears all private summar
   assert.equal(c.state().contracts, null);
   assert.equal(c.state().query, '');
   assert.equal(c.state().status, 'denied');
+});
+test('every billing write cancels auxiliary reads and keeps its lock until the current request settles', async (t) => {
+  for (const operation of [
+    'create',
+    'preflight',
+    'update',
+    'replay',
+    'attach',
+    'detach',
+    'attachTo',
+  ] as const)
+    for (const outcome of ['unavailable', 'denied', 'success'] as const)
+      await t.test(
+        `${operation} ignores cancelled auxiliary ${outcome}`,
+        async () => {
+          const auxiliary = deferred<ReturnType<typeof page>>(),
+            lookup = deferred<ReturnType<typeof page>>(),
+            result = deferred<BillingEntry>();
+          const calls: { body: object; signal?: AbortSignal }[] = [];
+          let auxiliarySignal: AbortSignal | undefined,
+            denials = 0,
+            uuids = 0;
+          const request = async (body: object, signal?: AbortSignal) => {
+            calls.push({ body, signal });
+            if (operation === 'replay' && calls.length === 1)
+              throw new ApiError('dependency_unavailable');
+            return result.promise;
+          };
+          const backend = api({
+            list: async (_sid, filter, _token, signal) => {
+              if (filter.source_result_id)
+                return operation === 'preflight' ? lookup.promise : page();
+              auxiliarySignal = signal;
+              return auxiliary.promise;
+            },
+            create: async (_sid, body, _token, signal) => request(body, signal),
+            update: async (_sid, _id, body, _token, signal) =>
+              request(body, signal),
+            attach: async (_sid, _id, body, _token, signal) =>
+              request(body, signal),
+            detach: async (_sid, _id, body, _token, signal) =>
+              request(body, signal),
+          });
+          const c = createBillingEditor(
+            backend,
+            async () => 't',
+            () => {},
+            () => {
+              denials++;
+            },
+            {
+              subscription_id: sid,
+              initial: ['update', 'attach', 'detach'].includes(operation)
+                ? entry()
+                : null,
+              source: ['preflight', 'attachTo'].includes(operation)
+                ? { result_id: rid, event_index: 0 }
+                : null,
+              randomUUID: () => {
+                uuids++;
+                return rid;
+              },
+            },
+          );
+          c.edit(values);
+          await c.preview();
+          c.confirm(true);
+          if (operation === 'replay') await c.save();
+          const reading = c.loadRecords();
+          await tick();
+          const saving =
+            operation === 'attachTo'
+              ? c.attachTo(entry(), true)
+              : operation === 'attach' || operation === 'detach'
+                ? c.changeSource(
+                    operation,
+                    { result_id: rid, event_index: 0 },
+                    true,
+                  )
+                : operation === 'replay'
+                  ? c.replay()
+                  : c.save();
+          await tick();
+          if (outcome === 'success') auxiliary.resolve(page([entry()]));
+          else
+            auxiliary.reject(
+              new ApiError(
+                outcome === 'denied'
+                  ? 'access_denied'
+                  : 'dependency_unavailable',
+              ),
+            );
+          await reading;
+          assert.equal(c.state().status, 'saving');
+          assert.equal(c.state().records, null);
+          assert.deepEqual(c.state().loading, []);
+          assert.equal(denials, 0);
+          assert.equal(auxiliarySignal?.aborted, true);
+          c.edit({ amount: '55' });
+          c.confirm(true);
+          await c.save();
+          assert.equal(c.state().values.amount, values.amount);
+          assert.equal(
+            calls.length,
+            operation === 'preflight' ? 0 : operation === 'replay' ? 2 : 1,
+          );
+          if (operation === 'preflight') {
+            lookup.resolve(page());
+            await tick();
+            assert.equal(c.state().status, 'saving');
+            assert.equal(calls.length, 1);
+            assert.equal(
+              (calls[0].body as { amount: string }).amount,
+              values.amount,
+            );
+          }
+          assert.equal(calls.at(-1)?.signal?.aborted, false);
+          if (['create', 'preflight', 'replay'].includes(operation))
+            assert.equal(uuids, 1);
+          result.resolve(entry());
+          await saving;
+          assert.equal(c.state().status, 'ready');
+          assert.equal(denials, 0);
+        },
+      );
+});
+test('current write and source preflight authorization refusals still purge every draft', async (t) => {
+  for (const code of ['authentication_required', 'access_denied'] as const)
+    for (const phase of ['write', 'preflight'] as const)
+      await t.test(`${phase} ${code}`, async () => {
+        const store = new Map();
+        let denials = 0;
+        const c = createBillingEditor(
+          api({
+            list: async () => {
+              throw new ApiError(code);
+            },
+            create: async () => {
+              throw new ApiError(code);
+            },
+          }),
+          async () => 't',
+          () => {},
+          () => {
+            denials++;
+          },
+          {
+            subscription_id: sid,
+            drafts: store,
+            draftKey: 'private',
+            source:
+              phase === 'preflight' ? { result_id: rid, event_index: 0 } : null,
+          },
+        );
+        c.edit(values);
+        await c.preview();
+        c.confirm(true);
+        await c.save();
+        assert.equal(c.state().status, 'denied');
+        assert.deepEqual(c.state().values, blankBilling());
+        assert.equal(store.size, 0);
+        assert.equal(denials, 1);
+      });
+});
+test('summary paired reads observe each current authorization failure regardless of response order', async (t) => {
+  type Summary = Awaited<ReturnType<BillingAPI['summary']>>;
+  const summary: Summary = {
+    month: '2026-10',
+    start_date: '2026-10-01',
+    end_date: '2026-11-01',
+    timezone: 'Asia/Tokyo',
+    subscription_id: sid,
+    currencies: [],
+    invoice_count: 0,
+    voided_count: 0,
+  };
+  for (const first of ['summary', 'selected'] as const)
+    for (const a of [
+      'success',
+      'unavailable',
+      'authentication_required',
+      'access_denied',
+    ] as const)
+      for (const b of [
+        'success',
+        'unavailable',
+        'authentication_required',
+        'access_denied',
+      ] as const)
+        await t.test(`${first} first: ${a}, then ${b}`, async () => {
+          const sum = deferred<Summary>(),
+            selected = deferred<ReturnType<typeof subscription>>();
+          let denials = 0;
+          const c = createBillingSummaryController(
+            api({ summary: async () => sum.promise }),
+            {
+              get: async () => selected.promise,
+              list: async () => ({
+                subscriptions: [subscription()],
+                total: 1,
+                limit: 20,
+                offset: 0,
+              }),
+            } as unknown as SubscriptionsAPI,
+            async () => 't',
+            () => {},
+            () => {
+              denials++;
+            },
+          );
+          await c.search('private filter');
+          const loading = c.load({ month: '2026-10', subscription_id: sid });
+          const settle = (side: 'summary' | 'selected', outcome: typeof a) => {
+            if (outcome === 'success') {
+              if (side === 'summary') sum.resolve(summary);
+              else selected.resolve(subscription());
+            } else
+              (side === 'summary' ? sum : selected).reject(
+                new ApiError(
+                  outcome === 'unavailable'
+                    ? 'dependency_unavailable'
+                    : outcome,
+                ),
+              );
+          };
+          settle(first, a);
+          await tick();
+          settle(first === 'summary' ? 'selected' : 'summary', b);
+          await loading;
+          await tick();
+          const refused = [a, b].some(
+            (value) =>
+              value === 'authentication_required' || value === 'access_denied',
+          );
+          assert.equal(
+            c.state().status,
+            refused
+              ? 'denied'
+              : a === 'success' && b === 'success'
+                ? 'ready'
+                : 'error',
+          );
+          assert.equal(denials, refused ? 1 : 0);
+          if (refused) {
+            assert.equal(c.state().contracts, null);
+            assert.equal(c.state().summary, null);
+            assert.equal(c.state().selected, null);
+            assert.equal(c.state().query, '');
+          }
+        });
+});
+test('superseded or disposed paired reads cannot apply late authorization failures to a new summary scope', async (t) => {
+  for (const disposed of [false, true])
+    await t.test(disposed ? 'disposed' : 'newer filter', async () => {
+      const oldSummary = deferred<Awaited<ReturnType<BillingAPI['summary']>>>(),
+        oldSelected = deferred<ReturnType<typeof subscription>>();
+      let denials = 0;
+      const current = {
+        month: '2026-11',
+        start_date: '2026-11-01',
+        end_date: '2026-12-01',
+        timezone: 'Asia/Tokyo' as const,
+        subscription_id: null,
+        currencies: [],
+        invoice_count: 0,
+        voided_count: 0,
+      };
+      const c = createBillingSummaryController(
+        api({
+          summary: async (month) =>
+            month === '2026-10' ? oldSummary.promise : current,
+        }),
+        { get: async () => oldSelected.promise } as unknown as SubscriptionsAPI,
+        async () => 't',
+        () => {},
+        () => {
+          denials++;
+        },
+      );
+      const loading = c.load({ month: '2026-10', subscription_id: sid });
+      oldSummary.reject(new ApiError('dependency_unavailable'));
+      await tick();
+      if (disposed) c.dispose();
+      else await c.load({ month: '2026-11', subscription_id: null });
+      oldSelected.reject(new ApiError('access_denied'));
+      await loading;
+      await tick();
+      assert.equal(denials, 0);
+      assert.equal(c.state().status, disposed ? 'disposed' : 'ready');
+      assert.equal(c.state().summary?.month, disposed ? undefined : '2026-11');
+    });
 });

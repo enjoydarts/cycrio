@@ -96,23 +96,37 @@ export function createBillingSummaryController(
         summary: null,
         selected: null,
       });
+      const current = () =>
+        allowed() && main === abort && !abort.signal.aborted;
+      async function observe<T>(read: () => Promise<T>): Promise<T> {
+        try {
+          if (!current()) throw new DOMException('Aborted', 'AbortError');
+          return await read();
+        } catch (error) {
+          if (current()) failure(error, 'main');
+          throw error;
+        }
+      }
       try {
         const [summary, selected] = await Promise.all([
-          api.summary(
-            filter.month,
-            filter.subscription_id,
-            token,
-            abort.signal,
+          observe(() =>
+            api.summary(
+              filter.month,
+              filter.subscription_id,
+              token,
+              abort.signal,
+            ),
           ),
-          filter.subscription_id
-            ? subscriptions.get(filter.subscription_id, token, abort.signal)
-            : Promise.resolve(null),
+          observe(() =>
+            filter.subscription_id
+              ? subscriptions.get(filter.subscription_id, token, abort.signal)
+              : Promise.resolve(null),
+          ),
         ]);
-        if (allowed() && main === abort)
-          publish({ summary, selected, status: 'ready' });
-      } catch (error) {
-        if (allowed() && main === abort && !abort.signal.aborted)
-          failure(error, 'main');
+        if (current()) publish({ summary, selected, status: 'ready' });
+      } catch {
+        // Each current read observes authorization failures independently,
+        // including a refusal that arrives after its sibling's 503.
       }
     },
     async search(query: string, offset = 0) {
@@ -253,12 +267,21 @@ export function createBillingEditor(
     previewKey: string | null =
       retained?.subscription_id === sid ? retained.previewKey : null;
   let disposed = false,
-    writeAbort: AbortController | undefined;
+    writeAbort: AbortController | undefined,
+    readGeneration = 0;
   const reads = new Map<string, AbortController>();
   const invalidTarget =
     !!options.initial && options.initial.subscription_id !== sid;
   const allowed = () => !disposed && !invalidTarget && view.status !== 'denied';
-  const frozen = () => !allowed() || view.status === 'saving' || view.uncertain;
+  const frozen = () =>
+    !allowed() || !!writeAbort || view.status === 'saving' || view.uncertain;
+  const currentWrite = (abort: AbortController) =>
+    allowed() && writeAbort === abort && !abort.signal.aborted;
+  const cancelReads = () => {
+    readGeneration++;
+    for (const read of reads.values()) read.abort();
+    reads.clear();
+  };
   const remember = () => {
     if (store && key && !disposed) {
       if (view.saved || view.status === 'denied') store.delete(key);
@@ -273,8 +296,8 @@ export function createBillingEditor(
   function denied(code: ErrorCode) {
     if (!allowed()) return;
     writeAbort?.abort();
-    for (const read of reads.values()) read.abort();
-    reads.clear();
+    writeAbort = undefined;
+    cancelReads();
     pending = null;
     previewKey = null;
     source = null;
@@ -296,25 +319,48 @@ export function createBillingEditor(
         reason: error instanceof BillingError ? error.reason : null,
       });
   }
+  async function runWrite(task: (abort: AbortController) => Promise<void>) {
+    if (!allowed() || writeAbort || view.status === 'saving') return;
+    const abort = new AbortController();
+    writeAbort = abort;
+    cancelReads();
+    publish({ status: 'saving', loading: [], error: null, reason: null });
+    try {
+      await task(abort);
+    } catch (error) {
+      if (currentWrite(abort)) {
+        writeAbort = undefined;
+        publish({ confirmed: false });
+        failed(error);
+      }
+    } finally {
+      if (writeAbort === abort) writeAbort = undefined;
+    }
+  }
   async function read<T>(
     channel: string,
     task: (signal: AbortSignal) => Promise<T>,
     accept: (value: T) => void,
   ) {
-    if (!allowed() || view.status === 'saving') return;
+    if (!allowed() || writeAbort || view.status === 'saving') return;
     reads.get(channel)?.abort();
     const abort = new AbortController();
+    const generation = readGeneration;
     reads.set(channel, abort);
+    const current = () =>
+      allowed() &&
+      !writeAbort &&
+      generation === readGeneration &&
+      reads.get(channel) === abort &&
+      !abort.signal.aborted;
     publish({ loading: [...new Set([...view.loading, channel])], error: null });
     try {
       const result = await task(abort.signal);
-      if (allowed() && reads.get(channel) === abort && !abort.signal.aborted)
-        accept(result);
+      if (current()) accept(result);
     } catch (error) {
-      if (allowed() && reads.get(channel) === abort && !abort.signal.aborted)
-        failed(error);
+      if (current()) failed(error);
     } finally {
-      if (allowed() && reads.get(channel) === abort) {
+      if (current()) {
         reads.delete(channel);
         publish({ loading: view.loading.filter((v) => v !== channel) });
       }
@@ -420,12 +466,12 @@ export function createBillingEditor(
       (latest) => publish({ latest }),
     );
   }
-  async function submit(receipt: Receipt, replay = false) {
-    if (!allowed() || view.status === 'saving') return;
-    writeAbort?.abort();
-    const abort = new AbortController();
-    writeAbort = abort;
-    publish({ status: 'saving', error: null, reason: null });
+  async function submit(
+    receipt: Receipt,
+    replay: boolean,
+    abort: AbortController,
+  ) {
+    if (!currentWrite(abort)) return;
     try {
       let saved: BillingEntry;
       if (receipt.type === 'create') {
@@ -442,8 +488,9 @@ export function createBillingEditor(
               },
               abort.signal,
             );
-            if (!allowed() || abort.signal.aborted) return;
+            if (!currentWrite(abort)) return;
             if (linked) {
+              writeAbort = undefined;
               success(linked);
               return;
             }
@@ -451,6 +498,7 @@ export function createBillingEditor(
             if (errorCode(error) !== 'dependency_unavailable') throw error;
           }
         }
+        if (!currentWrite(abort)) return;
         saved = await api.create(sid, receipt.body, token, abort.signal);
       } else if (receipt.type === 'update')
         saved = await api.update(
@@ -468,7 +516,8 @@ export function createBillingEditor(
           token,
           abort.signal,
         );
-      if (allowed() && writeAbort === abort) {
+      if (currentWrite(abort)) {
+        writeAbort = undefined;
         if (
           (receipt.type === 'attach' || receipt.type === 'detach') &&
           receipt.keepDraft
@@ -491,7 +540,7 @@ export function createBillingEditor(
         } else success(saved);
       }
     } catch (error) {
-      if (!allowed() || writeAbort !== abort || abort.signal.aborted) return;
+      if (!currentWrite(abort)) return;
       const code = errorCode(error),
         reason = error instanceof BillingError ? error.reason : null;
       if (code === 'authentication_required' || code === 'access_denied') {
@@ -503,14 +552,15 @@ export function createBillingEditor(
       if (replay && code === 'conflict' && receipt.type === 'update') {
         try {
           const latest = await api.get(sid, receipt.id, token, abort.signal);
-          if (!allowed() || abort.signal.aborted) return;
+          if (!currentWrite(abort)) return;
           if (matching(latest, receipt.body)) {
+            writeAbort = undefined;
             success(latest);
             return;
           }
           publish({ latest });
         } catch (readError) {
-          if (!allowed() || abort.signal.aborted) return;
+          if (!currentWrite(abort)) return;
           const readCode = errorCode(readError);
           if (
             readCode === 'authentication_required' ||
@@ -522,6 +572,7 @@ export function createBillingEditor(
           publish({ error: readCode });
         }
       }
+      writeAbort = undefined;
       if (!uncertain) pending = null;
       const attachment =
         (receipt.type === 'attach' || receipt.type === 'detach') &&
@@ -684,57 +735,53 @@ export function createBillingEditor(
       if (view.baseline?.subscription_id !== sid && view.baseline) return;
       const duplicate_confirmed = view.duplicates.total > 0,
         duplicate_token = duplicate_confirmed ? view.duplicates.token : null;
-      if (!view.baseline && source) {
-        const captured = source;
-        writeAbort?.abort();
-        const abort = new AbortController();
-        writeAbort = abort;
-        publish({ status: 'saving', error: null });
-        try {
+      await runWrite(async (abort) => {
+        if (!view.baseline && source) {
+          const captured = source;
           const linked = await findSource(captured, abort.signal);
-          if (!allowed() || abort.signal.aborted) return;
+          if (!currentWrite(abort)) return;
           if (linked) {
+            writeAbort = undefined;
             publish({ linked, status: 'ready', confirmed: false });
             return;
           }
-          publish({ status: 'ready' });
-        } catch (error) {
-          if (allowed() && !abort.signal.aborted) failed(error);
-          return;
         }
-      }
-      if (!allowed()) return;
-      pending = view.baseline
-        ? {
-            type: 'update',
-            id: view.baseline.id,
-            body: Object.freeze({
-              ...values,
-              expected_version: view.baseline.version,
-              confirmed: true,
-              duplicate_confirmed,
-              duplicate_token,
-            }),
-          }
-        : {
-            type: 'create',
-            body: Object.freeze({
-              ...values,
-              request_id: (options.randomUUID ?? (() => crypto.randomUUID()))(),
-              source_result_id: source?.result_id ?? null,
-              source_event_index: source?.event_index ?? null,
-              confirmed: true,
-              duplicate_confirmed,
-              duplicate_token,
-            }),
-          };
-      remember();
-      await submit(pending);
+        if (!currentWrite(abort)) return;
+        pending = view.baseline
+          ? {
+              type: 'update',
+              id: view.baseline.id,
+              body: Object.freeze({
+                ...values,
+                expected_version: view.baseline.version,
+                confirmed: true,
+                duplicate_confirmed,
+                duplicate_token,
+              }),
+            }
+          : {
+              type: 'create',
+              body: Object.freeze({
+                ...values,
+                request_id: (
+                  options.randomUUID ?? (() => crypto.randomUUID())
+                )(),
+                source_result_id: source?.result_id ?? null,
+                source_event_index: source?.event_index ?? null,
+                confirmed: true,
+                duplicate_confirmed,
+                duplicate_token,
+              }),
+            };
+        remember();
+        await submit(pending, false, abort);
+      });
     },
     async replay() {
       if (!allowed() || !view.uncertain || !pending || view.status === 'saving')
         return;
-      await submit(pending, true);
+      const receipt = pending;
+      await runWrite((abort) => submit(receipt, true, abort));
     },
     rebase() {
       if (frozen() || !view.latest || view.latest.id !== view.baseline?.id)
@@ -841,18 +888,21 @@ export function createBillingEditor(
     async attachTo(entry: BillingEntry, confirmed: boolean) {
       if (frozen() || !confirmed || !source || entry.subscription_id !== sid)
         return;
-      pending = {
-        type: 'attach',
-        id: entry.id,
-        body: Object.freeze({
-          expected_version: entry.version,
-          source_result_id: source.result_id,
-          source_event_index: source.event_index,
-          confirmed: true,
-        }),
-      };
-      remember();
-      await submit(pending);
+      const capturedSource = source;
+      await runWrite(async (abort) => {
+        pending = {
+          type: 'attach',
+          id: entry.id,
+          body: Object.freeze({
+            expected_version: entry.version,
+            source_result_id: capturedSource.result_id,
+            source_event_index: capturedSource.event_index,
+            confirmed: true,
+          }),
+        };
+        remember();
+        await submit(pending, false, abort);
+      });
     },
     async changeSource(
       type: 'attach' | 'detach',
@@ -866,19 +916,22 @@ export function createBillingEditor(
         view.baseline.subscription_id !== sid
       )
         return;
-      pending = {
-        type,
-        id: view.baseline.id,
-        keepDraft: true,
-        body: Object.freeze({
-          expected_version: view.baseline.version,
-          source_result_id: reference.result_id,
-          source_event_index: reference.event_index,
-          confirmed: true,
-        }),
-      };
-      remember();
-      await submit(pending);
+      const baseline = view.baseline;
+      await runWrite(async (abort) => {
+        pending = {
+          type,
+          id: baseline.id,
+          keepDraft: true,
+          body: Object.freeze({
+            expected_version: baseline.version,
+            source_result_id: reference.result_id,
+            source_event_index: reference.event_index,
+            confirmed: true,
+          }),
+        };
+        remember();
+        await submit(pending, false, abort);
+      });
     },
     dispose() {
       if (disposed) return;
@@ -894,8 +947,7 @@ export function createBillingEditor(
       remember();
       disposed = true;
       writeAbort?.abort();
-      for (const read of reads.values()) read.abort();
-      reads.clear();
+      cancelReads();
       source = null;
       pending = null;
       previewKey = null;
