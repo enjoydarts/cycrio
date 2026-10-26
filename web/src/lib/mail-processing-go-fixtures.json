@@ -1,0 +1,208 @@
+{
+  "account": {
+    "id": "a1111111-1111-4111-8111-111111111111",
+    "provider": "fastmail",
+    "label": "合成メール接続",
+    "state": "ready",
+    "version": 2,
+    "credential_version": 1,
+    "checked_at": "2026-10-26T00:00:00Z",
+    "last_error": "",
+    "created_at": "2026-10-26T00:00:00Z",
+    "updated_at": "2026-10-26T00:00:00Z",
+    "latest_probe": null,
+    "folders": [
+      {
+        "id": "a3333333-3333-4333-8333-333333333333",
+        "name": "INBOX",
+        "delimiter": "/",
+        "selectable": true,
+        "available": true,
+        "selected": true
+      }
+    ]
+  },
+  "completed": {
+    "id": "c1111111-1111-4111-8111-111111111111",
+    "account_id": "a1111111-1111-4111-8111-111111111111",
+    "state": "completed",
+    "max_messages": 2,
+    "total_count": 2,
+    "completed_count": 2,
+    "related_count": 1,
+    "unrelated_count": 1,
+    "failed_count": 0,
+    "unknown_count": 0,
+    "created_at": "2026-10-26T00:00:00Z",
+    "started_at": "2026-10-26T00:00:00Z",
+    "finished_at": "2026-10-26T00:00:00Z"
+  },
+  "failed": {
+    "id": "d4444444-4444-4444-8444-444444444444",
+    "message_id": "f4444444-4444-4444-8444-444444444444",
+    "state": "failed",
+    "classification": null,
+    "error_code": "source_missing",
+    "events": [],
+    "finished_at": "2026-10-26T00:00:00Z"
+  },
+  "policy": {
+    "runtime_version": 3,
+    "profile": {
+      "id": "b1111111-1111-4111-8111-111111111111",
+      "primary": {
+        "provider": "liquid",
+        "model_id": "d1",
+        "display_name": "D1",
+        "price": null,
+        "retention": "合成テスト用：一次の契約条件を確認済み",
+        "routing_provider": ""
+      },
+      "secondary": {
+        "provider": "openai",
+        "model_id": "synthetic-secondary",
+        "display_name": "合成二次モデル",
+        "price": {
+          "id": "e1111111-1111-4111-8111-111111111111",
+          "model_id": "e2222222-2222-4222-8222-222222222222",
+          "source": "manual",
+          "currency": "USD",
+          "rates": {
+            "input": {
+              "amount": "0.0000001",
+              "unit": "USD/token"
+            },
+            "output": {
+              "amount": "0.0000002",
+              "unit": "USD/token"
+            }
+          },
+          "raw_pricing": {},
+          "effective_from": null,
+          "captured_at": "2026-10-26T00:00:00Z",
+          "source_url": "https://example.test/synthetic-pricing"
+        },
+        "retention": "合成テスト用：二次の契約条件を確認済み",
+        "routing_provider": ""
+      },
+      "max_input_bytes": 4096,
+      "max_output_tokens": 512,
+      "timeout_seconds": 30
+    },
+    "policy": {
+      "profile_id": "b1111111-1111-4111-8111-111111111111",
+      "version": 1,
+      "enabled": true,
+      "primary_retention": "合成テスト用：一次の契約条件を確認済み",
+      "secondary_retention": "合成テスト用：二次の契約条件を確認済み",
+      "primary_confirmed": true,
+      "secondary_confirmed": true
+    }
+  },
+  "preview": {
+    "account_id": "a1111111-1111-4111-8111-111111111111",
+    "expected_version": 2,
+    "runtime_version": 3,
+    "profile_id": "b1111111-1111-4111-8111-111111111111",
+    "policy_version": 1,
+    "ready": true,
+    "blocked_reason": "",
+    "pending_count": 3,
+    "failed_count": 0,
+    "unknown_count": 0,
+    "primary": {
+      "provider": "liquid",
+      "model_id": "d1",
+      "display_name": "D1",
+      "price": null,
+      "retention": "合成テスト用：一次の契約条件を確認済み",
+      "routing_provider": ""
+    },
+    "secondary": {
+      "provider": "openai",
+      "model_id": "synthetic-secondary",
+      "display_name": "合成二次モデル",
+      "price": {
+        "id": "e1111111-1111-4111-8111-111111111111",
+        "model_id": "e2222222-2222-4222-8222-222222222222",
+        "source": "manual",
+        "currency": "USD",
+        "rates": {
+          "input": {
+            "amount": "0.0000001",
+            "unit": "USD/token"
+          },
+          "output": {
+            "amount": "0.0000002",
+            "unit": "USD/token"
+          }
+        },
+        "raw_pricing": {},
+        "effective_from": null,
+        "captured_at": "2026-10-26T00:00:00Z",
+        "source_url": "https://example.test/synthetic-pricing"
+      },
+      "retention": "合成テスト用：二次の契約条件を確認済み",
+      "routing_provider": ""
+    },
+    "max_input_bytes": 4096,
+    "max_output_tokens": 512,
+    "timeout_seconds": 30
+  },
+  "queued": {
+    "id": "c1111111-1111-4111-8111-111111111111",
+    "account_id": "a1111111-1111-4111-8111-111111111111",
+    "state": "queued",
+    "max_messages": 2,
+    "total_count": 2,
+    "completed_count": 0,
+    "related_count": 0,
+    "unrelated_count": 0,
+    "failed_count": 0,
+    "unknown_count": 0,
+    "created_at": "2026-10-26T00:00:00Z",
+    "started_at": null,
+    "finished_at": null
+  },
+  "related": {
+    "id": "d1111111-1111-4111-8111-111111111111",
+    "message_id": "f1111111-1111-4111-8111-111111111111",
+    "state": "succeeded",
+    "classification": "subscription_related",
+    "error_code": "",
+    "events": [
+      {
+        "service": "Cycrio Demo",
+        "plan": null,
+        "event_type": "payment",
+        "amount": "980",
+        "currency": "JPY",
+        "billed_at": "2026-10-25",
+        "period_start": null,
+        "period_end": null,
+        "next_billing_at": "2026-11-25",
+        "interval_unit": null,
+        "interval_count": null
+      }
+    ],
+    "finished_at": "2026-10-26T00:00:00Z"
+  },
+  "unknown": {
+    "id": "d3333333-3333-4333-8333-333333333333",
+    "message_id": "f3333333-3333-4333-8333-333333333333",
+    "state": "unknown",
+    "classification": null,
+    "error_code": "timeout",
+    "events": [],
+    "finished_at": "2026-10-26T00:00:00Z"
+  },
+  "unrelated": {
+    "id": "d2222222-2222-4222-8222-222222222222",
+    "message_id": "f2222222-2222-4222-8222-222222222222",
+    "state": "not_related",
+    "classification": "not_related",
+    "error_code": "",
+    "events": [],
+    "finished_at": "2026-10-26T00:00:00Z"
+  }
+}

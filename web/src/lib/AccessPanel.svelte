@@ -14,6 +14,8 @@
   import MailAccounts from './MailAccounts.svelte';
   import { createMailAPI } from './mail-api';
   import { createMailSyncAPI } from './mail-sync-api';
+  import { createMailProcessingAPI } from './mail-processing-api';
+  import MailProcessingPolicy from './MailProcessingPolicy.svelte';
 
   let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' | 'mail' } =
     $props();
@@ -25,7 +27,8 @@
   const runtimeAPI = createAIRuntimeAPI(PUBLIC_API_BASE_URL);
   const mailAPI = createMailAPI(PUBLIC_API_BASE_URL);
   const mailSyncAPI = createMailSyncAPI(PUBLIC_API_BASE_URL);
-  let settingsPanel = $state<'models' | 'runtime'>('models');
+  const mailProcessingAPI = createMailProcessingAPI(PUBLIC_API_BASE_URL);
+  let settingsPanel = $state<'models' | 'runtime' | 'mail-policy'>('models');
   let adminPanel = $state<'credentials' | 'catalog' | 'settings' | 'usage'>(
     'credentials',
   );
@@ -171,6 +174,7 @@
         {#key authState.user.id}<MailAccounts
             api={mailAPI}
             syncAPI={mailSyncAPI}
+            processingAPI={mailProcessingAPI}
             token={async () => (await controller?.getToken()) ?? null}
             onDenied={() => {
               void controller?.refresh();
@@ -243,10 +247,21 @@
                 onclick={() => {
                   settingsPanel = 'runtime';
                 }}>実行・接続</button
+              ><button
+                aria-pressed={settingsPanel === 'mail-policy'}
+                onclick={() => {
+                  settingsPanel = 'mail-policy';
+                }}>メール解析の送信条件</button
               >
             </nav>
             {#if settingsPanel === 'models'}<AIModelSettings
                 api={catalogAPI}
+                token={async () => (await controller?.getToken()) ?? null}
+                onDenied={() => {
+                  void controller?.refresh();
+                }}
+              />{:else if settingsPanel === 'mail-policy'}<MailProcessingPolicy
+                api={mailProcessingAPI}
                 token={async () => (await controller?.getToken()) ?? null}
                 onDenied={() => {
                   void controller?.refresh();

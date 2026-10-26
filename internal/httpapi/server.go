@@ -77,6 +77,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerAIRuntime(mux, settings.runtime, protect)
 	registerMailAccounts(mux, settings.mail, protect)
 	registerMailSync(mux, settings.mailSync, protect)
+	registerMailProcessing(mux, settings.mailProcessing, protect)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", uuid.NewString())

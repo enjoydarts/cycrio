@@ -144,8 +144,8 @@ func TestMailSyncMigrationDownUp(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	result, e := p.Down(ctx)
-	if e != nil || result.Source.Version != 6 {
+	result, e := p.DownTo(ctx, 5)
+	if e != nil || len(result) == 0 || result[len(result)-1].Source.Version != 6 {
 		t.Fatal(result, e)
 	}
 	var ok bool
@@ -156,7 +156,7 @@ func TestMailSyncMigrationDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	var version int64
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 6 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 7 {
 		t.Fatal(version, e)
 	}
 }

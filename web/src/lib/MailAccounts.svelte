@@ -5,6 +5,9 @@
   import MailSync from './MailSync.svelte';
   import type { MailSyncAPI } from './mail-sync-api.ts';
   import type { SyncRequests } from './mail-sync-controller.ts';
+  import MailProcessing from './MailProcessing.svelte';
+  import type { MailProcessingAPI } from './mail-processing-api.ts';
+  import type { ProcessingRequests } from './mail-processing-controller.ts';
   import {
     createMailController,
     emptyMailView,
@@ -15,13 +18,16 @@
     token,
     onDenied,
     syncAPI,
+    processingAPI,
   }: {
     api: MailAPI;
     token: TokenProvider;
     onDenied: () => void;
     syncAPI?: MailSyncAPI;
+    processingAPI?: MailProcessingAPI;
   } = $props();
   const syncRequests: SyncRequests = new Map();
+  const processingRequests: ProcessingRequests = new Map();
   let view = $state(emptyMailView());
   let query = $state('');
   let controller: ReturnType<typeof createMailController> | undefined;
@@ -124,7 +130,7 @@
     <strong>接続と対象を確認してから、手動でIDを同期</strong>
     <p>
       接続情報の保存 → 接続確認 →
-      フォルダー選択を、それぞれ操作してください。保存だけでは接続しません。メールIDの同期は期間と上限を指定して手動で開始します。本文取得・AI送信は行いません。
+      フォルダー選択を、それぞれ操作してください。保存だけでは接続しません。メールIDの同期は期間と上限を指定して手動で開始します。本文取得・AI送信は、送信条件と料金を確認した後の手動解析でのみ行います。
     </p>
     <p>
       Fastmail 専用のアプリパスワードを使用します。接続先は <code
@@ -372,6 +378,15 @@
                 refreshAccount={() => {
                   void controller?.refresh();
                 }}
+              />{/key}
+          {/if}
+          {#if processingAPI}
+            {#key account.id}<MailProcessing
+                {account}
+                api={processingAPI}
+                {token}
+                {onDenied}
+                requests={processingRequests}
               />{/key}
           {/if}
           <section class="mail-step mail-disconnect" aria-label="連携解除">

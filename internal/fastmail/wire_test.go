@@ -62,3 +62,21 @@ func TestWireBudgetIncludesEveryByte(t *testing.T) {
 		}
 	}
 }
+
+func TestWireExplicitBudgetPreservesExactBoundary(t *testing.T) {
+	for _, size := range []int{maxResponseBytes + 1, 5 << 20, (5 << 20) + 1} {
+		client, server := net.Pipe()
+		done := make(chan struct{})
+		go func() { defer close(done); defer server.Close(); io.WriteString(server, strings.Repeat("x", size)) }()
+		wire := &boundedConn{Conn: client, maxBytes: 5 << 20}
+		n, err := io.Copy(io.Discard, wire)
+		client.Close()
+		waitClosed(t, done)
+		if size <= 5<<20 && (err != nil || n != int64(size)) {
+			t.Fatal("explicit wire budget rejected valid bytes", n, err)
+		}
+		if size > 5<<20 && (err != errResponseTooLarge || !wire.exceeded.Load()) {
+			t.Fatal("explicit wire budget exceeded", n, err)
+		}
+	}
+}

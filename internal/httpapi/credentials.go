@@ -20,11 +20,12 @@ type CredentialService interface {
 }
 
 type handlerOptions struct {
-	credentials CredentialService
-	catalog     ModelCatalogService
-	runtime     AIRuntimeService
-	mail        MailAccountService
-	mailSync    MailSyncService
+	credentials    CredentialService
+	catalog        ModelCatalogService
+	runtime        AIRuntimeService
+	mail           MailAccountService
+	mailSync       MailSyncService
+	mailProcessing MailProcessingService
 }
 type Option func(*handlerOptions)
 

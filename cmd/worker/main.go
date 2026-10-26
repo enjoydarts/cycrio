@@ -17,6 +17,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailprocessing"
+	"github.com/enjoydarts/cycrio/internal/mailprocessingruntime"
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/mailsyncruntime"
@@ -90,7 +92,11 @@ func run() error {
 		}
 		return MailDiscoverOutput{Status: "handled"}, nil
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask), hatchet.WithSlots(2))
+	processing := mailprocessingruntime.New(pool, keyring)
+	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
+		return executeMailProcessing(ctx, input, processing.Execute)
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
+	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask, processingTask), hatchet.WithSlots(2))
 	if err != nil {
 		return errors.New("Hatchet worker registration failed")
 	}
@@ -113,6 +119,10 @@ func run() error {
 	}, 10*time.Second)
 	go dispatchMailDiscovery(ctx, discovery.Claim, func(ctx context.Context, input mailsync.Lease) error {
 		_, err := discoverTask.RunNoWait(ctx, input)
+		return err
+	}, 10*time.Second)
+	go dispatchMailProcessing(ctx, processing.Claim, func(ctx context.Context, input mailprocessing.Lease) error {
+		_, err := processingTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
 	ready := func(ctx context.Context) error {

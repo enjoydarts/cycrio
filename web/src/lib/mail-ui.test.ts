@@ -69,10 +69,30 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
       `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const syncURL = `data:text/javascript;base64,${Buffer.from(syncCode).toString('base64')}`;
+  async function compiledURL(name: string): Promise<string> {
+    const componentSource = await readFile(
+      new URL(`./${name}.svelte`, import.meta.url),
+      'utf8',
+    );
+    const componentCode = compile(componentSource, { generate: 'server' }).js
+      .code;
+    const nested: Record<string, string> = {};
+    for (const match of componentCode.matchAll(
+      /from\s+['"]\.\/([^'"]+)\.svelte['"]/g,
+    ))
+      nested[`./${match[1]}.svelte`] = await compiledURL(match[1]);
+    const resolved = componentCode.replace(
+      /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+      (_m, prefix, quote, path) =>
+        `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
+    );
+    return `data:text/javascript;base64,${Buffer.from(resolved).toString('base64')}`;
+  }
+  const processingURL = await compiledURL('MailProcessing');
   const code = js.code.replace(
     /(from\s+|import\s*)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+      `${prefix}${quote}${path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const Component = (
     await import(
