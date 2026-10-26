@@ -29,8 +29,8 @@ func TestMailMigrationDownUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := provider.Down(ctx)
-	if err != nil || result.Source.Version != 5 {
+	result, err := provider.DownTo(ctx, 4)
+	if err != nil || len(result) == 0 || result[len(result)-1].Source.Version != 5 {
 		t.Fatal("down", result, err)
 	}
 	var exists bool
@@ -54,7 +54,7 @@ func TestMailMigrationDownUp(t *testing.T) {
 		t.Fatal("up", err)
 	}
 	var version int64
-	if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 5 {
+	if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version < 5 {
 		t.Fatal("version", version, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('mail_account_credentials') IS NOT NULL`).Scan(&exists); err != nil || !exists {

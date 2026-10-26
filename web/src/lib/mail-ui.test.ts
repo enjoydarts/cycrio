@@ -59,10 +59,20 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
     'utf8',
   );
   const { js } = compile(source, { generate: 'server' });
+  const syncSource = await readFile(
+    new URL('./MailSync.svelte', import.meta.url),
+    'utf8',
+  );
+  const syncCode = compile(syncSource, { generate: 'server' }).js.code.replace(
+    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    (_m, prefix, quote, path) =>
+      `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+  );
+  const syncURL = `data:text/javascript;base64,${Buffer.from(syncCode).toString('base64')}`;
   const code = js.code.replace(
     /(from\s+|import\s*)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+      `${prefix}${quote}${path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const Component = (
     await import(

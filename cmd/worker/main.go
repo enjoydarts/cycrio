@@ -18,6 +18,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
+	"github.com/enjoydarts/cycrio/internal/mailsync"
+	"github.com/enjoydarts/cycrio/internal/mailsyncruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
@@ -81,7 +83,14 @@ func run() error {
 		return MailProbeOutput{Status: "handled"}, nil
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	name := "cycrio-worker-" + uuid.NewString()
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask), hatchet.WithSlots(2))
+	discovery := mailsyncruntime.New(pool, keyring)
+	discoverTask := client.NewStandaloneTask(mailDiscoverTaskName, func(ctx hatchet.Context, input mailsync.Lease) (MailDiscoverOutput, error) {
+		if err := discovery.Execute(ctx, input); err != nil {
+			return MailDiscoverOutput{Status: "failed"}, errors.New("mail discovery unavailable")
+		}
+		return MailDiscoverOutput{Status: "handled"}, nil
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
+	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask), hatchet.WithSlots(2))
 	if err != nil {
 		return errors.New("Hatchet worker registration failed")
 	}
@@ -100,6 +109,10 @@ func run() error {
 	}, 10*time.Second)
 	go dispatchMailProbes(ctx, mail.Claim, func(ctx context.Context, input mailaccounts.Lease) error {
 		_, err := mailTask.RunNoWait(ctx, input)
+		return err
+	}, 10*time.Second)
+	go dispatchMailDiscovery(ctx, discovery.Claim, func(ctx context.Context, input mailsync.Lease) error {
+		_, err := discoverTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
 	ready := func(ctx context.Context) error {

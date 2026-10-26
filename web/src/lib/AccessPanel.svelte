@@ -13,6 +13,7 @@
   import AIUsage from './AIUsage.svelte';
   import MailAccounts from './MailAccounts.svelte';
   import { createMailAPI } from './mail-api';
+  import { createMailSyncAPI } from './mail-sync-api';
 
   let { mode = 'home' }: { mode?: 'home' | 'admin' | 'callback' | 'mail' } =
     $props();
@@ -23,6 +24,7 @@
   const catalogAPI = createCatalogAPI(PUBLIC_API_BASE_URL);
   const runtimeAPI = createAIRuntimeAPI(PUBLIC_API_BASE_URL);
   const mailAPI = createMailAPI(PUBLIC_API_BASE_URL);
+  const mailSyncAPI = createMailSyncAPI(PUBLIC_API_BASE_URL);
   let settingsPanel = $state<'models' | 'runtime'>('models');
   let adminPanel = $state<'credentials' | 'catalog' | 'settings' | 'usage'>(
     'credentials',
@@ -168,6 +170,7 @@
       {#if mode === 'mail'}
         {#key authState.user.id}<MailAccounts
             api={mailAPI}
+            syncAPI={mailSyncAPI}
             token={async () => (await controller?.getToken()) ?? null}
             onDenied={() => {
               void controller?.refresh();

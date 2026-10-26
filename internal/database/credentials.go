@@ -141,7 +141,7 @@ func (r *CredentialRepository) Resolve(ctx context.Context, id string) (credenti
 }
 func (r *CredentialRepository) HasEncryptedCredentials(ctx context.Context) (bool, error) {
 	var exists bool
-	if r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials)`).Scan(&exists) != nil {
+	if r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials) OR EXISTS(SELECT 1 FROM mail_discovered_messages)`).Scan(&exists) != nil {
 		return false, credentials.ErrUnavailable
 	}
 	return exists, nil

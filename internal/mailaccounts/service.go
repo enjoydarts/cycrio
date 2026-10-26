@@ -38,6 +38,9 @@ func credentialAAD(v CredentialVersion) []byte {
 	return data
 }
 
+// CredentialAAD shares the version-bound credential context with mail workers.
+func CredentialAAD(v CredentialVersion) []byte { return credentialAAD(v) }
+
 type plaintext struct {
 	Login    []byte `json:"login"`
 	Password []byte `json:"password"`

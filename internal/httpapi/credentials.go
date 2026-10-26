@@ -24,6 +24,7 @@ type handlerOptions struct {
 	catalog     ModelCatalogService
 	runtime     AIRuntimeService
 	mail        MailAccountService
+	mailSync    MailSyncService
 }
 type Option func(*handlerOptions)
 

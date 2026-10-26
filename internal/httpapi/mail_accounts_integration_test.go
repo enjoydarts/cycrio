@@ -16,6 +16,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -89,9 +90,11 @@ func TestMailHTTPDatabaseEncryptedConnectionAndOwnerBoundary(t *testing.T) {
 	}
 	checker := &httpMailChecker{}
 	service := mailaccounts.NewService(database.NewMailAccountRepository(pool), keys, checker)
+	scanner := &httpSyncScanner{}
+	discovery := mailsync.NewService(database.NewMailSyncRepository(pool), keys, scanner)
 	h := NewHandler(configured(), verifyFunc(func(_ context.Context, token string) (auth.Identity, error) {
 		return auth.Identity{Issuer: configured().Issuer(), Subject: token}, nil
-	}), identities.FindPrincipal, pool.Ping, WithMailAccounts(service))
+	}), identities.FindPrincipal, pool.Ping, WithMailAccounts(service), WithMailSync(discovery))
 	request := func(method, path string, input any, token string, status int, output any) {
 		t.Helper()
 		body := ""
@@ -179,6 +182,7 @@ func TestMailHTTPDatabaseEncryptedConnectionAndOwnerBoundary(t *testing.T) {
 	if account.Version != 2 || checker.calls != 1 {
 		t.Fatal("folder selection started mail processing")
 	}
+	verifyMailSyncHTTP(t, ctx, discovery, scanner, base, request)
 	request("POST", base+"/disconnect", map[string]any{"expected_version": 2}, "mail_owner_a", 200, &account)
 	if account.State != "disconnected" || len(account.Folders) != 0 {
 		t.Fatal(account)
@@ -187,7 +191,7 @@ func TestMailHTTPDatabaseEncryptedConnectionAndOwnerBoundary(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM mail_account_credentials WHERE state='active'`).Scan(&active); err != nil || active != 0 {
 		t.Fatal("disconnect retained active credentials", active, err)
 	}
-	for _, table := range []string{"mail_accounts", "mail_account_credentials", "mail_account_probes", "mail_account_folders", "mail_account_audit"} {
+	for _, table := range []string{"mail_accounts", "mail_account_credentials", "mail_account_probes", "mail_account_folders", "mail_account_audit", "mail_sync_runs", "mail_sync_run_folders", "mail_sync_cursors", "mail_discovered_messages", "mail_sync_audit"} {
 		var data string
 		if err := pool.QueryRow(ctx, `SELECT COALESCE(json_agg(row_to_json(t))::text,'[]') FROM `+table+` t`).Scan(&data); err != nil {
 			t.Fatal(err)
@@ -200,4 +204,5 @@ func TestMailHTTPDatabaseEncryptedConnectionAndOwnerBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	request("GET", "/v1/mail/accounts", nil, "mail_owner_a", http.StatusForbidden, nil)
+	request("GET", base+"/sync-runs", nil, "mail_owner_a", http.StatusForbidden, nil)
 }
