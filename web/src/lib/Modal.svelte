@@ -32,6 +32,14 @@
   });
 </script>
 
+<svelte:window
+  onkeydown={(event) => {
+    // Repeated native close requests can become noncancelable. Block the
+    // keyboard default while sending, even when a disabled button loses focus.
+    if (dialog?.open && busy && event.key === 'Escape') event.preventDefault();
+  }}
+/>
+
 <dialog
   bind:this={dialog}
   aria-labelledby={titleId}

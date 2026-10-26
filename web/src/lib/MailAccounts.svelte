@@ -26,9 +26,12 @@
   let view = $state(emptyMailView());
   let query = $state('');
   let editing = $state(false);
+  let syncSaving = $state(false);
   let controller: ReturnType<typeof createMailController> | undefined;
   const account = $derived(view.accounts.find((a) => a.id === view.selected));
-  const busy = $derived(view.status === 'saving' || view.status === 'loading');
+  const busy = $derived(
+    view.status === 'saving' || view.status === 'loading' || syncSaving,
+  );
   const folders = $derived(
     (account?.folders ?? []).filter((folder) =>
       folder.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
@@ -394,6 +397,9 @@
                   {token}
                   {onDenied}
                   requests={syncRequests}
+                  onBusyChange={(saving) => {
+                    syncSaving = saving;
+                  }}
                   refreshAccount={() => {
                     void controller?.refresh();
                   }}

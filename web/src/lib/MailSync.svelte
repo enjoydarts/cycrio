@@ -20,6 +20,7 @@
     token,
     onDenied,
     refreshAccount,
+    onBusyChange = () => {},
     requests = new Map(),
   }: {
     account: MailAccount;
@@ -27,6 +28,7 @@
     token: TokenProvider;
     onDenied: () => void;
     refreshAccount: () => void;
+    onBusyChange?: (saving: boolean) => void;
     requests?: SyncRequests;
   } = $props();
   let view = $state(emptySyncView());
@@ -92,6 +94,7 @@
       token,
       (next) => {
         view = next;
+        onBusyChange(next.status === 'saving');
       },
       onDenied,
       refreshAccount,
