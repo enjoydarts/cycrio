@@ -44,6 +44,52 @@
   color: var(--color-danger);
   margin: 12px 0 !important;
 }
+.schedule-history {
+  border-block: 1px solid var(--color-border);
+  padding-block: 16px;
+  margin-block: 20px;
+  min-width: 0;
+}
+.schedule-history h3 {
+  font-size: 16px;
+}
+.schedule-history h4 {
+  font-size: 14px;
+  margin-block: 12px 4px;
+}
+.schedule-history-counts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.schedule-history-counts div {
+  min-width: 0;
+}
+.schedule-history-counts dt {
+  color: var(--color-muted);
+  font-size: 12px;
+}
+.schedule-history-counts dd {
+  margin: 0;
+}
+.schedule-history-samples {
+  padding-left: 20px;
+}
+.schedule-history-samples small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.schedule-history-candidates {
+  display: grid;
+  gap: 12px;
+  margin-block: 16px;
+}
+.schedule-history-candidate {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 12px;
+  min-width: 0;
+}
 .schedule-review {
   border-block: 1px solid var(--color-border);
   padding: 16px 0;

@@ -3,6 +3,11 @@ import test from 'node:test';
 import { ApiError } from './api.ts';
 import { subscription, id } from './subscriptions-fixtures.ts';
 import {
+  historyBasis,
+  historyEvidence,
+  historyRule,
+} from './schedule-history-fixtures.ts';
+import {
   createScheduleAPI,
   parseScheduleRule,
   parseScheduleView,
@@ -269,4 +274,44 @@ test('API exposes only known safe conflict reasons and owner denials; input neve
       (e) => e instanceof ApiError && !e.message.includes('database'),
     );
   }
+});
+test('history save preserves explicit basis and validates optional receipt evidence while legacy bodies omit it', async () => {
+  let body: unknown;
+  const result = saveResult();
+  result.receipt.rule = historyRule;
+  const proof = {
+    ...result,
+    receipt: { ...result.receipt, history_evidence: historyEvidence() },
+  };
+  const api = createScheduleAPI('', async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json(proof);
+  });
+  const input = {
+    ...saveBody(),
+    ...historyRule,
+    history_basis: historyBasis(),
+  };
+  await api.save(id, input, async () => 'token');
+  assert.deepEqual(body, input);
+  assert.deepEqual(
+    parseScheduleSaveResult(proof).receipt.history_evidence,
+    historyEvidence(),
+  );
+  assert.throws(() =>
+    parseScheduleSaveResult({
+      ...proof,
+      receipt: {
+        ...proof.receipt,
+        history_evidence: { ...historyEvidence(), selected_rule: rule },
+      },
+    }),
+  );
+  const bad = createScheduleAPI('', async () =>
+    Response.json({ reason: 'history_changed' }, { status: 409 }),
+  );
+  await assert.rejects(
+    bad.save(id, input, async () => 'token'),
+    (e) => e instanceof ScheduleError && e.reason === 'history_changed',
+  );
 });

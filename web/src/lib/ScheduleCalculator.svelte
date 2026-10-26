@@ -4,6 +4,7 @@
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import { createScheduleAPI } from './schedule-api.ts';
+  import { createScheduleHistoryAPI } from './schedule-history-api.ts';
   import {
     createScheduleController,
     draftScheduleRule,
@@ -18,6 +19,7 @@
   import Modal from './Modal.svelte';
   import ScheduleConditions from './ScheduleConditions.svelte';
   import ScheduleReview from './ScheduleReview.svelte';
+  import ScheduleHistory from './ScheduleHistory.svelte';
   import './schedule.css';
   let {
     subscription: subscriptionProp,
@@ -102,7 +104,11 @@
         view = next;
       },
       session.onDenied,
-      { subscription, drafts },
+      {
+        subscription,
+        drafts,
+        historyAPI: createScheduleHistoryAPI(PUBLIC_API_BASE_URL),
+      },
     );
     view = controller.state();
     const current = controller;
@@ -137,7 +143,7 @@
 <Modal {open} title="次回予定を計算" {busy} onclose={close}>
   <div class="daily schedule">
     <p class="muted">
-      確認した請求周期と基準請求日から、今日以降の最初の予定日を計算します。保存すると、このアプリの請求周期と次回請求日を更新します。決済や履歴の推定・変更は行いません。
+      確認した請求周期と基準請求日から、今日以降の最初の予定日を計算します。保存すると、このアプリの請求周期と次回請求日を更新します。支払履歴から候補も確認できます。決済や支払履歴の変更は行いません。
     </p>
     {#if navigationMessage}<p class="notice" role="status">
         {navigationMessage}
@@ -163,6 +169,31 @@
           登録されている次回請求日が本日より前です。支払いや解約の状態は判断しません。
         </p>{/if}
     {/if}
+    <ScheduleHistory
+      view={view.history}
+      values={view.values}
+      dirty={view.dirty}
+      disabled={frozen}
+      conflict={view.conflict || !view.baseline}
+      onToggle={(value) => controller?.toggleHistory(value)}
+      onEdit={(patch) => controller?.editHistory(patch)}
+      onFetch={() => {
+        void controller?.fetchHistory();
+      }}
+      onAdopt={(index) => controller?.adoptHistory(index)}
+    />
+    {#if view.historyBasis}<p class="notice" role="status">
+        履歴候補を入力しました。採用した履歴条件: {view.historyBasis.filter
+          .start_date}〜{view.historyAsOf}（日本時間）· {view.historyBasis
+          .filter
+          .currency}。この操作では保存されません。「計算する」で候補日を確認してください。周期・基準日・日付指定方法を変更すると、履歴の採用を解除して手動入力に切り替わります。
+      </p>
+    {:else if view.historyManual}<p class="notice" role="status">
+        計算条件を編集したため、履歴候補の採用を解除し、手動入力に切り替えました。履歴由来で保存する場合は候補を確認し、選び直してください。
+      </p>{/if}
+    {#if view.historyNeedsReview}<p class="notice" role="alert">
+        履歴の根拠を確認し直す必要があります。履歴を再取得し、候補を選び直してから計算・確認してください。手動入力へ切り替える場合は、周期・基準日・日付指定方法を編集してください。
+      </p>{/if}
     <form
       onsubmit={(event) => {
         event.preventDefault();
@@ -283,7 +314,10 @@
             >最新の契約を再取得</button
           >{/if}
       </aside>{/if}
-    {#if view.reason === 'preview_expired'}<p class="notice" role="alert">
+    {#if view.reason === 'history_changed'}<p class="notice" role="alert">
+        支払履歴または日本時間の日付が変わりました。入力と編集開始時の契約を保持しています。履歴候補を再取得して選び直してください。
+      </p>
+    {:else if view.reason === 'preview_expired'}<p class="notice" role="alert">
         日本時間の日付が変わりました。条件を保持しています。「計算する」で新しい候補を確認し直してください。
       </p>
     {:else if view.reason === 'preview_changed'}<p class="notice" role="alert">
@@ -311,6 +345,13 @@
     {:else if view.saved}<aside class="notice" role="status">
         <p>確認した保存要求は受け付けられています。</p>
         <p>受付時の候補日: {view.saved.receipt.candidate_date}</p>
+        {#if view.saved.receipt.history_evidence}{@const evidence =
+            view.saved.receipt.history_evidence}
+          <p>
+            受付時に確認した履歴の根拠: {evidence.filter
+              .start_date}〜{evidence.as_of} · {evidence.filter.currency} · {evidence
+              .samples.length}件。現在の履歴の再推定結果ではありません。
+          </p>{/if}
         {#if view.saved.current.subscription.version > view.saved.receipt.applied_version}<p
           >
             その後、契約が変更されています。現在の次回請求日: {view.saved
@@ -327,7 +368,10 @@
         ><input
           type="checkbox"
           checked={view.confirmed}
-          disabled={frozen || view.conflict || !view.preview?.candidate_date}
+          disabled={frozen ||
+            view.conflict ||
+            view.historyNeedsReview ||
+            !view.preview?.candidate_date}
           onchange={(event) => controller?.confirm(event.currentTarget.checked)}
         />周期・基準請求日・日付の指定方法・候補日を確認しました</label
       ><button
@@ -336,6 +380,7 @@
         disabled={frozen ||
           !valid ||
           view.conflict ||
+          view.historyNeedsReview ||
           !view.preview?.candidate_date ||
           !view.confirmed}
         onclick={() => save()}

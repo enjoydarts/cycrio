@@ -12,6 +12,16 @@ import {
   type ScheduleView,
 } from './schedule-api.ts';
 import type { Subscription } from './subscriptions-api.ts';
+import {
+  createScheduleHistoryController,
+  initialHistoryView,
+  type HistoryEditorView,
+} from './schedule-history-controller.ts';
+import type {
+  HistoryBasis,
+  HistoryFilter,
+  ScheduleHistoryAPI,
+} from './schedule-history-api.ts';
 export type ScheduleDraft = {
   interval_unit: ScheduleRule['interval_unit'] | '';
   interval_count: string;
@@ -19,6 +29,11 @@ export type ScheduleDraft = {
   month_end: boolean;
 };
 export type ScheduleEditorView = {
+  history: HistoryEditorView;
+  historyBasis: HistoryBasis | null;
+  historyAsOf: string | null;
+  historyNeedsReview: boolean;
+  historyManual: boolean;
   values: ScheduleDraft;
   baseline: ScheduleView | null;
   latest: ScheduleView | null;
@@ -85,6 +100,11 @@ export function draftScheduleRule(values: ScheduleDraft): ScheduleRule {
 export const initialScheduleView = (
   subscription?: Subscription,
 ): ScheduleEditorView => ({
+  history: initialHistoryView(subscription?.currency ?? ''),
+  historyBasis: null,
+  historyAsOf: null,
+  historyNeedsReview: false,
+  historyManual: false,
   values: subscription ? suggested(subscription) : blank(),
   baseline: null,
   latest: null,
@@ -108,6 +128,7 @@ export function createScheduleController(
     subscription: Subscription;
     drafts: ScheduleDrafts;
     requestID?: () => string;
+    historyAPI?: ScheduleHistoryAPI;
   },
 ) {
   const id = options.subscription.id,
@@ -146,9 +167,11 @@ export function createScheduleController(
     generation++;
     read?.abort();
     read = null;
+    history.cancel();
   }
   function deny(code: ErrorCode) {
     cancelRead();
+    history.purge();
     pending = null;
     activeWrite = false;
     drafts.clear();
@@ -164,6 +187,45 @@ export function createScheduleController(
     else publish({ status: 'error', error: code, loading: null });
     return code;
   }
+  const history = createScheduleHistoryController({
+    id,
+    api: options.historyAPI,
+    token,
+    initial: view.history,
+    frozen,
+    changed: (history) => publish({ history }),
+    denied: deny,
+    observed(result) {
+      if (!view.baseline) return;
+      if (result.subscription.version !== view.baseline.subscription.version) {
+        cancelRead();
+        publish({
+          loading: null,
+          conflict: true,
+          latest: null,
+          preview: null,
+          confirmed: false,
+        });
+      } else if (
+        result.as_of !== view.baseline.as_of ||
+        (view.preview && view.preview.as_of !== result.as_of)
+      ) {
+        cancelRead();
+        publish({
+          loading: null,
+          preview: null,
+          confirmed: false,
+          ...(view.historyBasis && view.historyAsOf !== result.as_of
+            ? {
+                historyBasis: null,
+                historyAsOf: null,
+                historyNeedsReview: true,
+              }
+            : {}),
+        });
+      }
+    },
+  });
   async function fetchView(latest = false) {
     if (!allowed() || activeWrite || pending || view.saved) return;
     cancelRead();
@@ -243,17 +305,26 @@ export function createScheduleController(
       else {
         pending = null;
         const reason = error instanceof ScheduleError ? error.reason : null;
+        if (reason === 'history_changed') history.clear();
         publish({
           status: 'error',
           uncertain: false,
           error: code,
           reason,
+          ...(reason === 'history_changed'
+            ? {
+                historyBasis: null,
+                historyAsOf: null,
+                historyNeedsReview: true,
+              }
+            : {}),
           preview: null,
           confirmed: false,
           conflict:
             code === 'conflict' &&
             reason !== 'preview_expired' &&
             reason !== 'preview_changed' &&
+            reason !== 'history_changed' &&
             reason !== 'ended',
           latest: null,
         });
@@ -266,14 +337,79 @@ export function createScheduleController(
     state: () => view,
     load: () => fetchView(),
     refreshLatest: () => fetchView(true),
+    toggleHistory: (expanded: boolean) => history.toggle(expanded),
+    editHistory: (patch: Partial<HistoryFilter>) => history.edit(patch),
+    fetchHistory: () => history.fetch(),
+    adoptHistory(index: number) {
+      const result = view.history.result,
+        candidate = result?.candidates[index];
+      if (
+        frozen() ||
+        view.conflict ||
+        view.history.loading ||
+        !view.baseline ||
+        !result ||
+        !candidate?.candidate_date ||
+        candidate.reason ||
+        result.reason ||
+        result.subscription.version !== view.baseline.subscription.version
+      )
+        return;
+      cancelRead();
+      const basis: HistoryBasis = Object.freeze({
+        filter: Object.freeze({ ...result.filter }),
+        token: result.token,
+        algorithm_version: result.algorithm_version,
+      });
+      publish({
+        values: {
+          ...candidate.rule,
+          interval_count: String(candidate.rule.interval_count),
+        },
+        historyBasis: basis,
+        historyAsOf: result.as_of,
+        historyNeedsReview: false,
+        historyManual: false,
+        dirty: true,
+        preview: null,
+        confirmed: false,
+        error: null,
+        reason: null,
+        loading: null,
+        status: 'ready',
+      });
+    },
     edit(patch: Partial<ScheduleDraft>) {
       if (frozen()) return;
-      cancelRead();
       const values = { ...view.values, ...patch };
       if (values.interval_unit !== 'month' && values.interval_unit !== 'year')
         values.month_end = false;
+      if (
+        Object.keys(values).every(
+          (key) =>
+            values[key as keyof ScheduleDraft] ===
+            view.values[key as keyof ScheduleDraft],
+        )
+      )
+        return;
+      let unchangedRule = false;
+      try {
+        unchangedRule = sameScheduleRule(
+          draftScheduleRule(values),
+          draftScheduleRule(view.values),
+        );
+      } catch {
+        /* Incomplete edits still count as rule changes. */
+      }
+      cancelRead();
       publish({
         values,
+        historyBasis: unchangedRule ? view.historyBasis : null,
+        historyAsOf: unchangedRule ? view.historyAsOf : null,
+        historyNeedsReview: unchangedRule ? view.historyNeedsReview : false,
+        historyManual:
+          view.historyManual ||
+          (!unchangedRule && (!!view.historyBasis || view.historyNeedsReview)),
         preview: null,
         confirmed: false,
         dirty: true,
@@ -284,7 +420,12 @@ export function createScheduleController(
       });
     },
     confirm(value: boolean) {
-      if (!frozen() && view.preview?.candidate_date && !view.conflict)
+      if (
+        !frozen() &&
+        view.preview?.candidate_date &&
+        !view.conflict &&
+        !view.historyNeedsReview
+      )
         publish({ confirmed: value });
     },
     async preview() {
@@ -315,6 +456,20 @@ export function createScheduleController(
       try {
         const next = await api.preview(id, rule, token, abort.signal);
         if (!current()) return;
+        if (view.historyBasis && next.as_of !== view.historyAsOf) {
+          history.clear();
+          publish({
+            historyBasis: null,
+            historyAsOf: null,
+            historyNeedsReview: true,
+            preview: null,
+            confirmed: false,
+            loading: null,
+            reason: 'history_changed',
+            status: 'ready',
+          });
+          return;
+        }
         if (next.subscription.version !== view.baseline!.subscription.version) {
           publish({
             conflict: true,
@@ -343,6 +498,7 @@ export function createScheduleController(
       if (
         frozen() ||
         view.conflict ||
+        view.historyNeedsReview ||
         !view.baseline ||
         !view.preview?.candidate_date ||
         !view.confirmed
@@ -366,6 +522,7 @@ export function createScheduleController(
         expected_as_of: view.preview.as_of,
         expected_candidate: view.preview.candidate_date,
         confirmed: true,
+        ...(view.historyBasis ? { history_basis: view.historyBasis } : {}),
       });
       await performWrite(body);
     },
@@ -376,7 +533,11 @@ export function createScheduleController(
     rebase() {
       if (frozen() || !view.latest) return;
       cancelRead();
+      history.clear();
       publish({
+        historyNeedsReview: view.historyNeedsReview || !!view.historyBasis,
+        historyBasis: null,
+        historyAsOf: null,
         baseline: view.latest,
         latest: null,
         conflict: false,
@@ -392,7 +553,12 @@ export function createScheduleController(
       if (frozen() || !view.latest) return;
       const latest = view.latest;
       cancelRead();
+      history.clear();
       publish({
+        historyBasis: null,
+        historyAsOf: null,
+        historyNeedsReview: false,
+        historyManual: false,
         baseline: latest,
         values: suggested(latest.subscription, latest.settings),
         latest: null,
@@ -426,6 +592,7 @@ export function createScheduleController(
         remember();
       }
       disposed = true;
+      history.dispose();
       view = { ...initialScheduleView(), status: 'disposed' };
       changed(view);
     },

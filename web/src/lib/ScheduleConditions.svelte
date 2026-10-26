@@ -19,6 +19,20 @@
       {settings.confirmed_as_of}（日本時間）を基準に、{settings.confirmed_candidate}
       を確認しました。
     </p>
+    {#if settings.history_evidence}{@const evidence = settings.history_evidence}
+      <h4>前回確認した履歴の根拠</h4>
+      <p class="muted">
+        {evidence.as_of}（日本時間）時点 · 対象 {evidence.filter
+          .start_date}〜{evidence.as_of} · {evidence.filter
+          .currency}。保存時の根拠です。現在の履歴の再推定結果ではありません。
+      </p>
+      <ul class="schedule-history-samples">
+        {#each evidence.samples as sample (sample.id)}<li>
+            {sample.occurred_on} · {sample.amount}
+            {sample.currency}
+          </li>{/each}
+      </ul>
+    {/if}
   </details>
   {#if settings.stale}<p class="schedule-warning">
       契約の周期や状態が変更されています。保存済みの条件を再確認してください。

@@ -11,13 +11,24 @@ import {
   uuid,
 } from './daily-api.ts';
 import { parseSubscription, type Subscription } from './subscriptions-api.ts';
-export type ScheduleRule = {
-  interval_unit: 'day' | 'week' | 'month' | 'year';
-  interval_count: number;
-  anchor_date: string;
-  month_end: boolean;
-};
+import {
+  parseHistoryBasis,
+  parseHistoryEvidence,
+  type HistoryBasis,
+  type HistoryEvidence,
+} from './schedule-history-api.ts';
+import {
+  parseScheduleRule,
+  sameScheduleRule,
+  type ScheduleRule,
+} from './schedule-rule.ts';
+export {
+  parseScheduleRule,
+  sameScheduleRule,
+  type ScheduleRule,
+} from './schedule-rule.ts';
 export type ScheduleSettings = {
+  history_evidence?: HistoryEvidence;
   rule: ScheduleRule;
   stale: boolean;
   confirmed_as_of: string;
@@ -46,6 +57,7 @@ export type SchedulePreview = {
   overdue: boolean;
 };
 export type ScheduleSave = ScheduleRule & {
+  history_basis?: HistoryBasis;
   request_id: string;
   expected_version: number;
   expected_as_of: string;
@@ -53,6 +65,7 @@ export type ScheduleSave = ScheduleRule & {
   confirmed: true;
 };
 export type ScheduleReceipt = {
+  history_evidence?: HistoryEvidence;
   request_id: string;
   applied_version: number;
   rule: ScheduleRule;
@@ -70,12 +83,14 @@ export type ScheduleReason =
   | 'preview_expired'
   | 'preview_changed'
   | 'request_conflict'
+  | 'history_changed'
   | 'ended';
 const reasons: ScheduleReason[] = [
   'version_conflict',
   'preview_expired',
   'preview_changed',
   'request_conflict',
+  'history_changed',
   'ended',
 ];
 export class ScheduleError extends ApiError {
@@ -88,37 +103,6 @@ export class ScheduleError extends ApiError {
 const boolean = (v: unknown): boolean =>
   typeof v === 'boolean' ? v : invalid();
 const algorithm = (v: unknown) => choice(v, ['calendar-v1'] as const);
-export function parseScheduleRule(value: unknown): ScheduleRule {
-  const v = record(value),
-    interval_unit = choice(v.interval_unit, [
-      'day',
-      'week',
-      'month',
-      'year',
-    ] as const),
-    anchor_date = date(v.anchor_date),
-    month_end = boolean(v.month_end);
-  if (month_end) {
-    if (interval_unit !== 'month' && interval_unit !== 'year') return invalid();
-    const [year, month, day] = anchor_date.split('-').map(Number),
-      leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
-    const last = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][
-      month - 1
-    ];
-    if (day !== last) return invalid();
-  }
-  return {
-    interval_unit,
-    interval_count: integer(v.interval_count, 1, 10000),
-    anchor_date,
-    month_end,
-  };
-}
-export const sameScheduleRule = (a: ScheduleRule, b: ScheduleRule) =>
-  a.interval_unit === b.interval_unit &&
-  a.interval_count === b.interval_count &&
-  a.anchor_date === b.anchor_date &&
-  a.month_end === b.month_end;
 export function parseScheduleView(value: unknown): ScheduleView {
   const v = record(value),
     subscription = parseSubscription(v.subscription);
@@ -126,10 +110,20 @@ export function parseScheduleView(value: unknown): ScheduleView {
     const s = record(x),
       confirmed_version = integer(s.confirmed_version, 1, subscription.version);
     const confirmed_as_of = date(s.confirmed_as_of),
-      confirmed_candidate = date(s.confirmed_candidate);
+      confirmed_candidate = date(s.confirmed_candidate),
+      rule = parseScheduleRule(s.rule);
     if (confirmed_candidate < confirmed_as_of) return invalid();
     return {
-      rule: parseScheduleRule(s.rule),
+      rule,
+      ...(s.history_evidence === undefined
+        ? {}
+        : {
+            history_evidence: parseHistoryEvidence(
+              s.history_evidence,
+              rule,
+              confirmed_as_of,
+            ),
+          }),
       stale: boolean(s.stale),
       confirmed_as_of,
       confirmed_candidate,
@@ -206,6 +200,12 @@ export function parseScheduleSaveResult(value: unknown): ScheduleSaveResult {
     created_at: timestamp(r.created_at),
   };
   if (receipt.candidate_date < receipt.as_of) return invalid();
+  if (r.history_evidence !== undefined)
+    receipt.history_evidence = parseHistoryEvidence(
+      r.history_evidence,
+      receipt.rule,
+      receipt.as_of,
+    );
   return { receipt, current };
 }
 export function createScheduleAPI(base: string, fetcher: typeof fetch = fetch) {
@@ -303,6 +303,9 @@ export function createScheduleAPI(base: string, fetcher: typeof fetch = fetch) {
         expected_as_of: date(value.expected_as_of),
         expected_candidate: date(value.expected_candidate),
         confirmed: value.confirmed === true ? true : invalid(),
+        ...(value.history_basis === undefined
+          ? {}
+          : { history_basis: parseHistoryBasis(value.history_basis) }),
       }));
       if (body.expected_candidate < body.expected_as_of)
         throw new ApiError('invalid_request');
@@ -315,7 +318,12 @@ export function createScheduleAPI(base: string, fetcher: typeof fetch = fetch) {
         r.applied_version === body.expected_version + 1 &&
         r.as_of === body.expected_as_of &&
         r.candidate_date === body.expected_candidate &&
-        sameScheduleRule(r.rule, body)
+        sameScheduleRule(r.rule, body) &&
+        (body.history_basis === undefined
+          ? r.history_evidence === undefined
+          : !!r.history_evidence &&
+            JSON.stringify(parseHistoryBasis(r.history_evidence)) ===
+              JSON.stringify(body.history_basis))
         ? result
         : invalid();
     },
