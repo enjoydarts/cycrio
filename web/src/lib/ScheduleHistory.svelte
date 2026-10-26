@@ -11,7 +11,6 @@
   let {
     view,
     values,
-    dirty,
     disabled,
     conflict,
     onToggle,
@@ -21,7 +20,6 @@
   }: {
     view: HistoryEditorView;
     values: ScheduleDraft;
-    dirty: boolean;
     disabled: boolean;
     conflict: boolean;
     onToggle: (value: boolean) => void;
@@ -60,6 +58,14 @@
   const validFilter = $derived(
     /^\d{4}-\d{2}-\d{2}$/.test(view.filter.start_date) &&
       /^[A-Z]{3}$/.test(view.filter.currency),
+  );
+  const hasExistingValues = $derived(
+    !!(
+      values.interval_unit ||
+      values.interval_count ||
+      values.anchor_date ||
+      values.month_end
+    ),
   );
 </script>
 
@@ -181,7 +187,7 @@
                     ? '終了済み'
                     : '扱える日付の範囲を超えています')}
               </p>
-              {#if dirty}<p class="notice">
+              {#if hasExistingValues}<p class="notice">
                   現在の入力（{values.interval_unit
                     ? cycle(values.interval_unit, Number(values.interval_count))
                     : '周期未指定'} · 基準日 {values.anchor_date || '未指定'} · {values.month_end

@@ -119,6 +119,45 @@ test('all ambiguous choices render equally with replacement disclosure and disab
     /対象 3件 · 有効な支払 3件 · 比較に使用 3件/,
   );
 });
+test('seeded unedited values disclose replacement before adoption while blank inputs show no previous rule', async () => {
+  const History = await component('ScheduleHistory');
+  const props = {
+    view: { ...initialHistoryView(), expanded: true, result: historyPreview() },
+    values,
+    dirty: false,
+    disabled: false,
+    conflict: false,
+    onToggle: () => {},
+    onEdit: () => {},
+    onFetch: () => {},
+    onAdopt: () => {},
+  };
+  for (const seeded of [
+    values,
+    { ...values, interval_unit: '', interval_count: '' },
+  ]) {
+    const html = render(History, { props: { ...props, values: seeded } }).body;
+    assert.match(html, /現在の入力（/);
+    assert.match(html, /基準日 2026-01-01/);
+    assert.ok(
+      html.indexOf('置き換えます') < html.indexOf('この候補を入力する'),
+    );
+    if (seeded.interval_unit) assert.match(html, /2週間ごと/);
+  }
+  const blank = {
+    interval_unit: '',
+    interval_count: '',
+    anchor_date: '',
+    month_end: false,
+  };
+  for (const dirty of [false, true]) {
+    const html = render(History, {
+      props: { ...props, values: blank, dirty },
+    }).body;
+    assert.doesNotMatch(html, /現在の入力（|置き換えます|周期未指定|NaN/);
+    assert.match(html, /この候補を入力する/);
+  }
+});
 test('historical evidence renders separately from present history and accepts stale historical rules', async () => {
   const Conditions = await component('ScheduleConditions');
   const html = render(Conditions, {

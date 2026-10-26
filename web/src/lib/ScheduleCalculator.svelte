@@ -172,7 +172,6 @@
     <ScheduleHistory
       view={view.history}
       values={view.values}
-      dirty={view.dirty}
       disabled={frozen}
       conflict={view.conflict || !view.baseline}
       onToggle={(value) => controller?.toggleHistory(value)}
