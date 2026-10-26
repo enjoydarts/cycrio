@@ -69,6 +69,11 @@
             class="button"
             href={`/subscriptions/${registration.subscription_id}`}
             >登録済みのサブスクを見る</a
+          >
+          <a
+            class="button"
+            href={`/subscriptions/${registration.subscription_id}?tab=history&source_result_id=${result.id}&source_event_index=${index}`}
+            >履歴に記録</a
           >{:else if action?.index === index}{#if action.kind === 'create'}<h3>
               新規サブスクに登録
             </h3>

@@ -98,6 +98,9 @@
       >＋ サブスクを追加</button
     >
   </header>
+  <div class="actions">
+    <a class="button" href="/subscriptions/summary">確認済み明細の月次集計</a>
+  </div>
   {#if pending.page && pending.page.total > 0}<aside class="notice">
       <strong>確認待ちの解析結果 {pending.page.total} 件（メール単位）</strong>
       <div class="actions"><a href="/analysis">確認する →</a></div>
