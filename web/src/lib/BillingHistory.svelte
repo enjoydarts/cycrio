@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import {
@@ -38,12 +38,19 @@
       error: null,
     }),
     editor = $state<{
+      key: string;
+      targetKey: string;
+      subscription: Subscription;
       initial: BillingEntry | null;
       source: BillingSource | null;
+      onclose: () => void;
+      onBusyChange: (busy: boolean) => void;
     } | null>(null),
     busy = $state(false),
-    sourceMessage = $state('');
+    sourceMessage = $state(''),
+    navigationMessage = $state('');
   let handledSource = '';
+  let editorSequence = 0;
   const filter = $derived.by(() => {
     const params = page.url.searchParams;
     let month = '';
@@ -77,27 +84,58 @@
     source: BillingSource | null = null,
   ) {
     if (busy || (initial && initial.subscription_id !== subscription.id))
-      return;
-    editor = { initial, source };
+      return false;
+    const targetKey = `${subscription.id}/${source ? `source/${source.result_id}/${source.event_index}` : initial ? `event/${initial.id}` : 'manual'}`;
+    if (editor?.targetKey === targetKey) return true;
+    const key = `${targetKey}/${++editorSequence}`;
+    editor = {
+      key,
+      targetKey,
+      subscription,
+      initial,
+      source,
+      onclose: () => close(key),
+      onBusyChange: (value) => {
+        if (editor?.key === key) busy = value;
+      },
+    };
+    navigationMessage = '';
+    return true;
   }
   function openRequestedSource() {
-    if (sourceQuery === '/' || handledSource === sourceQuery) return;
-    handledSource = sourceQuery;
+    if (busy) return;
+    if (sourceQuery === '/') {
+      const leftSourceURL = handledSource !== '';
+      handledSource = '';
+      if (leftSourceURL && untrack(() => editor?.source)) editor = null;
+      return;
+    }
+    if (handledSource === sourceQuery) return;
     const source = subscription.sources.find(
       (source) => `${source.result_id}/${source.event_index}` === sourceQuery,
     );
     if (source) {
       sourceMessage = '';
-      open(null, source);
-    } else
+      if (open(null, source)) handledSource = sourceQuery;
+    } else {
+      handledSource = sourceQuery;
+      editor = null;
       sourceMessage =
         'この根拠は契約に紐付いていません。契約の元の AI 抽出情報を確認してください。根拠は自動で追加しません。';
+    }
   }
-  function close() {
-    if (busy) return;
+  function close(key: string) {
+    if (busy || editor?.key !== key) return;
     editor = null;
     void controller?.load(filter);
   }
+  beforeNavigate(({ cancel }) => {
+    if (busy) {
+      cancel();
+      navigationMessage =
+        '保存中の画面移動を停止しました。受付状況を確認してから、もう一度移動してください。';
+    } else navigationMessage = '';
+  });
   onMount(() => {
     controller = createBillingFeed(
       (filter, token, signal) =>
@@ -247,18 +285,20 @@
           >{/each}
       </div>
     </details>{/if}
-  {#if editor}<Modal
-      open
-      title={editor.initial ? '履歴の詳細・編集' : '履歴を記録'}
-      {busy}
-      onclose={close}
-      ><BillingEditor
-        {subscription}
-        initial={editor.initial}
-        source={editor.source}
-        {drafts}
-        onBusyChange={(value) => (busy = value)}
-        onSaved={() => close()}
-      /></Modal
-    >{/if}
+  {#if editor}{#key editor.key}{@const target = untrack(() => editor!)}<Modal
+        open
+        title={target.initial ? '履歴の詳細・編集' : '履歴を記録'}
+        {busy}
+        onclose={target.onclose}
+        >{#if navigationMessage}<p class="notice" role="status">
+            {navigationMessage}
+          </p>{/if}<BillingEditor
+          subscription={target.subscription}
+          initial={target.initial}
+          source={target.source}
+          {drafts}
+          onBusyChange={target.onBusyChange}
+          onSaved={target.onclose}
+        /></Modal
+      >{/key}{/if}
 </section>

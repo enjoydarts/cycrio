@@ -882,6 +882,15 @@ export function createBillingEditor(
     },
     dispose() {
       if (disposed) return;
+      if (view.status === 'saving') {
+        view = {
+          ...view,
+          status: pending ? 'error' : 'ready',
+          uncertain: pending !== null,
+          confirmed: false,
+          error: pending ? 'dependency_unavailable' : null,
+        };
+      }
       remember();
       disposed = true;
       writeAbort?.abort();

@@ -528,6 +528,76 @@ test('a retained edit receipt for a different event cannot retarget a reopened d
   assert.equal(b.state().baseline?.id, rid);
   assert.equal(b.state().uncertain, false);
 });
+test('disposing during an in-flight write retains an uncertain receipt only for its original source', async () => {
+  let rejectFirst: ((error: unknown) => void) | undefined;
+  const bodies: unknown[] = [];
+  const store = new Map();
+  const backend = api({
+    create: async (_sid, body) => {
+      bodies.push(structuredClone(body));
+      if (bodies.length === 1)
+        return new Promise((_resolve, reject) => (rejectFirst = reject));
+      return entry();
+    },
+  });
+  const options = {
+    subscription_id: sid,
+    drafts: store,
+    source: { result_id: rid, event_index: 0 },
+    draftKey: 'source-0',
+    randomUUID: () => rid,
+  };
+  const a = createBillingEditor(
+    backend,
+    async () => 't',
+    () => {},
+    () => {},
+    options,
+  );
+  a.edit({ ...values, amount: '11' });
+  await a.preview();
+  a.confirm(true);
+  const sending = a.save();
+  await tick();
+  a.dispose();
+  const b = createBillingEditor(
+    backend,
+    async () => 't',
+    () => {},
+    () => {},
+    {
+      ...options,
+      source: { result_id: rid, event_index: 1 },
+      draftKey: 'source-1',
+      randomUUID: () => eid,
+    },
+  );
+  b.edit({ ...values, amount: '55' });
+  await b.preview();
+  b.confirm(true);
+  await b.save();
+  rejectFirst!(new ApiError('dependency_unavailable'));
+  await sending;
+  assert.equal(a.state().status, 'disposed');
+  assert.equal(b.state().saved?.id, eid);
+  const reopened = createBillingEditor(
+    backend,
+    async () => 't',
+    () => {},
+    () => {},
+    options,
+  );
+  assert.equal(reopened.state().uncertain, true);
+  assert.equal(reopened.state().status, 'error');
+  assert.equal(reopened.state().values.amount, '11');
+  await reopened.replay();
+  assert.deepEqual(bodies[0], bodies[2]);
+  assert.equal(
+    (bodies[1] as { source_event_index: number }).source_event_index,
+    1,
+  );
+  assert.equal((bodies[1] as { amount: string }).amount, '55');
+});
 test('newest feed filters win and disposal aborts pending reads and clears data', async () => {
   const resolvers: ((v: string) => void)[] = [];
   const signals: (AbortSignal | undefined)[] = [];

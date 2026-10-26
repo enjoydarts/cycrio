@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import {
@@ -21,12 +21,12 @@
   import BillingSources from './BillingSources.svelte';
   import './billing.css';
   let {
-    subscription,
-    initial = null,
-    source = null,
-    drafts,
-    onSaved,
-    onBusyChange = () => {},
+    subscription: subscriptionProp,
+    initial: initialProp = null,
+    source: sourceProp = null,
+    drafts: draftsProp,
+    onSaved: onSavedProp,
+    onBusyChange: onBusyChangeProp = () => {},
   }: {
     subscription: Subscription;
     initial?: BillingEntry | null;
@@ -35,6 +35,17 @@
     onSaved: (entry: BillingEntry) => void;
     onBusyChange?: (busy: boolean) => void;
   } = $props();
+  // The controller, visible original values and callbacks share one immutable
+  // target lifetime. A different target is mounted by BillingHistory's key.
+  const { subscription, initial, source, drafts, onSaved, onBusyChange } =
+    untrack(() => ({
+      subscription: subscriptionProp,
+      initial: initialProp,
+      source: sourceProp,
+      drafts: draftsProp,
+      onSaved: onSavedProp,
+      onBusyChange: onBusyChangeProp,
+    }));
   const session = getAppSession(),
     token = session.token,
     api = createBillingAPI(PUBLIC_API_BASE_URL);
