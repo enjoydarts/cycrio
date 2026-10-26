@@ -17,11 +17,13 @@
     result,
     index,
     onSaved,
+    onBackToResults,
     onBusyChange = () => {},
   }: {
     result: AnalysisResult;
     index: number;
     onSaved: (s: Subscription) => void;
+    onBackToResults: () => void;
     onBusyChange?: (busy: boolean) => void;
   } = $props();
   const session = getAppSession(),
@@ -101,7 +103,17 @@
       } else if (code === 'conflict') {
         conflict = true;
         try {
-          latest = await api.get(s.id, token, abort.signal);
+          const current = await api.get(s.id, token, abort.signal);
+          if (disposed) return;
+          latest = current;
+          if (
+            current.sources.some(
+              (source) =>
+                source.result_id === result.id && source.event_index === index,
+            )
+          ) {
+            onSaved(current);
+          }
         } catch (readError) {
           if (disposed) return;
           latest = null;
@@ -201,6 +213,11 @@
             confirmed = false;
           }}>最新の契約を選択し直す</button
         >{/if}
+      <div class="actions">
+        <button type="button" disabled={saving} onclick={onBackToResults}
+          >解析結果の一覧に戻って登録状況を更新</button
+        >
+      </div>
     </div>{/if}
   {#if selected}<p class="notice">
       「{selected.service}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。

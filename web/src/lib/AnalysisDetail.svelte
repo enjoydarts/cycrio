@@ -82,6 +82,7 @@
             />{:else}<AnalysisAttach
               {result}
               {index}
+              {onBackToResults}
               onBusyChange={changed}
               onSaved={(s) => saved(index, s)}
             />{/if}{:else}<div class="actions">
