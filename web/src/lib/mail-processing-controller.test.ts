@@ -153,6 +153,43 @@ test('clearing the account removes consent and aborts a preview that cannot late
   assert.equal(s.calls.filter((c) => c.operation === 'start').length, 0);
   s.controller.dispose();
 });
+test('restoring an uncertain request can replay its frozen body when the fresh preview is unavailable', async () => {
+  const requests: ProcessingRequests = new Map();
+  let original: ProcessingInput | undefined;
+  const first = setup(
+    {
+      start: async (_account, input) => {
+        original = input;
+        throw new ApiError('dependency_unavailable');
+      },
+    },
+    requests,
+  );
+  await first.controller.refresh();
+  first.controller.edit({ max_messages: '1', confirmed: true });
+  await first.controller.start();
+  first.controller.dispose();
+  const restored = setup(
+    {
+      preview: async () => {
+        throw new ApiError('dependency_unavailable');
+      },
+    },
+    requests,
+  );
+  await restored.controller.refresh();
+  assert.equal(restored.controller.state().preview, null);
+  assert.equal(restored.controller.state().uncertain, true);
+  await restored.controller.start();
+  assert.equal(restored.calls.filter((c) => c.operation === 'start').length, 0);
+  await restored.controller.replay();
+  assert.deepEqual(
+    restored.calls.filter((c) => c.operation === 'start').map((c) => c.input),
+    [original],
+  );
+  assert.equal(requests.size, 0);
+  restored.controller.dispose();
+});
 test('mount GETs only; explicit confirmed start suppresses double click and polling only GETs', async () => {
   const wait = deferred<ReturnType<typeof processingRun>>();
   let accepted = false;

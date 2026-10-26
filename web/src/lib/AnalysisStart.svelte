@@ -89,12 +89,7 @@
     };
   });
   async function submit(replay = false) {
-    if (
-      !selected ||
-      view.account !== selected ||
-      view.preview?.account_id !== selected
-    )
-      return;
+    if (!selected || view.account !== selected || (!replay && !canSend)) return;
     if (replay) await controller?.replay();
     else if (retry)
       await controller?.retrySelected(
