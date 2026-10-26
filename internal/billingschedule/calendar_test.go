@@ -51,3 +51,75 @@ func TestInvalidCalendar(t *testing.T) {
 		t.Fatal("invalid asof")
 	}
 }
+
+func TestCalendarLongRangeAndMaximumCount(t *testing.T) {
+	for _, tc := range []struct {
+		name, unit, anchor, asof, want string
+		count                          int
+	}{
+		{"day full range", "day", "0001-01-01", "9999-12-31", "9999-12-31", 1},
+		{"week full range", "week", "0001-01-01", "9999-12-25", "9999-12-27", 1},
+		{"month full range", "month", "0001-01-31", "9999-12-01", "9999-12-31", 1},
+		{"year full range", "year", "0001-12-31", "9999-12-01", "9999-12-31", 1},
+		{"day full range overflow", "day", "0001-01-02", "9999-12-31", "", 2},
+		{"week full range overflow", "week", "0001-01-01", "9999-12-31", "", 1},
+		{"month full range overflow", "month", "0001-01-30", "9999-12-31", "", 1},
+		{"year full range overflow", "year", "0001-01-01", "9999-12-31", "", 1},
+		{"maximum day count", "day", "0001-01-01", "0001-01-02", "0028-05-19", 10000},
+		{"maximum week count", "week", "0001-01-01", "0001-01-02", "0192-08-27", 10000},
+		{"maximum month count", "month", "0001-01-31", "0001-02-01", "0834-05-31", 10000},
+		{"maximum year count overflow", "year", "0001-01-01", "0001-01-02", "", 10000},
+		{"maximum day count full range overflow", "day", "0001-01-01", "9999-12-31", "", 10000},
+		{"maximum week count full range overflow", "week", "0001-01-01", "9999-12-31", "", 10000},
+		{"maximum month count full range overflow", "month", "0001-01-31", "9999-12-31", "", 10000},
+		{"maximum year count full range overflow", "year", "0001-01-01", "9999-12-31", "", 10000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := Next(Rule{IntervalUnit: tc.unit, IntervalCount: tc.count, AnchorDate: tc.anchor}, tc.asof)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if tc.want == "" {
+				if got != nil {
+					t.Fatalf("got %s, want out of range", *got)
+				}
+			} else if got == nil {
+				t.Fatalf("got nil, want %s", tc.want)
+			} else if *got != tc.want {
+				t.Fatalf("got %s, want %s", *got, tc.want)
+			}
+		})
+	}
+}
+
+func TestCalendarMaximumCountStillIncludesOriginalAndFutureAnchor(t *testing.T) {
+	for _, unit := range []string{"day", "week", "month", "year"} {
+		for _, asof := range []string{"0001-01-01", "9999-12-31"} {
+			t.Run(unit+"/"+asof, func(t *testing.T) {
+				rule := Rule{IntervalUnit: unit, IntervalCount: 10000, AnchorDate: "9999-12-31"}
+				normalized, err := Normalize(rule)
+				if err != nil || normalized != rule {
+					t.Fatalf("maximum count rejected: %+v, %v", normalized, err)
+				}
+				got, err := Next(rule, asof)
+				if err != nil || got == nil || *got != rule.AnchorDate {
+					t.Fatalf("got %v, %v, want original anchor %s", got, err, rule.AnchorDate)
+				}
+			})
+		}
+	}
+}
+
+func TestCalendarRejectsCountAboveMaximumForEveryUnit(t *testing.T) {
+	for _, unit := range []string{"day", "week", "month", "year"} {
+		t.Run(unit, func(t *testing.T) {
+			rule := Rule{IntervalUnit: unit, IntervalCount: 10001, AnchorDate: "0001-01-01"}
+			if _, err := Normalize(rule); err == nil {
+				t.Fatal("Normalize accepted count 10001")
+			}
+			if _, err := Next(rule, "0001-01-01"); err == nil {
+				t.Fatal("Next accepted count 10001")
+			}
+		})
+	}
+}
