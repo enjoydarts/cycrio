@@ -1,6 +1,7 @@
 package billingschedule
 
 import (
+	"regexp"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -29,6 +30,9 @@ func Normalize(r Rule) (Rule, error) {
 	return r, nil
 }
 func NormalizeSave(in SaveInput) (SaveInput, error) {
+	if in.HistoryBasis != nil && !ValidHistoryBasis(*in.HistoryBasis) {
+		return SaveInput{}, ErrInvalid
+	}
 	if _, e := Normalize(in.Rule); e != nil {
 		return SaveInput{}, e
 	}
@@ -42,4 +46,15 @@ func NormalizeSave(in SaveInput) (SaveInput, error) {
 		return SaveInput{}, e
 	}
 	return in, nil
+}
+
+var historyCurrencyPattern = regexp.MustCompile(`^[A-Z]{3}$`)
+var historyTokenPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
+func ValidHistoryFilter(f HistoryFilter) bool {
+	_, e := ParseDate(f.StartDate)
+	return e == nil && historyCurrencyPattern.MatchString(f.Currency)
+}
+func ValidHistoryBasis(b HistoryBasis) bool {
+	return ValidHistoryFilter(b.Filter) && b.AlgorithmVersion == HistoryAlgorithmVersion && historyTokenPattern.MatchString(b.Token)
 }

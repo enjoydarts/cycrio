@@ -30,14 +30,15 @@ type Rule struct {
 	MonthEnd      bool   `json:"month_end"`
 }
 type Settings struct {
-	Rule               Rule      `json:"rule"`
-	Stale              bool      `json:"stale"`
-	ConfirmedAsOf      string    `json:"confirmed_as_of"`
-	ConfirmedCandidate string    `json:"confirmed_candidate"`
-	AlgorithmVersion   string    `json:"algorithm_version"`
-	ConfirmedVersion   int64     `json:"confirmed_version"`
-	ConfirmedAt        time.Time `json:"confirmed_at"`
-	UpdatedAt          time.Time `json:"updated_at"`
+	HistoryEvidence    *HistoryEvidence `json:"history_evidence,omitempty"`
+	Rule               Rule             `json:"rule"`
+	Stale              bool             `json:"stale"`
+	ConfirmedAsOf      string           `json:"confirmed_as_of"`
+	ConfirmedCandidate string           `json:"confirmed_candidate"`
+	AlgorithmVersion   string           `json:"algorithm_version"`
+	ConfirmedVersion   int64            `json:"confirmed_version"`
+	ConfirmedAt        time.Time        `json:"confirmed_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
 }
 type View struct {
 	Subscription   subscriptions.Subscription `json:"subscription"`
@@ -59,20 +60,22 @@ type Preview struct {
 }
 type SaveInput struct {
 	Rule
-	RequestID         string `json:"request_id"`
-	ExpectedVersion   int64  `json:"expected_version"`
-	ExpectedAsOf      string `json:"expected_as_of"`
-	ExpectedCandidate string `json:"expected_candidate"`
-	Confirmed         bool   `json:"confirmed"`
+	HistoryBasis      *HistoryBasis `json:"history_basis,omitempty"`
+	RequestID         string        `json:"request_id"`
+	ExpectedVersion   int64         `json:"expected_version"`
+	ExpectedAsOf      string        `json:"expected_as_of"`
+	ExpectedCandidate string        `json:"expected_candidate"`
+	Confirmed         bool          `json:"confirmed"`
 }
 type Receipt struct {
-	RequestID        string    `json:"request_id"`
-	AppliedVersion   int64     `json:"applied_version"`
-	Rule             Rule      `json:"rule"`
-	AsOf             string    `json:"as_of"`
-	CandidateDate    string    `json:"candidate_date"`
-	AlgorithmVersion string    `json:"algorithm_version"`
-	CreatedAt        time.Time `json:"created_at"`
+	HistoryEvidence  *HistoryEvidence `json:"history_evidence,omitempty"`
+	RequestID        string           `json:"request_id"`
+	AppliedVersion   int64            `json:"applied_version"`
+	Rule             Rule             `json:"rule"`
+	AsOf             string           `json:"as_of"`
+	CandidateDate    string           `json:"candidate_date"`
+	AlgorithmVersion string           `json:"algorithm_version"`
+	CreatedAt        time.Time        `json:"created_at"`
 }
 type SaveResult struct {
 	Receipt Receipt `json:"receipt"`
