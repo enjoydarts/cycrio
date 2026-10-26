@@ -28,6 +28,7 @@ type handlerOptions struct {
 	mailProcessing MailProcessingService
 	subscriptions  SubscriptionService
 	analysisFeed   AnalysisFeedService
+	billing        BillingService
 }
 type Option func(*handlerOptions)
 
