@@ -102,8 +102,18 @@
         conflict = true;
         try {
           latest = await api.get(s.id, token, abort.signal);
-        } catch {
+        } catch (readError) {
+          if (disposed) return;
           latest = null;
+          if (
+            readError instanceof ApiError &&
+            (readError.code === 'authentication_required' ||
+              readError.code === 'access_denied')
+          ) {
+            selected = null;
+            error = processingErrors[readError.code];
+            session.onDenied();
+          }
         }
       }
     } finally {
