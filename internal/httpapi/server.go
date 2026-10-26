@@ -80,6 +80,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerMailProcessing(mux, settings.mailProcessing, protect)
 	registerSubscriptions(mux, settings.subscriptions, protect)
 	registerBilling(mux, settings.billing, protect)
+	registerBillingSchedule(mux, settings.billingSchedule, protect)
 	registerAnalysisFeed(mux, settings.analysisFeed, protect)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

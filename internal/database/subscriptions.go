@@ -197,9 +197,18 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return subscriptions.Subscription{}, e
 	}
+	changedSchedule, e := invalidateSchedule(ctx, tx, owner, id, in)
+	if e != nil {
+		return subscriptions.Subscription{}, e
+	}
 	_, e = tx.Exec(ctx, `UPDATE subscriptions SET version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
+	}
+	if changedSchedule {
+		if e = auditSchedule(ctx, tx, owner, id, "legacy_updated", nil); e != nil {
+			return subscriptions.Subscription{}, e
+		}
 	}
 	return completeSubscription(ctx, tx, owner, id, "updated")
 }
