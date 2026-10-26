@@ -145,6 +145,13 @@ export function parseScheduleView(value: unknown): ScheduleView {
     'confirmed_calculation',
   ] as const);
   if (
+    settings &&
+    !settings.stale &&
+    (settings.rule.interval_unit !== subscription.interval_unit ||
+      settings.rule.interval_count !== subscription.interval_count)
+  )
+    return invalid();
+  if (
     next_date_source === 'confirmed_calculation' &&
     (!settings ||
       settings.stale ||

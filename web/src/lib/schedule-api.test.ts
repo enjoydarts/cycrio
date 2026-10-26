@@ -155,6 +155,53 @@ test('receipt allows later current edits without pretending its old candidate is
     parseScheduleSaveResult({ ...result, current: scheduleView() }),
   );
 });
+test('nonstale saved rules must match the canonical cycle while stale snapshots retain historical cycles', () => {
+  const settings = {
+    rule,
+    stale: false,
+    confirmed_as_of: '2026-10-26',
+    confirmed_candidate: '2026-10-31',
+    algorithm_version: 'calendar-v1',
+    confirmed_version: 1,
+    confirmed_at: '2026-10-26T00:00:00Z',
+    updated_at: '2026-10-26T00:00:00Z',
+  };
+  const original = {
+    ...scheduleView(),
+    subscription: {
+      ...scheduleView().subscription,
+      next_billing_date: settings.confirmed_candidate,
+    },
+    settings,
+    next_date_source: 'confirmed_calculation',
+  };
+  assert.equal(parseScheduleView(original).settings?.stale, false);
+  for (const cycle of [
+    { interval_unit: 'year', interval_count: 2 },
+    { interval_unit: 'month', interval_count: 2 },
+    { interval_unit: null, interval_count: null },
+  ]) {
+    for (const next_date_source of ['manual', 'confirmed_calculation']) {
+      assert.throws(
+        () =>
+          parseScheduleView({
+            ...original,
+            next_date_source,
+            subscription: { ...original.subscription, ...cycle },
+          }),
+        ApiError,
+        `${next_date_source}: ${JSON.stringify(cycle)}`,
+      );
+    }
+    const stale = {
+      ...original,
+      next_date_source: 'manual',
+      subscription: { ...original.subscription, ...cycle },
+      settings: { ...settings, stale: true },
+    };
+    assert.deepEqual(parseScheduleView(stale).settings?.rule, rule);
+  }
+});
 test('API sends only explicit rule for readonly preview and exact frozen confirmation for save; validates target and receipt', async () => {
   const calls: { url: string; init?: RequestInit }[] = [];
   const responses = [scheduleView(), schedulePreview(), saveResult()];

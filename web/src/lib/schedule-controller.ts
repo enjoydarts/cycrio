@@ -33,6 +33,26 @@ export type ScheduleEditorView = {
   error: ErrorCode | null;
   reason: ScheduleReason | null;
 };
+// Read-only metadata can advance independently from the draft's CAS baseline.
+export function scheduleDisplaySnapshot(
+  view: Pick<ScheduleEditorView, 'baseline' | 'latest' | 'saved'>,
+): ScheduleView | null {
+  return [
+    view.baseline,
+    view.saved?.current ?? null,
+    view.latest,
+  ].reduce<ScheduleView | null>((shown, candidate) => {
+    if (!candidate) return shown;
+    if (
+      !shown ||
+      candidate.subscription.version > shown.subscription.version ||
+      (candidate.subscription.version === shown.subscription.version &&
+        candidate.as_of >= shown.as_of)
+    )
+      return candidate;
+    return shown;
+  }, null);
+}
 type StoredDraft = { view: ScheduleEditorView; pending: ScheduleSave | null };
 export type ScheduleDrafts = Map<string, StoredDraft>;
 const blank = (): ScheduleDraft => ({

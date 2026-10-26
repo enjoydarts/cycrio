@@ -8,6 +8,7 @@
     createScheduleController,
     draftScheduleRule,
     initialScheduleView,
+    scheduleDisplaySnapshot,
     type ScheduleDraft,
     type ScheduleDrafts,
   } from './schedule-controller.ts';
@@ -56,7 +57,7 @@
       return false;
     }
   });
-  const shown = $derived(view.saved?.current ?? view.baseline);
+  const shown = $derived(scheduleDisplaySnapshot(view));
   function edit(patch: Partial<ScheduleDraft>) {
     controller?.edit(patch);
   }
