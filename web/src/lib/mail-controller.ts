@@ -170,6 +170,20 @@ export function createMailController(
   return {
     state: () => view,
     refresh,
+    close() {
+      if (!allowed() || mutating) return;
+      begin();
+      pending = null;
+      publish({
+        selected: null,
+        form: null,
+        error: null,
+        success: null,
+        uncertain: false,
+        disconnectConfirmation: null,
+        status: 'ready',
+      });
+    },
     select(id: string) {
       if (!allowed() || !view.accounts.some((a) => a.id === id)) return;
       if (view.selected === id) return;

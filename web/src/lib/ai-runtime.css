@@ -46,7 +46,7 @@
   font-size: 0.75rem;
 }
 .usage-ui .calls-table button {
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   padding: 0.4rem;
 }
 .usage-ui .calls-table th,
@@ -81,7 +81,7 @@
     content: attr(data-label);
     display: block;
     color: var(--color-muted);
-    font-size: 0.65rem;
+    font-size: 0.75rem;
   }
 }
 @media (max-width: 720px) {

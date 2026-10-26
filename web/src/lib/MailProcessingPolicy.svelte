@@ -252,7 +252,7 @@
   }
   .eyebrow {
     color: var(--color-action);
-    font-size: 0.62rem;
+    font-size: 0.75rem;
     letter-spacing: 0.12em;
     margin-bottom: 0.5rem;
   }
@@ -351,7 +351,7 @@
   }
   .primary {
     background: var(--color-action);
-    color: var(--color-surface);
+    color: var(--color-on-action);
   }
   button:focus-visible,
   input:focus-visible {

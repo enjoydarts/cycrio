@@ -3,6 +3,19 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { compile, parse } from 'svelte/compiler';
 import { render } from 'svelte/server';
+test('mail settings begin with a connection list, use a modal for details and keep analysis on its own page', async () => {
+  const source = await readFile(
+    new URL('./MailAccounts.svelte', import.meta.url),
+    'utf8',
+  );
+  assert.match(source, /<Modal/);
+  assert.match(source, /!account \|\| editing/);
+  assert.doesNotMatch(source, /MailProcessing|processingAPI/);
+  assert.match(source, /メールを接続/);
+  assert.match(source, /接続を編集/);
+  assert.doesNotMatch(source, /class="mail-columns"|class="mail-accounts"/);
+  assert.match(source, /<Modal[\s\S]+?\{@render feedback\(\)\}/);
+});
 test('actual refresh and discard handlers have separate semantics', async () => {
   const source = await readFile(
     new URL('./MailAccounts.svelte', import.meta.url),
@@ -89,10 +102,11 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
     return `data:text/javascript;base64,${Buffer.from(resolved).toString('base64')}`;
   }
   const processingURL = await compiledURL('MailProcessing');
+  const modalURL = await compiledURL('Modal');
   const code = js.code.replace(
     /(from\s+|import\s*)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+      `${prefix}${quote}${path === './Modal.svelte' ? modalURL : path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const Component = (
     await import(

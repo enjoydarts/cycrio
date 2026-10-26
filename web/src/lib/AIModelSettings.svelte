@@ -105,21 +105,23 @@
             model.current_price.rates.output?.amount,
           )}（100万トークン当たり）{:else}不明・変動（無料を意味しません）{/if}
       </p>
-      <dl>
-        <div>
-          <dt>現在の価格 ID</dt>
-          <dd><code>{model.current_price?.id ?? '不明'}</code></dd>
-        </div>
-        <div>
-          <dt>保存済みの価格 ID</dt>
-          <dd><code>{savedPrice ?? '不明・未保存'}</code></dd>
-        </div>
-      </dl>
+      <details>
+        <summary>参照価格の技術情報</summary>
+        <dl>
+          <div>
+            <dt>現在の価格 ID</dt>
+            <dd><code>{model.current_price?.id ?? '不明'}</code></dd>
+          </div>
+          <div>
+            <dt>保存済みの価格 ID</dt>
+            <dd><code>{savedPrice ?? '不明・未保存'}</code></dd>
+          </div>
+        </dl>
+      </details>
       {#if savedModel === model.id && savedPrice !== (model.current_price?.id ?? null)}<p
           class="muted"
         >
-          保存後に参照価格が変更されています。下書きを保存すると現在の価格 ID
-          を記録します。
+          保存後に参照価格が変更されています。下書きを保存すると現在の価格を参照します。
         </p>{/if}
     {:else}<p class="muted">未選択</p>{/if}
   </article>
@@ -175,8 +177,7 @@
     >
   </div>
   <p class="muted">
-    保存時の価格 ID
-    を記録します。カタログ価格は条件や割引を含む参考情報で、実際の利用原価ではありません。
+    保存時点の価格を参照します。カタログ価格は参考情報で、実際の利用原価ではありません。
   </p>
   <h3>カタログからモデルを選択</h3>
   <div class="actions stage-selector">

@@ -313,7 +313,7 @@
   }
   .sync-eyebrow {
     color: var(--color-action);
-    font-size: 0.62rem;
+    font-size: 0.75rem;
     letter-spacing: 0.12em;
     margin-bottom: 0.4rem;
   }
@@ -338,7 +338,7 @@
   }
   .sync-target span {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     color: var(--color-muted);
   }
   .sync-fields {
@@ -382,7 +382,7 @@
   }
   .sync-primary {
     background: var(--color-action);
-    color: var(--color-surface);
+    color: var(--color-on-action);
   }
   button:disabled {
     opacity: 0.55;
@@ -410,7 +410,7 @@
   }
   .sync-history-heading span,
   time {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--color-muted);
   }
   .sync-history {
@@ -435,7 +435,7 @@
     margin: 0.8rem 0;
   }
   .sync-history dt {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     color: var(--color-muted);
   }
   .sync-history dd {

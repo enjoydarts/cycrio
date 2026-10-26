@@ -128,7 +128,9 @@
 >
   <h3 id="credentials-heading">API キー管理</h3>
   <p class="intro">
-    保存済みの秘密値は表示しません。表示は保存状態であり、接続テストは次段階で対応します。
+    保存した API キーは再表示できません。接続テストは <a
+      href="/settings/ai-runtime">AI 実行・接続</a
+    > で行えます。
   </p>
   <div class="feedback" aria-live="polite" aria-atomic="true">
     {#if view.status === 'idle' || view.status === 'loading'}<p>
@@ -268,9 +270,7 @@
 
 <style>
   .credentials {
-    margin: 2rem 0;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--color-border);
+    margin: 0 0 2rem;
     text-align: left;
     min-width: 0;
   }
@@ -291,7 +291,7 @@
     overflow-wrap: anywhere;
   }
   .error {
-    color: #9f1239;
+    color: var(--color-danger);
   }
   .success {
     color: var(--color-action-hover);
@@ -321,7 +321,7 @@
     margin: 0;
   }
   .badge {
-    font-size: 0.7rem;
+    font-size: 0.75rem;
     padding: 0.2rem 0.55rem;
     border-radius: 1rem;
     background: var(--color-surface-soft);
@@ -370,7 +370,7 @@
   }
   button {
     width: 100%;
-    min-height: 2.7rem;
+    min-height: 2.75rem;
     border: 1px solid var(--color-border);
     border-radius: 0.55rem;
     padding: 0.6rem 0.7rem;
@@ -384,7 +384,7 @@
   }
   .primary {
     background: var(--color-action);
-    color: var(--color-surface);
+    color: var(--color-on-action);
     border-color: var(--color-action);
   }
   .primary:hover {

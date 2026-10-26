@@ -24,6 +24,20 @@ function setup(overrides: Partial<MailAPI> = {}) {
   );
   return { controller, api, denied: () => denied };
 }
+test('closing connection details clears credentials, selection and confirmation; late reads cannot restore them', async () => {
+  const { controller: c } = setup();
+  await c.refresh();
+  c.select(ids.account);
+  c.edit({ login: 'owner@example.com', app_password: 'password' });
+  c.confirmDisconnect(true);
+  c.close();
+  assert.equal(c.state().selected, null);
+  assert.equal(c.state().form, null);
+  assert.equal(c.state().disconnectConfirmation, null);
+  assert.equal(c.state().accounts.length, 1);
+  c.select(ids.account);
+  assert.equal(c.state().form?.app_password, '');
+});
 test('load and poll never POST; ordinary refresh preserves dirty credentials and baseline', async () => {
   let posts = 0,
     version = 1;

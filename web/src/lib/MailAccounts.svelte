@@ -5,9 +5,7 @@
   import MailSync from './MailSync.svelte';
   import type { MailSyncAPI } from './mail-sync-api.ts';
   import type { SyncRequests } from './mail-sync-controller.ts';
-  import MailProcessing from './MailProcessing.svelte';
-  import type { MailProcessingAPI } from './mail-processing-api.ts';
-  import type { ProcessingRequests } from './mail-processing-controller.ts';
+  import Modal from './Modal.svelte';
   import {
     createMailController,
     emptyMailView,
@@ -18,18 +16,16 @@
     token,
     onDenied,
     syncAPI,
-    processingAPI,
   }: {
     api: MailAPI;
     token: TokenProvider;
     onDenied: () => void;
     syncAPI?: MailSyncAPI;
-    processingAPI?: MailProcessingAPI;
   } = $props();
   const syncRequests: SyncRequests = new Map();
-  const processingRequests: ProcessingRequests = new Map();
   let view = $state(emptyMailView());
   let query = $state('');
+  let editing = $state(false);
   let controller: ReturnType<typeof createMailController> | undefined;
   const account = $derived(view.accounts.find((a) => a.id === view.selected));
   const busy = $derived(view.status === 'saving' || view.status === 'loading');
@@ -112,33 +108,7 @@
   });
 </script>
 
-<section class="mail-workspace" aria-label="自分のメール連携">
-  <div class="mail-heading">
-    <div>
-      <p class="mail-eyebrow">YOUR MAIL CONNECTIONS</p>
-      <h2>メール連携</h2>
-      <p>自分の Fastmail アカウントと、対象のフォルダーを管理します。</p>
-    </div>
-    <button
-      id="mail-refresh"
-      class="mail-button"
-      disabled={busy}
-      onclick={() => controller?.refresh()}>最新の状態に更新</button
-    >
-  </div>
-  <div class="mail-guide">
-    <strong>接続と対象を確認してから、手動でIDを同期</strong>
-    <p>
-      接続情報の保存 → 接続確認 →
-      フォルダー選択を、それぞれ操作してください。保存だけでは接続しません。メールIDの同期は期間と上限を指定して手動で開始します。本文取得・AI送信は、送信条件と料金を確認した後の手動解析でのみ行います。
-    </p>
-    <p>
-      Fastmail 専用のアプリパスワードを使用します。接続先は <code
-        >imap.fastmail.com:993</code
-      >（TLS 固定）です。Google による Cycrio ログインや Gmail
-      の取得許可とは別の設定です。
-    </p>
-  </div>
+{#snippet feedback()}
   {#if view.error}<p class="mail-feedback" role="alert">
       {errors[view.error]}
     </p>{/if}
@@ -148,127 +118,175 @@
   {#if view.uncertain}<p class="mail-feedback" role="alert">
       接続確認が受け付けられたか確認できません。「同じ接続確認を再送する」で受付状況を確認できます。新しい確認は重複作成しません。
     </p>{/if}
-  <div class="mail-columns">
-    <aside class="mail-accounts" aria-label="メールアカウント一覧">
-      <div class="mail-section-heading">
-        <h3>アカウント</h3>
-        <span>{view.accounts.length} / 10</span>
-      </div>
-      <button
-        class="mail-button mail-primary"
-        disabled={busy || view.accounts.length >= 10 || view.uncertain}
-        onclick={() => {
-          query = '';
-          controller?.newAccount();
-        }}>＋ Fastmail を追加</button
-      >
-      {#if view.status === 'loading' && !view.accounts.length}<p role="status">
-          読み込み中です…
-        </p>{:else if !view.accounts.length}<p class="mail-empty">
-          アカウントはまだ登録されていません。接続情報を追加してください。
-        </p>{/if}
-      <ul>
-        {#each view.accounts as row (row.id)}<li>
-            <button
-              class="mail-account-row"
-              aria-pressed={view.selected === row.id}
+{/snippet}
+
+<section class="mail-workspace" aria-label="自分のメール連携">
+  <div class="mail-heading">
+    <div>
+      <h2>メール連携</h2>
+      <p>接続情報と、対象のフォルダーを管理します。</p>
+    </div>
+    <button
+      class="mail-button mail-primary"
+      disabled={busy || view.accounts.length >= 10 || view.uncertain}
+      onclick={() => {
+        query = '';
+        editing = false;
+        controller?.newAccount();
+      }}>＋ メールを接続</button
+    >
+  </div>
+  <div class="mail-list-heading">
+    <span>登録済み {view.accounts.length} 件</span><button
+      id="mail-refresh"
+      class="mail-button"
+      disabled={busy}
+      onclick={() => controller?.refresh()}>更新</button
+    >
+  </div>
+  {#if !view.form}{@render feedback()}{/if}
+  <section class="mail-list" aria-label="メールアカウント一覧">
+    {#if view.status === 'loading' && !view.accounts.length}<p role="status">
+        読み込み中です…
+      </p>{:else if !view.accounts.length}<p class="mail-empty">
+        アカウントはまだ登録されていません。接続情報を追加してください。
+      </p>{/if}
+    <ul>
+      {#each view.accounts as row (row.id)}<li>
+          <div class="mail-account-row">
+            <div class="mail-account-name">
+              <strong>{row.label}</strong><span
+                >Fastmail · 対象 {row.folders.filter(
+                  (folder) => folder.selected,
+                ).length} フォルダー</span
+              >
+            </div>
+            <span class="mail-badge">{states[row.state]}</span><button
+              class="mail-button"
+              aria-label={`${row.label}の接続設定`}
               disabled={busy}
               onclick={() => {
                 query = '';
+                editing = false;
                 controller?.select(row.id);
-              }}
-              ><strong>{row.label}</strong><span
-                >Fastmail · {states[row.state]}</span
-              ></button
+              }}>接続を編集</button
             >
-          </li>{/each}
-      </ul>
-    </aside>
+          </div>
+        </li>{/each}
+    </ul>
+  </section>
+  <details class="mail-guide">
+    <summary>連携について</summary>
+    <p>
+      Fastmail 専用のアプリパスワードで <code>imap.fastmail.com:993</code
+      >（TLS）に接続します。Google
+      ログインとは別の設定です。保存だけでは同期しません。本文取得・AI
+      送信は「メール解析」で個別に確認して実行します。
+    </p>
+  </details>
+  <Modal
+    open={view.form !== null}
+    title={account?.label ?? 'Fastmail を追加'}
+    {busy}
+    onclose={() => {
+      controller?.close();
+      editing = false;
+    }}
+  >
     <div class="mail-detail">
+      {@render feedback()}
       {#if view.form}
         <div class="mail-section-heading">
-          <h3>{account ? account.label : 'Fastmail を追加'}</h3>
+          <h3>{account ? 'Fastmail の接続設定' : '接続情報'}</h3>
           {#if account}<span class="mail-badge">{states[account.state]}</span
             >{/if}
         </div>
-        <form
-          onsubmit={(event) => {
-            event.preventDefault();
-            void controller?.save();
-          }}
-          autocomplete="off"
-        >
-          <h4>1. 接続情報を保存</h4>
-          <p class="mail-help">
-            {account
-              ? '接続情報を更新する場合は、メールアドレスと新しいアプリパスワードを再入力してください。保存すると以前の接続確認とフォルダー選択をリセットします。'
-              : '本人が所有する Fastmail のメールアドレスと、メール利用を許可した専用のアプリパスワードを入力してください。'}
-          </p>
-          <div class="mail-fields">
-            <label for="mail-label"
-              >表示名<input
-                id="mail-label"
-                type="text"
-                required
-                value={view.form.label}
-                disabled={busy || view.uncertain}
-                oninput={(event) =>
-                  controller?.edit({ label: event.currentTarget.value })}
-              /><span>1〜80 文字。前後の空白は除きます。</span></label
-            >
-            <label for="mail-login"
-              >Fastmail のメールアドレス<input
-                id="mail-login"
-                name="fastmail-login"
-                type="email"
-                maxlength="254"
-                required
-                autocomplete="off"
-                spellcheck="false"
-                autocapitalize="none"
-                value={view.form.login}
-                disabled={busy || view.uncertain}
-                oninput={(event) =>
-                  controller?.edit({ login: event.currentTarget.value })}
-              /><span>ログインに使用する完全なメールアドレス。</span></label
-            >
-            <label for="mail-password"
-              >専用のアプリパスワード<input
-                id="mail-password"
-                name="fastmail-app-password"
-                type="password"
-                minlength="8"
-                maxlength="1024"
-                required
-                autocomplete="new-password"
-                spellcheck="false"
-                value={view.form.app_password}
-                disabled={busy || view.uncertain}
-                oninput={(event) =>
-                  controller?.edit({ app_password: event.currentTarget.value })}
-              /><span
-                >空白を含まない半角英数・記号 8〜1024
-                文字。保存後の再表示はできません。</span
-              ></label
-            >
-          </div>
-          <div class="mail-actions">
-            <button
-              type="submit"
-              class="mail-button mail-primary"
-              disabled={busy || view.uncertain}>接続情報を保存</button
-            ><button
-              id="mail-discard"
-              type="button"
-              class="mail-button"
-              disabled={busy}
-              onclick={() => controller?.discard()}>入力を破棄</button
-            >
-          </div>
-        </form>
+        {#if !account || editing}
+          <form
+            onsubmit={(event) => {
+              event.preventDefault();
+              void controller?.save();
+            }}
+            autocomplete="off"
+          >
+            <p class="mail-help">
+              {account
+                ? '接続情報を更新する場合は、メールアドレスと新しいアプリパスワードを再入力してください。保存すると以前の接続確認とフォルダー選択をリセットします。'
+                : '本人が所有する Fastmail のメールアドレスと、メール利用を許可した専用のアプリパスワードを入力してください。'}
+            </p>
+            <div class="mail-fields">
+              <label for="mail-label"
+                >表示名<input
+                  id="mail-label"
+                  type="text"
+                  required
+                  value={view.form.label}
+                  disabled={busy || view.uncertain}
+                  oninput={(event) =>
+                    controller?.edit({ label: event.currentTarget.value })}
+                /><span>1〜80 文字。前後の空白は除きます。</span></label
+              >
+              <label for="mail-login"
+                >Fastmail のメールアドレス<input
+                  id="mail-login"
+                  name="fastmail-login"
+                  type="email"
+                  maxlength="254"
+                  required
+                  autocomplete="off"
+                  spellcheck="false"
+                  autocapitalize="none"
+                  value={view.form.login}
+                  disabled={busy || view.uncertain}
+                  oninput={(event) =>
+                    controller?.edit({ login: event.currentTarget.value })}
+                /><span>ログインに使用する完全なメールアドレス。</span></label
+              >
+              <label for="mail-password"
+                >専用のアプリパスワード<input
+                  id="mail-password"
+                  name="fastmail-app-password"
+                  type="password"
+                  minlength="8"
+                  maxlength="1024"
+                  required
+                  autocomplete="new-password"
+                  spellcheck="false"
+                  value={view.form.app_password}
+                  disabled={busy || view.uncertain}
+                  oninput={(event) =>
+                    controller?.edit({
+                      app_password: event.currentTarget.value,
+                    })}
+                /><span
+                  >空白を含まない半角英数・記号 8〜1024
+                  文字。保存後の再表示はできません。</span
+                ></label
+              >
+            </div>
+            <div class="mail-actions">
+              <button
+                type="submit"
+                class="mail-button mail-primary"
+                disabled={busy || view.uncertain}>接続情報を保存</button
+              ><button
+                id="mail-discard"
+                type="button"
+                class="mail-button"
+                disabled={busy}
+                onclick={() => controller?.discard()}>入力を破棄</button
+              >
+            </div>
+          </form>
+        {:else}<button
+            class="mail-button"
+            onclick={() => {
+              editing = true;
+            }}>接続情報を編集</button
+          >{/if}
         {#if account}
           <section class="mail-step" aria-label="接続確認">
-            <h4>2. 接続を確認</h4>
+            <h4>接続を確認</h4>
             <p class="mail-help">
               保存済みの接続情報でフォルダー一覧のみを取得します。メール本文の取得や
               AI の呼び出しはありません。
@@ -309,7 +327,7 @@
           </section>
           <section class="mail-step" aria-label="フォルダー選択">
             <div class="mail-section-heading">
-              <h4>3. 対象フォルダーを選択</h4>
+              <h4>対象フォルダー</h4>
               <span>{view.form.folder_ids.length} 件選択</span>
             </div>
             <p class="mail-help">
@@ -368,29 +386,21 @@
               >フォルダー選択を保存</button
             >
           </section>
-          {#if syncAPI}
-            {#key account.id}<MailSync
-                {account}
-                api={syncAPI}
-                {token}
-                {onDenied}
-                requests={syncRequests}
-                refreshAccount={() => {
-                  void controller?.refresh();
-                }}
-              />{/key}
-          {/if}
-          {#if processingAPI}
-            {#key account.id}<MailProcessing
-                {account}
-                api={processingAPI}
-                {token}
-                {onDenied}
-                requests={processingRequests}
-              />{/key}
-          {/if}
-          <section class="mail-step mail-disconnect" aria-label="連携解除">
-            <h4>連携を解除</h4>
+          {#if syncAPI}<details class="mail-step">
+              <summary>メールの同期</summary>
+              {#key account.id}<MailSync
+                  {account}
+                  api={syncAPI}
+                  {token}
+                  {onDenied}
+                  requests={syncRequests}
+                  refreshAccount={() => {
+                    void controller?.refresh();
+                  }}
+                />{/key}
+            </details>{/if}
+          <details class="mail-step mail-disconnect">
+            <summary>連携を解除</summary>
             <p class="mail-help">
               保存済みの資格情報と進行中の確認を無効化します。再接続には新しい接続情報が必要です。
             </p>
@@ -423,23 +433,16 @@
                 onclick={() => controller?.confirmDisconnect(true)}
                 >連携を解除する</button
               >{/if}
-          </section>
+          </details>
         {/if}
-      {:else}<div class="mail-placeholder">
-          <span aria-hidden="true">↗</span>
-          <h3>メールの入口を整える</h3>
-          <p>
-            アカウントを選ぶか、Fastmail
-            を追加してください。登録した接続情報とフォルダーは、ご本人だけが管理できます。
-          </p>
-        </div>{/if}
+      {/if}
     </div>
-  </div>
+  </Modal>
 </section>
 
 <style>
   .mail-workspace {
-    margin-top: 1.5rem;
+    margin-top: 0;
     min-width: 0;
   }
   .mail-heading,
@@ -462,7 +465,7 @@
     margin: 0;
   }
   h2 {
-    font-size: 1.75rem;
+    font-size: 1.1rem;
     margin-bottom: 0.5rem;
   }
   h3 {
@@ -477,23 +480,13 @@
   }
   .mail-heading p,
   .mail-help,
-  .mail-empty,
-  .mail-placeholder p {
+  .mail-empty {
     color: var(--color-muted);
     font-size: 0.85rem;
   }
-  .mail-heading .mail-eyebrow {
-    color: var(--color-action);
-    letter-spacing: 0.12em;
-    font-size: 0.65rem;
-    margin-bottom: 0.5rem;
-  }
   .mail-guide {
-    margin: 1.5rem 0;
-    padding: 1.2rem 1.4rem;
-    background: var(--color-surface-soft);
-    border: 1px solid var(--color-border);
-    border-radius: 0.75rem;
+    margin: 1.5rem 0 0;
+    color: var(--color-muted);
     font-size: 0.82rem;
   }
   .mail-guide p {
@@ -503,18 +496,19 @@
   code {
     overflow-wrap: anywhere;
   }
-  .mail-columns {
-    display: grid;
-    grid-template-columns: minmax(13rem, 19rem) minmax(0, 1fr);
-    border: 1px solid var(--color-border);
-    border-radius: 0.8rem;
-    overflow: hidden;
+  .mail-list-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+    font-size: 12px;
+    color: var(--color-muted);
+    border-bottom: 1px solid var(--color-border);
+    padding-bottom: 8px;
   }
-  .mail-accounts {
-    padding: 1.25rem;
-    border-right: 1px solid var(--color-border);
-    background: var(--color-surface-soft);
-    min-width: 0;
+  .mail-list-heading .mail-button {
+    border-color: transparent;
   }
   .mail-section-heading {
     margin-bottom: 1rem;
@@ -523,48 +517,39 @@
     font-size: 0.75rem;
     color: var(--color-muted);
   }
-  .mail-accounts > .mail-button {
-    width: 100%;
-  }
   ul {
     list-style: none;
-    margin: 1rem 0 0;
+    margin: 0;
     padding: 0;
   }
-  li + li {
-    margin-top: 0.5rem;
-  }
   .mail-account-row {
-    display: block;
-    width: 100%;
-    border: 1px solid var(--color-border);
-    border-radius: 0.5rem;
-    padding: 1rem;
-    text-align: left;
-    background: var(--color-surface);
-    color: var(--color-text);
-    font: inherit;
-    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--color-border);
+    padding: 18px 0;
     overflow-wrap: anywhere;
   }
-  .mail-account-row span {
+  .mail-account-name {
+    flex: 1;
+    min-width: 0;
+  }
+  .mail-account-name span {
     display: block;
-    font-size: 0.72rem;
+    font-size: 0.8rem;
     color: var(--color-muted);
     margin-top: 0.4rem;
   }
-  .mail-account-row[aria-pressed='true'] {
-    border-color: var(--color-action);
-    box-shadow: inset 3px 0 var(--color-action);
-  }
   .mail-detail {
     min-width: 0;
-    padding: clamp(1rem, 2.2vw, 2rem);
+    padding: 0;
   }
   .mail-badge {
-    border: 1px solid var(--color-border);
-    border-radius: 2rem;
-    padding: 0.3rem 0.7rem;
+    background: var(--color-surface-soft);
+    color: var(--color-action);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
   }
   .mail-help {
     margin: 0.6rem 0 1rem;
@@ -589,7 +574,7 @@
   .mail-fields label > span,
   .mail-filter > span {
     color: var(--color-muted);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     line-height: 1.7;
     font-weight: 400;
   }
@@ -636,7 +621,7 @@
   }
   .mail-primary {
     background: var(--color-action);
-    color: var(--color-surface);
+    color: var(--color-on-action);
   }
   button:disabled {
     opacity: 0.55;
@@ -656,7 +641,7 @@
   .mail-probe span {
     display: block;
     color: var(--color-muted);
-    font-size: 0.72rem;
+    font-size: 0.75rem;
     margin-top: 0.3rem;
   }
   .mail-filter {
@@ -692,21 +677,10 @@
     display: block;
     margin-top: 0.25rem;
     color: var(--color-muted);
-    font-size: 0.7rem;
+    font-size: 0.75rem;
   }
   .mail-empty {
     padding: 1rem 0.5rem;
-  }
-  .mail-placeholder {
-    padding: 4rem clamp(0.5rem, 4vw, 4rem);
-    text-align: center;
-  }
-  .mail-placeholder > span {
-    color: var(--color-action);
-    font-size: 3rem;
-  }
-  .mail-placeholder p {
-    margin-top: 1rem;
   }
   .mail-feedback {
     border-left: 3px solid var(--color-action);
@@ -724,13 +698,6 @@
     margin-top: 0.75rem;
   }
   @media (max-width: 850px) {
-    .mail-columns {
-      grid-template-columns: minmax(0, 1fr);
-    }
-    .mail-accounts {
-      border-right: 0;
-      border-bottom: 1px solid var(--color-border);
-    }
     .mail-fields {
       grid-template-columns: minmax(0, 1fr);
     }
@@ -739,19 +706,17 @@
     }
   }
   @media (max-width: 400px) {
-    .mail-guide {
-      padding: 1rem;
-    }
-    .mail-detail,
-    .mail-accounts {
-      padding: 0.85rem;
-    }
     .mail-actions {
       align-items: stretch;
       flex-direction: column;
     }
-    .mail-heading .mail-button {
-      width: 100%;
+    .mail-account-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+    }
+    .mail-account-name {
+      grid-column: 1 / -1;
     }
   }
 </style>

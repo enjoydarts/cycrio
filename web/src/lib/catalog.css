@@ -54,7 +54,7 @@
 .catalog-ui .link-button {
   min-width: 0;
   max-width: 100%;
-  min-height: 2.6rem;
+  min-height: 2.75rem;
   margin: 0.65rem 0 0;
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--color-border);
@@ -69,7 +69,7 @@
 }
 .catalog-ui button.primary {
   background: var(--color-action);
-  color: var(--color-surface);
+  color: var(--color-on-action);
 }
 .catalog-ui button:disabled {
   opacity: 0.6;
@@ -124,7 +124,7 @@
   max-width: 100%;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   background: var(--color-surface-soft);
   padding: 0.7rem;
   border-radius: 0.5rem;
@@ -135,7 +135,7 @@
   padding: 0.4rem 0;
 }
 .catalog-ui .error {
-  color: #9f1239;
+  color: var(--color-danger);
 }
 .catalog-ui .success {
   color: var(--color-action-hover);
@@ -205,7 +205,7 @@
   color: var(--color-muted);
 }
 .catalog-ui .search-error {
-  color: #9f1239;
+  color: var(--color-danger);
 }
 .catalog-ui .result-count {
   font-weight: 600;
@@ -237,7 +237,7 @@
 }
 .catalog-ui th span:not(.sr-only) {
   display: block;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 400;
 }
 .catalog-ui td {
@@ -262,7 +262,7 @@
 .catalog-ui .model-name code {
   color: var(--color-muted);
   margin-top: 0.15rem;
-  font-size: 0.7rem;
+  font-size: 0.75rem;
 }
 .catalog-ui .numeric {
   text-align: right;
@@ -278,7 +278,7 @@
   display: inline-block;
   padding: 0.1rem 0.5rem;
   border-radius: 2rem;
-  font-size: 0.72rem;
+  font-size: 0.75rem;
   background: var(--color-surface-soft);
   color: var(--color-muted);
   white-space: nowrap;
@@ -302,7 +302,7 @@
   flex: 0 1 auto;
 }
 .catalog-ui .price-note {
-  font-size: 0.74rem;
+  font-size: 0.75rem;
   margin-top: 0.75rem;
 }
 .catalog-ui .model-browser,
@@ -334,7 +334,7 @@
 }
 .catalog-ui .stage-selector [aria-pressed='true'] {
   background: var(--color-action);
-  color: var(--color-surface);
+  color: var(--color-on-action);
 }
 .catalog-ui .sr-only {
   position: absolute;
@@ -415,7 +415,7 @@
   .catalog-ui td[data-label]:not(.model-name)::before {
     content: attr(data-label);
     display: block;
-    font-size: 0.65rem;
+    font-size: 0.75rem;
     color: var(--color-muted);
   }
   .catalog-ui .model-name,

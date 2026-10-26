@@ -1,19 +1,10 @@
 <script lang="ts">
-  import AccessPanel from '#lib/AccessPanel.svelte';
+  import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  onMount(() => {
+    void goto('/settings/mail', { replaceState: true });
+  });
 </script>
 
-<svelte:head
-  ><title>Cycrio — メール連携</title><meta
-    name="description"
-    content="自分の Fastmail 接続情報と対象フォルダーを管理します。"
-  /></svelte:head
->
-<main><AccessPanel mode="mail" /></main>
-
-<style>
-  main {
-    flex: 1;
-    min-width: 0;
-    padding: 2rem 0 3rem;
-  }
-</style>
+<svelte:head><title>メール連携 — Cycrio</title></svelte:head>
+<p role="status">メール連携を開いています…</p>

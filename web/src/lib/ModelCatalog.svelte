@@ -199,7 +199,9 @@
         aria-label={`${model.display_name} の詳細`}
       >
         <h3 id="model-detail-heading" tabindex="-1">{model.display_name}</h3>
-        <code>{model.id}</code>
+        <details>
+          <summary>モデルの技術情報</summary><code>{model.id}</code>
+        </details>
         <p>
           API 掲載：{model.available ? 'あり' : 'なし'} · 情報元：{model.source ===
           'api'
