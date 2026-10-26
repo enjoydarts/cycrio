@@ -35,12 +35,19 @@
     controller = $state<ReturnType<typeof createMailProcessingController>>();
   let selected = $state(''),
     unknownConfirmed = $state(false),
-    reviewing = $state(false);
+    reviewing = $state(false),
+    selectionTouched = $state(false);
   const busy = $derived(
     reviewing || view.status === 'loading' || view.status === 'saving',
   );
   const canSend = $derived(
-    !busy && !view.uncertain && !view.conflict && !!view.preview?.ready,
+    !!selected &&
+      view.account === selected &&
+      view.preview?.account_id === selected &&
+      !busy &&
+      !view.uncertain &&
+      !view.conflict &&
+      !!view.preview?.ready,
   );
   const scope = $derived(JSON.stringify(view.form.basis));
   $effect(() => {
@@ -48,13 +55,14 @@
     unknownConfirmed = false;
   });
   $effect(() => {
-    if (active && controller && selected) {
+    if (active && controller) {
       controller.setAccount(selected);
-      void controller.refresh();
+      if (selected) void controller.refresh();
     }
   });
   $effect(() => {
-    if (active && !selected && accounts.length === 1) selected = accounts[0].id;
+    if (active && !selectionTouched && !selected && accounts.length === 1)
+      selected = accounts[0].id;
   });
   onMount(() => {
     controller = createMailProcessingController(
@@ -81,6 +89,12 @@
     };
   });
   async function submit(replay = false) {
+    if (
+      !selected ||
+      view.account !== selected ||
+      view.preview?.account_id !== selected
+    )
+      return;
     if (replay) await controller?.replay();
     else if (retry)
       await controller?.retrySelected(
@@ -112,7 +126,10 @@
         aria-label="メールアカウント"
         disabled={view.status === 'saving' || view.uncertain || !!retry}
         value={selected}
-        onchange={(e) => (selected = e.currentTarget.value)}
+        onchange={(e) => {
+          selectionTouched = true;
+          selected = e.currentTarget.value;
+        }}
         ><option value="">選択してください</option
         >{#each accounts as account}<option value={account.id}
             >{account.label}</option

@@ -121,6 +121,38 @@ test('result-first preview mode never reads legacy capped collections or automat
   s.controller.dispose();
   c.dispose();
 });
+test('clearing the account removes consent and aborts a preview that cannot later restore its data', async () => {
+  const delayed = deferred<ReturnType<typeof processingPreview>>();
+  let reads = 0,
+    signal: AbortSignal | undefined;
+  const s = setup({
+    preview: async (_account, _token, currentSignal) => {
+      if (++reads === 1) return processingPreview();
+      signal = currentSignal;
+      return delayed.promise;
+    },
+  });
+  await s.controller.refresh();
+  s.controller.edit({ max_messages: '1', confirmed: true });
+  s.controller.setAccount('');
+  assert.equal(s.controller.state().preview, null);
+  assert.equal(s.controller.state().form.confirmed, false);
+  assert.equal(s.controller.state().form.max_messages, '');
+  await s.controller.start();
+  assert.equal(s.calls.filter((c) => c.operation === 'start').length, 0);
+  s.controller.setAccount(ids.account);
+  const pending = s.controller.refresh();
+  s.controller.setAccount('');
+  assert.equal(signal?.aborted, true);
+  delayed.resolve(processingPreview());
+  await pending;
+  assert.equal(s.controller.state().account, '');
+  assert.equal(s.controller.state().preview, null);
+  assert.equal(s.controller.state().form.confirmed, false);
+  await s.controller.start();
+  assert.equal(s.calls.filter((c) => c.operation === 'start').length, 0);
+  s.controller.dispose();
+});
 test('mount GETs only; explicit confirmed start suppresses double click and polling only GETs', async () => {
   const wait = deferred<ReturnType<typeof processingRun>>();
   let accepted = false;
