@@ -62,10 +62,15 @@ func (r *BillingRepository) changeSource(ctx context.Context, owner, contract, i
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return billing.Entry{}, billingError(e)
 	}
+	// A detach retry is complete once this entry no longer owns the source,
+	// including when another entry has attached it in the meantime.
+	if !attach && existing != id {
+		return out, nil
+	}
 	if existing != "" && existing != id {
 		return billing.Entry{}, billing.NewConflict("source_conflict")
 	}
-	if attach && existing == id || !attach && existing == "" {
+	if attach && existing == id {
 		return out, nil
 	}
 	if out.Version != in.ExpectedVersion {

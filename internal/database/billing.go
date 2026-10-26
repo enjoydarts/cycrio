@@ -140,7 +140,7 @@ func (r *BillingRepository) Create(ctx context.Context, owner, contract string, 
 			return billing.Entry{}, billingError(e)
 		}
 	}
-	if e = checkBillingRefund(ctx, tx, owner, contract, "", in.Values); e != nil {
+	if e = checkBillingRefund(ctx, tx, owner, contract, "", in.Values, nil); e != nil {
 		return billing.Entry{}, e
 	}
 	if e = checkBillingDuplicates(ctx, tx, owner, contract, "", in.Values, in.DuplicateConfirmed, in.DuplicateToken); e != nil {
@@ -179,7 +179,7 @@ func (r *BillingRepository) Update(ctx context.Context, owner, contract, id stri
 	if old.Version != in.ExpectedVersion {
 		return billing.Entry{}, billing.NewConflict("version_conflict")
 	}
-	if e = checkBillingRefund(ctx, tx, owner, contract, id, in.Values); e != nil {
+	if e = checkBillingRefund(ctx, tx, owner, contract, id, in.Values, &old.Values); e != nil {
 		return billing.Entry{}, e
 	}
 	if e = checkBillingDuplicates(ctx, tx, owner, contract, id, in.Values, in.DuplicateConfirmed, in.DuplicateToken); e != nil {
@@ -194,7 +194,7 @@ func (r *BillingRepository) Update(ctx context.Context, owner, contract, id stri
 
 // All callers hold the owner lock, making both parent guards and partial-refund
 // totals atomic with mutations across contracts and concurrent requests.
-func checkBillingRefund(ctx context.Context, tx pgx.Tx, owner, contract, id string, v billing.Values) error {
+func checkBillingRefund(ctx context.Context, tx pgx.Tx, owner, contract, id string, v billing.Values, old *billing.Values) error {
 	if id != "" {
 		var count, badCurrency int
 		var total string
@@ -217,7 +217,10 @@ func checkBillingRefund(ctx context.Context, tx pgx.Tx, owner, contract, id stri
 	if e != nil {
 		return billingError(e)
 	}
-	if kind != "payment" || currency != v.Currency || (v.State == "active" || id == "") && state != "active" {
+	// Only an unchanged historical parent may remain voided. Choosing a new
+	// parent requires an active payment even while the refund itself is voided.
+	sameParent := old != nil && old.Kind == "refund" && old.RefundOfID != nil && strings.EqualFold(*old.RefundOfID, *v.RefundOfID)
+	if kind != "payment" || currency != v.Currency || (v.State == "active" || !sameParent) && state != "active" {
 		return billing.NewConflict("refund_conflict")
 	}
 	if v.State == "voided" {
