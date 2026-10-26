@@ -340,7 +340,7 @@ func TestMailProcessingMigrationSevenDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 6)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 7 {
+	if e != nil || len(down) != 2 || down[0].Source.Version != 8 || down[1].Source.Version != 7 {
 		t.Fatal(down, e)
 	}
 	var exists bool
@@ -351,7 +351,7 @@ func TestMailProcessingMigrationSevenDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	var version int
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 7 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 8 {
 		t.Fatal(version, e)
 	}
 }

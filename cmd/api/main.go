@@ -66,7 +66,8 @@ func run() error {
 	store := database.NewStore(pool)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
 	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring))), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	subscriptionRepository := database.NewSubscriptionRepository(pool)
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

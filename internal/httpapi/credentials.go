@@ -26,6 +26,8 @@ type handlerOptions struct {
 	mail           MailAccountService
 	mailSync       MailSyncService
 	mailProcessing MailProcessingService
+	subscriptions  SubscriptionService
+	analysisFeed   AnalysisFeedService
 }
 type Option func(*handlerOptions)
 

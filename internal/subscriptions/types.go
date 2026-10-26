@@ -1,0 +1,105 @@
+// Package subscriptions stores owner-confirmed contracts separately from AI results.
+package subscriptions
+
+import (
+	"errors"
+	"time"
+
+	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/mailprocessing"
+)
+
+var (
+	ErrInvalid     = errors.New("invalid subscription request")
+	ErrConflict    = errors.New("subscription conflict")
+	ErrNotFound    = errors.New("subscription not found")
+	ErrUnavailable = errors.New("subscription unavailable")
+)
+
+type Values struct {
+	Service         string  `json:"service"`
+	Plan            *string `json:"plan"`
+	Amount          *string `json:"amount"`
+	Currency        *string `json:"currency"`
+	IntervalUnit    *string `json:"interval_unit"`
+	IntervalCount   *int    `json:"interval_count"`
+	NextBillingDate *string `json:"next_billing_date"`
+	Status          string  `json:"status"`
+}
+type Source struct {
+	ResultID      string   `json:"result_id"`
+	EventIndex    int      `json:"event_index"`
+	OriginalEvent ai.Event `json:"original_event"`
+}
+type Subscription struct {
+	ID      string `json:"id"`
+	Version int64  `json:"version"`
+	Values
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+	Sources   []Source  `json:"sources"`
+}
+type CreateInput struct {
+	Values
+	RequestID        string  `json:"request_id"`
+	SourceResultID   *string `json:"source_result_id"`
+	SourceEventIndex *int    `json:"source_event_index"`
+	Confirmed        bool    `json:"confirmed"`
+}
+type UpdateInput struct {
+	Values
+	ExpectedVersion int64 `json:"expected_version"`
+	Confirmed       bool  `json:"confirmed"`
+}
+type SourceInput struct {
+	ExpectedVersion  int64  `json:"expected_version"`
+	SourceResultID   string `json:"source_result_id"`
+	SourceEventIndex int    `json:"source_event_index"`
+	Confirmed        bool   `json:"confirmed"`
+}
+type Filter struct {
+	Query  string
+	Status string
+	Sort   string
+	Limit  int
+	Offset int
+}
+type Page struct {
+	Subscriptions []Subscription `json:"subscriptions"`
+	Total         int            `json:"total"`
+	Limit         int            `json:"limit"`
+	Offset        int            `json:"offset"`
+}
+type AnalysisFilter struct {
+	AccountID string
+	State     string
+	Review    string
+	Limit     int
+	Offset    int
+}
+type Registration struct {
+	EventIndex     int    `json:"event_index"`
+	SubscriptionID string `json:"subscription_id"`
+}
+type AnalysisResult struct {
+	mailprocessing.Result
+	AccountID     string         `json:"account_id"`
+	AccountLabel  string         `json:"account_label"`
+	Registrations []Registration `json:"registrations"`
+}
+type AnalysisPage struct {
+	Results []AnalysisResult `json:"results"`
+	Total   int              `json:"total"`
+	Limit   int              `json:"limit"`
+	Offset  int              `json:"offset"`
+}
+type AnalysisRun struct {
+	mailprocessing.Run
+	AccountLabel string `json:"account_label"`
+}
+type RunPage struct {
+	Runs   []AnalysisRun `json:"runs"`
+	Total  int           `json:"total"`
+	Limit  int           `json:"limit"`
+	Offset int           `json:"offset"`
+}
