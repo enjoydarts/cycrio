@@ -10,7 +10,9 @@ function fixture(response: (url: string) => Response, signedIn = true) {
   let unsubscribed = false;
   const sdk: AuthSDK = {
     user: signedIn ? { id: 'user_clerk_self' } : null,
-    session: signedIn ? { getToken: async () => 'session' } : null,
+    session: signedIn
+      ? { id: 'sess_self', getToken: async () => 'session' }
+      : null,
     addListener: (callback) => {
       listener = callback;
       return () => {
@@ -101,6 +103,52 @@ test('allowed user identity comes from the server', async () => {
     assert.deepEqual(state.user, { id: 'internal-id', role: 'user' });
   controller.dispose();
 });
+
+for (const mode of ['home', 'mail', 'admin'] as const) {
+  test(`${mode}: same-session SDK update keeps the allowed panel mounted while rechecking access`, async () => {
+    const identity = { id: 'internal-id', role: 'platform_admin' as const };
+    const f = fixture((url) =>
+      Response.json(
+        url.endsWith('/me') ? identity : { role: 'platform_admin' },
+      ),
+    );
+    const controller = createAuthController(
+      f.api,
+      mode,
+      f.changed,
+      async () => f.sdk,
+    );
+    await controller.start();
+    assert.equal(f.states.at(-1)?.status, 'allowed');
+    let release: ((value: typeof identity) => void) | undefined;
+    let calls = 0;
+    f.api.me = async () => {
+      calls++;
+      return new Promise<typeof identity>((resolve) => {
+        release = resolve;
+      });
+    };
+    const before = f.states.length;
+    try {
+      f.listener();
+      for (let i = 0; i < 20 && !release; i++)
+        await new Promise((r) => setTimeout(r, 0));
+      assert.equal(
+        calls,
+        1,
+        'SDK changes must still revalidate server permissions',
+      );
+      assert.deepEqual(
+        f.states.slice(before),
+        [],
+        'background verification must not unmount editable forms',
+      );
+    } finally {
+      release?.(identity);
+      controller.dispose();
+    }
+  });
+}
 
 test('mail route permits ordinary allowed users without checking administrator status', async () => {
   const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
@@ -292,7 +340,7 @@ test('management uses the existing current Clerk session and cannot get a token 
   );
   assert.equal(await controller.getToken(), null);
   await controller.start();
-  f.sdk.session = { getToken: async () => 'fresh-session' };
+  f.sdk.session = { id: 'sess_fresh', getToken: async () => 'fresh-session' };
   assert.equal(await controller.getToken(), 'fresh-session');
   controller.dispose();
   assert.equal(await controller.getToken(), null);
@@ -315,5 +363,140 @@ test('auth views normalize management-only error codes', async () => {
     code: 'dependency_unavailable',
     signedIn: true,
   });
+  controller.dispose();
+});
+
+test('same session ID survives SDK resource replacement without hiding the panel', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'mail',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  const before = f.states.length;
+  f.sdk.session = { id: 'sess_self', getToken: async () => 'renewed' };
+  f.listener();
+  for (let i = 0; i < 20 && f.states.length === before; i++)
+    await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(f.states.slice(before), [
+    { status: 'allowed', user: { id: 'internal-id', role: 'user' } },
+  ]);
+  controller.dispose();
+});
+
+test('explicit access recheck hides the panel immediately even for the same session', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'mail',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  let release!: (value: { id: string; role: 'user' }) => void;
+  f.api.me = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const running = controller.refresh();
+  assert.equal(f.states.at(-1)?.status, 'checking');
+  release({ id: 'internal-id', role: 'user' });
+  await running;
+  controller.dispose();
+});
+
+for (const changed of ['user', 'session'] as const) {
+  test(`SDK ${changed} switch removes the old panel before the new permission check completes`, async () => {
+    const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+    const controller = createAuthController(
+      f.api,
+      'mail',
+      f.changed,
+      async () => f.sdk,
+    );
+    await controller.start();
+    f.api.me = async () => new Promise(() => {});
+    if (changed === 'user') f.sdk.user = { id: 'user_other' };
+    else f.sdk.session = { id: 'sess_other', getToken: async () => 'other' };
+    f.listener();
+    assert.equal(f.states.at(-1)?.status, 'checking');
+    controller.dispose();
+  });
+}
+
+for (const [status, expected] of [
+  [401, 'error'],
+  [403, 'pending'],
+  [503, 'error'],
+] as const) {
+  test(`same-session permission check ${status} removes the allowed panel`, async () => {
+    let denied = false;
+    const f = fixture(() =>
+      denied
+        ? new Response(null, { status })
+        : Response.json({ id: 'internal-id', role: 'user' }),
+    );
+    const controller = createAuthController(
+      f.api,
+      'mail',
+      f.changed,
+      async () => f.sdk,
+    );
+    await controller.start();
+    denied = true;
+    f.listener();
+    for (let i = 0; i < 20 && f.states.at(-1)?.status !== expected; i++)
+      await new Promise((r) => setTimeout(r, 0));
+    assert.equal(f.states.at(-1)?.status, expected);
+    controller.dispose();
+  });
+}
+
+test('sign-out during background access checking cannot restore a late allowed response', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'mail',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  let release!: (value: { id: string; role: 'user' }) => void;
+  f.api.me = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  f.listener();
+  f.sdk.user = null;
+  f.sdk.session = null;
+  f.listener();
+  const count = f.states.length;
+  release({ id: 'internal-id', role: 'user' });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(f.states.at(-1)?.status, 'signed_out');
+  assert.equal(f.states.length, count);
+  controller.dispose();
+});
+
+test('token resolved after the same SDK resource changes session identity is discarded', async () => {
+  const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
+  const controller = createAuthController(
+    f.api,
+    'mail',
+    f.changed,
+    async () => f.sdk,
+  );
+  await controller.start();
+  let release!: (token: string) => void;
+  f.sdk.session!.getToken = () =>
+    new Promise((resolve) => {
+      release = resolve;
+    });
+  const running = controller.getToken();
+  f.sdk.session!.id = 'sess_other';
+  release('previous-session-token');
+  assert.equal(await running, null);
   controller.dispose();
 });

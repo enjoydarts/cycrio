@@ -3,7 +3,8 @@ import { ApiError, type createAPI, type CurrentUser } from './api.ts';
 
 export type AuthSDK = {
   user: { id: string } | null | undefined;
-  session: { getToken: () => Promise<string | null> } | null | undefined;
+  session:
+    { id: string; getToken: () => Promise<string | null> } | null | undefined;
   addListener: (callback: () => void) => () => void;
   signOut: () => Promise<void>;
   mountSignIn: Clerk['mountSignIn'];
@@ -92,8 +93,18 @@ export function createAuthController(
   let unsubscribe: (() => void) | undefined;
   let generation = 0;
   let request = new AbortController();
+  type SessionScope = { clerkUserId: string; sessionId: string };
+  let allowedScope: SessionScope | undefined;
+
+  function sameSession(scope: SessionScope) {
+    return (
+      sdk?.user?.id === scope.clerkUserId &&
+      sdk?.session?.id === scope.sessionId
+    );
+  }
 
   function emit(state: AuthState) {
+    if (state.status !== 'allowed') allowedScope = undefined;
     if (!disposed) changed(state);
   }
 
@@ -104,21 +115,32 @@ export function createAuthController(
     return { id: generation, signal: request.signal };
   }
 
-  async function refresh() {
+  async function refresh(background = false) {
     if (disposed || !sdk) return;
     const current = nextRequest();
     const user = sdk.user;
-    if (!user || !sdk.session) {
+    const session = sdk.session;
+    if (!user || !session) {
       emit({ status: 'signed_out' });
       return;
     }
-    emit({ status: 'checking' });
+    const scope = { clerkUserId: user.id, sessionId: session.id };
+    // SDK resource/token notifications for the verified session must not
+    // unmount editable panels. Explicit rechecks still clear them immediately.
+    if (!background || !allowedScope || !sameSession(allowedScope))
+      emit({ status: 'checking' });
     try {
-      const token = async () => (await sdk?.session?.getToken()) ?? null;
+      const token = async () => {
+        if (!sameSession(scope)) return null;
+        const value = await session.getToken();
+        return sameSession(scope) ? value : null;
+      };
       if (mode === 'admin') await api.adminStatus(token, current.signal);
       const identity = await api.me(token, current.signal);
-      if (generation === current.id)
+      if (!disposed && generation === current.id && sameSession(scope)) {
+        allowedScope = scope;
         emit({ status: 'allowed', user: identity });
+      }
     } catch (error) {
       if (disposed || generation !== current.id) return;
       const code = authError(error);
@@ -161,7 +183,7 @@ export function createAuthController(
         return;
       }
       unsubscribe = sdk.addListener(() => {
-        void refresh();
+        void refresh(true);
       });
       await refresh();
     } catch (error) {
@@ -176,12 +198,13 @@ export function createAuthController(
 
   return {
     start,
-    refresh,
+    refresh: () => refresh(),
     async getToken() {
       if (disposed || !sdk?.user || !sdk.session) return null;
       const session = sdk.session;
+      const scope = { clerkUserId: sdk.user.id, sessionId: session.id };
       const token = await session.getToken();
-      return !disposed && sdk.session === session && sdk.user ? token : null;
+      return !disposed && sameSession(scope) ? token : null;
     },
     mountAuth(node: HTMLDivElement, signUp = false) {
       if (!sdk || disposed) return () => {};
