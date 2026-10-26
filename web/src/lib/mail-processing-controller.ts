@@ -77,6 +77,7 @@ export function createMailProcessingController(
   onDenied: () => void,
   randomUUID: () => string = () => crypto.randomUUID(),
   pending: ProcessingRequests = new Map(),
+  feedOnly = false,
 ) {
   let view = emptyProcessingView(),
     generation = 0,
@@ -129,8 +130,8 @@ export function createMailProcessingController(
     try {
       const [preview, runs, results] = await Promise.all([
         api.preview(account, token, signal),
-        api.runs(account, token, signal),
-        api.results(account, token, signal),
+        feedOnly ? Promise.resolve([]) : api.runs(account, token, signal),
+        feedOnly ? Promise.resolve([]) : api.results(account, token, signal),
       ]);
       if (!current(seq)) return;
       const latest = basis(preview),
@@ -285,6 +286,14 @@ export function createMailProcessingController(
       unknownConfirmed: boolean,
     ) {
       const result = view.results.find((r) => r.id === resultID);
+      if (result)
+        await this.retrySelected(result, chargeConfirmed, unknownConfirmed);
+    },
+    async retrySelected(
+      result: ProcessingResult,
+      chargeConfirmed: boolean,
+      unknownConfirmed: boolean,
+    ) {
       if (
         !mayStart() ||
         !result ||
@@ -308,11 +317,16 @@ export function createMailProcessingController(
     },
     async cancel(runID: string) {
       const run = view.runs.find((r) => r.id === runID);
+      if (run) await this.cancelSelected(run);
+    },
+    async cancelSelected(run: ProcessingRun) {
+      const runID = run.id;
       if (
         !allowed() ||
         mutating !== null ||
         !view.account ||
         !run ||
+        run.account_id !== view.account ||
         !processingActive(run)
       )
         return;

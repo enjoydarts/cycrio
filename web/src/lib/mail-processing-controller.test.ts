@@ -72,6 +72,55 @@ function setup(
   controller.setAccount(ids.account);
   return { controller, calls, pending, denied: () => denied };
 }
+test('explicit selected result and run work beyond legacy latest100/latest20 collections', async () => {
+  const s = setup({ results: async () => [], runs: async () => [] });
+  await s.controller.refresh();
+  await s.controller.retrySelected(
+    processingResult({ state: 'unknown' }),
+    true,
+    false,
+  );
+  assert.equal(s.calls.filter((x) => x.operation === 'retry').length, 0);
+  await s.controller.retrySelected(
+    processingResult({ state: 'unknown' }),
+    true,
+    true,
+  );
+  assert.equal(s.calls.filter((x) => x.operation === 'retry').length, 1);
+  await s.controller.cancelSelected(processingRun());
+  assert.equal(s.calls.filter((x) => x.operation === 'cancel').length, 1);
+});
+test('result-first preview mode never reads legacy capped collections or automatically posts', async () => {
+  const calls: string[] = [];
+  const s = setup();
+  const api = {
+    preview: async () => {
+      calls.push('preview');
+      return processingPreview();
+    },
+    runs: async () => {
+      throw Error('legacy runs forbidden');
+    },
+    results: async () => {
+      throw Error('legacy results forbidden');
+    },
+  } as unknown as MailProcessingAPI;
+  const c = createMailProcessingController(
+    api,
+    async () => 't',
+    () => {},
+    () => {},
+    () => ids.request,
+    new Map(),
+    true,
+  );
+  c.setAccount(ids.account);
+  await c.refresh();
+  assert.equal(c.state().status, 'ready');
+  assert.deepEqual(calls, ['preview']);
+  s.controller.dispose();
+  c.dispose();
+});
 test('mount GETs only; explicit confirmed start suppresses double click and polling only GETs', async () => {
   const wait = deferred<ReturnType<typeof processingRun>>();
   let accepted = false;

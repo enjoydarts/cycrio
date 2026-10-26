@@ -341,7 +341,7 @@ const currencies = new Set(
     ' ',
   ),
 );
-function event(value: unknown): ProcessingEvent {
+export function parseProcessingEvent(value: unknown): ProcessingEvent {
   const v = record(value);
   return {
     service: text(v.service, 128),
@@ -386,7 +386,7 @@ export function parseProcessingResult(value: unknown): ProcessingResult {
       choice(x, ['subscription_related', 'not_related', 'uncertain']),
     ),
     error_code: choice(v.error_code, processingErrorCodes),
-    events: array(v.events, event, 32),
+    events: array(v.events, parseProcessingEvent, 32),
     finished_at: timestamp(v.finished_at),
   };
 }

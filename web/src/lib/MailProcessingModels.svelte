@@ -99,13 +99,13 @@
     margin: 0;
   }
   h5 {
-    font-size: 0.85rem;
+    font-size: 1rem;
     margin-bottom: 0.5rem;
   }
   p,
   .note,
   dl {
-    font-size: 0.78rem;
+    font-size: 1rem;
     line-height: 1.9;
   }
   p span {

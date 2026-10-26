@@ -61,7 +61,7 @@ test('settings navigation renders real routes and withholds administrator names 
   assert.match(admin, /href="\/settings\/usage"[^>]*aria-current="page"/);
   assert.match(admin, /href="\/settings\/mail-policy"/);
 });
-test('all settings components are behind the route permission guard; unknown sections have a distinct result', async () => {
+test('static settings composition includes permission branches and each settings component', async () => {
   const source = await readFile(
     new URL('../routes/settings/[section]/+page.svelte', import.meta.url),
     'utf8',

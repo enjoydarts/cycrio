@@ -1,0 +1,134 @@
+import type { TokenProvider } from './api.ts';
+import {
+  parseProcessingResult,
+  parseProcessingRun,
+  type ProcessingResult,
+  type ProcessingRun,
+} from './mail-processing-api.ts';
+import {
+  array,
+  choice,
+  createDailyRequest,
+  input,
+  integer,
+  invalid,
+  pagination,
+  record,
+  text,
+  uuid,
+} from './daily-api.ts';
+export type AnalysisResult = ProcessingResult & {
+  account_id: string;
+  account_label: string;
+  registrations: { event_index: number; subscription_id: string }[];
+};
+export type AnalysisRun = ProcessingRun & { account_label: string };
+export type AnalysisFilter = {
+  account_id: string;
+  state: 'all' | 'related' | 'failed' | 'unknown' | 'not_related';
+  review: 'all' | 'pending' | 'registered';
+  limit: number;
+  offset: number;
+};
+export type AnalysisPage = {
+  results: AnalysisResult[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+export type RunPage = {
+  runs: AnalysisRun[];
+  total: number;
+  limit: number;
+  offset: number;
+};
+export function parseAnalysisResult(value: unknown): AnalysisResult {
+  const v = record(value),
+    result = parseProcessingResult(v);
+  const registrations = array(
+    v.registrations,
+    (x) => {
+      const r = record(x);
+      return {
+        event_index: integer(r.event_index, 0, result.events.length - 1),
+        subscription_id: uuid(r.subscription_id),
+      };
+    },
+    32,
+  );
+  if (
+    new Set(registrations.map((r) => r.event_index)).size !==
+    registrations.length
+  )
+    return invalid();
+  return {
+    ...result,
+    account_id: uuid(v.account_id),
+    account_label: text(v.account_label, 200),
+    registrations,
+  };
+}
+export function createAnalysisAPI(base: string, fetcher: typeof fetch = fetch) {
+  const request = createDailyRequest(base, fetcher);
+  return {
+    async results(
+      f: AnalysisFilter,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<AnalysisPage> {
+      const query = input(() => {
+        const state = choice(f.state, [
+            'all',
+            'related',
+            'failed',
+            'unknown',
+            'not_related',
+          ]),
+          review = choice(f.review, ['all', 'pending', 'registered']);
+        if (review !== 'all' && state !== 'related') return invalid();
+        return new URLSearchParams({
+          ...(f.account_id ? { account_id: uuid(f.account_id) } : {}),
+          state,
+          review,
+          limit: String(integer(f.limit, 1, 100)),
+          offset: String(integer(f.offset)),
+        });
+      });
+      const v = record(
+        await request(`/v1/analysis/results?${query}`, token, signal),
+      );
+      return {
+        results: array(v.results, parseAnalysisResult),
+        ...pagination(v),
+      };
+    },
+    async runs(
+      f: Pick<AnalysisFilter, 'account_id' | 'limit' | 'offset'>,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<RunPage> {
+      const query = input(
+        () =>
+          new URLSearchParams({
+            ...(f.account_id ? { account_id: uuid(f.account_id) } : {}),
+            limit: String(integer(f.limit, 1, 100)),
+            offset: String(integer(f.offset)),
+          }),
+      );
+      const v = record(
+        await request(`/v1/analysis/runs?${query}`, token, signal),
+      );
+      return {
+        runs: array(v.runs, (x) => {
+          const r = record(x);
+          return {
+            ...parseProcessingRun(r, uuid(r.account_id)),
+            account_label: text(r.account_label, 200),
+          };
+        }),
+        ...pagination(v),
+      };
+    },
+  };
+}
+export type AnalysisAPI = ReturnType<typeof createAnalysisAPI>;
