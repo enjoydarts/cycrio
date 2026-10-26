@@ -14,11 +14,14 @@
   import SubscriptionForm from './SubscriptionForm.svelte';
   import EventFields from './EventFields.svelte';
   import BillingHistory from './BillingHistory.svelte';
+  import ScheduleCalculator from './ScheduleCalculator.svelte';
+  import type { ScheduleDrafts } from './schedule-controller.ts';
   import './daily.css';
   let { id }: { id: string } = $props();
   const session = getAppSession(),
     token = session.token,
     api = createSubscriptionsAPI(PUBLIC_API_BASE_URL);
+  const scheduleDrafts: ScheduleDrafts = new Map();
   let view = $state<FeedView<Subscription>>({
       page: null,
       status: 'idle',
@@ -37,7 +40,10 @@
       session.onDenied,
     );
     void controller.load(id);
-    return () => controller?.dispose();
+    return () => {
+      controller?.dispose();
+      scheduleDrafts.clear();
+    };
   });
 </script>
 
@@ -86,7 +92,16 @@
         </div>
         <div>
           <dt>次回請求日</dt>
-          <dd>{s.next_billing_date ?? '不明'}</dd>
+          <dd>
+            {s.next_billing_date ?? '不明'}
+            {#key s.id}<ScheduleCalculator
+                subscription={s}
+                drafts={scheduleDrafts}
+                onSaved={() => {
+                  void controller?.load(id);
+                }}
+              />{/key}
+          </dd>
         </div>
         <div>
           <dt>状態</dt>

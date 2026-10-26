@@ -1,0 +1,79 @@
+.schedule-entry {
+  margin-top: 10px;
+}
+.schedule-entry > button {
+  font-size: 13px;
+}
+.schedule-conditions {
+  margin-top: 10px;
+  font-size: 12px;
+  line-height: 1.8;
+}
+.schedule-conditions summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  color: var(--color-muted);
+}
+.schedule-conditions p {
+  margin: 8px 0;
+}
+.schedule {
+  min-width: 0;
+  line-height: 1.8;
+}
+.schedule fieldset {
+  border: 0;
+  padding: 0;
+  margin: 16px 0;
+  min-width: 0;
+}
+.schedule :is(input:not([type='checkbox']), select) {
+  min-height: 44px;
+}
+.schedule-legend {
+  font-weight: 600;
+  margin-top: 16px;
+}
+.schedule-asof {
+  margin-top: 16px !important;
+  font-size: 13px;
+}
+.schedule-warning {
+  color: var(--color-danger);
+  margin: 12px 0 !important;
+}
+.schedule-review {
+  border-block: 1px solid var(--color-border);
+  padding: 16px 0;
+  margin: 20px 0;
+}
+.schedule-review h3 {
+  font-size: 16px;
+  margin: 0 0 8px;
+}
+.schedule-comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
+.schedule-comparison > div {
+  min-width: 0;
+}
+.schedule-comparison dt {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.schedule :is(p, dd, label, button) {
+  overflow-wrap: anywhere;
+}
+@media (max-width: 500px) {
+  .schedule-comparison {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .schedule .primary {
+    width: 100%;
+  }
+}
