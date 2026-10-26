@@ -524,18 +524,20 @@ export function createBillingEditor(
         ) {
           pending = null;
           previewKey = null;
+          const changedFacts =
+            !view.baseline || !matching(saved, view.baseline);
           publish({
-            baseline: saved,
+            baseline: changedFacts ? view.baseline : saved,
             saved: null,
-            latest: null,
-            status: 'ready',
+            latest: changedFacts ? saved : null,
+            status: changedFacts ? 'error' : 'ready',
             uncertain: false,
-            conflict: false,
+            conflict: changedFacts,
             confirmed: false,
             duplicateConfirmed: false,
             duplicates: null,
-            error: null,
-            reason: null,
+            error: changedFacts ? 'conflict' : null,
+            reason: changedFacts ? 'version_conflict' : null,
           });
         } else success(saved);
       }

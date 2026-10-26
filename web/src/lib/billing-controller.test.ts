@@ -457,6 +457,179 @@ test('changing an existing history source preserves unsaved financial inputs and
   assert.equal(c.state().saved, null);
   assert.equal(c.state().baseline?.version, 2);
 });
+test('source desired-state responses retain the financial CAS baseline until explicit rebase when other facts changed', async (t) => {
+  const changes: Partial<BillingEntry>[] = [
+    { amount: '20' },
+    { kind: 'invoice' },
+    { occurred_on: '2026-10-02' },
+    { currency: 'USD' },
+    { refund_of_id: '33333333-3333-4333-8333-333333333333' },
+    { state: 'voided' },
+  ];
+  for (const operation of ['attach', 'detach'] as const)
+    for (const replay of [false, true])
+      for (const change of changes)
+        await t.test(
+          `${operation} ${replay ? 'uncertain replay' : 'first response'} ${Object.keys(change)[0]}`,
+          async () => {
+            const baseline = entry({
+                amount: '10',
+                ...(change.refund_of_id
+                  ? { kind: 'refund', refund_of_id: rid }
+                  : {}),
+              }),
+              latest = { ...baseline, ...change, version: 3 };
+            let attempts = 0,
+              previews = 0;
+            const writes: { expected_version: number; amount: string }[] = [];
+            const sourceMutation = async () => {
+              attempts++;
+              if (replay && attempts === 1)
+                throw new ApiError('dependency_unavailable');
+              return latest;
+            };
+            const c = createBillingEditor(
+              api({
+                [operation]: sourceMutation,
+                duplicates: async () => {
+                  previews++;
+                  return { ...page(), token: 'a'.repeat(64) };
+                },
+                update: async (_sid, _id, body) => {
+                  writes.push(body);
+                  return { ...latest, ...body, version: 4 };
+                },
+              }),
+              async () => 't',
+              () => {},
+              () => {},
+              { subscription_id: sid, initial: baseline },
+            );
+            c.edit({ amount: '11' });
+            await c.changeSource(
+              operation,
+              { result_id: rid, event_index: 0 },
+              true,
+            );
+            if (replay) {
+              assert.equal(c.state().uncertain, true);
+              await c.replay();
+            }
+            assert.equal(c.state().conflict, true);
+            assert.equal(c.state().baseline?.version, 1);
+            assert.equal(c.state().baseline?.amount, '10');
+            assert.equal(c.state().values.amount, '11');
+            assert.equal(c.state().dirty, true);
+            assert.deepEqual(c.state().latest, latest);
+            assert.equal(c.state().uncertain, false);
+            await c.replay();
+            assert.equal(
+              attempts,
+              replay ? 2 : 1,
+              'source receipt is complete',
+            );
+            await c.preview();
+            c.confirm(true);
+            await c.save();
+            assert.equal(previews, 0);
+            assert.equal(writes.length, 0);
+            c.rebase();
+            assert.equal(c.state().confirmed, false);
+            assert.equal(c.state().baseline?.version, 3);
+            assert.equal(c.state().values.amount, '11');
+            await c.preview();
+            c.confirm(true);
+            await c.save();
+            assert.equal(writes.length, 1);
+            assert.equal(writes[0].expected_version, 3);
+            assert.equal(writes[0].amount, '11');
+          },
+        );
+});
+test('source desired-state finance changes also require explicit adoption for an untouched draft', async (t) => {
+  for (const operation of ['attach', 'detach'] as const)
+    for (const replay of [false, true])
+      await t.test(`${operation} ${replay ? 'replay' : 'first'}`, async () => {
+        const baseline = entry({ amount: '10' }),
+          latest = entry({ version: 3, amount: '20' });
+        let attempts = 0;
+        const mutation = async () => {
+          attempts++;
+          if (replay && attempts === 1)
+            throw new ApiError('dependency_unavailable');
+          return latest;
+        };
+        const c = createBillingEditor(
+          api({ [operation]: mutation }),
+          async () => 't',
+          () => {},
+          () => {},
+          { subscription_id: sid, initial: baseline },
+        );
+        await c.changeSource(
+          operation,
+          { result_id: rid, event_index: 0 },
+          true,
+        );
+        if (replay) await c.replay();
+        assert.equal(c.state().dirty, false);
+        assert.equal(c.state().values.amount, '10');
+        assert.equal(c.state().baseline?.amount, '10');
+        assert.equal(c.state().latest?.amount, '20');
+        assert.equal(c.state().conflict, true);
+        assert.equal(c.state().uncertain, false);
+        c.discard();
+        assert.equal(c.state().values.amount, '20');
+        assert.equal(c.state().baseline?.version, 3);
+        assert.equal(c.state().conflict, false);
+        assert.equal(c.state().confirmed, false);
+      });
+});
+test('source-only revisions and numerically equal money preserve dirty values and safely advance the CAS basis', async (t) => {
+  for (const operation of ['attach', 'detach'] as const)
+    for (const replay of [false, true])
+      await t.test(`${operation} ${replay ? 'replay' : 'first'}`, async () => {
+        const baseline = entry({ amount: '10' }),
+          latest = entry({ version: 3, amount: '00010.000' });
+        let attempts = 0;
+        const versions: number[] = [];
+        const mutation = async () => {
+          attempts++;
+          if (replay && attempts === 1)
+            throw new ApiError('dependency_unavailable');
+          return latest;
+        };
+        const c = createBillingEditor(
+          api({
+            [operation]: mutation,
+            update: async (_sid, _id, body) => {
+              versions.push(body.expected_version);
+              return { ...latest, ...body, version: 4 };
+            },
+          }),
+          async () => 't',
+          () => {},
+          () => {},
+          { subscription_id: sid, initial: baseline },
+        );
+        c.edit({ amount: '11' });
+        await c.changeSource(
+          operation,
+          { result_id: rid, event_index: 0 },
+          true,
+        );
+        if (replay) await c.replay();
+        assert.equal(c.state().baseline?.version, 3);
+        assert.equal(c.state().values.amount, '11');
+        assert.equal(c.state().dirty, true);
+        assert.equal(c.state().conflict, false);
+        assert.equal(c.state().uncertain, false);
+        await c.preview();
+        c.confirm(true);
+        await c.save();
+        assert.deepEqual(versions, [3]);
+      });
+});
 test('attaching to an existing candidate revision conflict fetches that candidate without rebasing the financial draft onto it', async () => {
   const c = createBillingEditor(
     api({
