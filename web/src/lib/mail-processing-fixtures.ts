@@ -50,6 +50,7 @@ export const processingPreview = (
   patch: Partial<ProcessingPreview> = {},
 ): ProcessingPreview => ({
   ...structuredClone(go.preview),
+  full_email_allowed: true,
   account_id: processingIDs.account,
   expected_version: 1,
   runtime_version: 2,

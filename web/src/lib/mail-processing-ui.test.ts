@@ -88,7 +88,7 @@ test('actual results render unconfirmed AI extraction, preserve missing amounts 
     },
   }).body;
   for (const text of [
-    'AI抽出・未確認',
+    '解析完了',
     '結果不明',
     '処理失敗',
     '非関連',
@@ -99,6 +99,21 @@ test('actual results render unconfirmed AI extraction, preserve missing amounts 
   ])
     assert.ok(html.includes(text), text);
   assert.doesNotMatch(html, /契約確定|周期推定済|0 円|0 USD|55555555|66666666/);
+});
+test('standalone successful zero-event result has no unconfirmed or registration prompt', async () => {
+  const Component = await component('MailProcessingResults');
+  const html = render(Component, {
+    props: {
+      results: [
+        processingResult({ state: 'succeeded', events: [], error_code: '' }),
+      ],
+      canRetry: false,
+      confirmationScope: '',
+      onRetry: () => {},
+    },
+  }).body;
+  assert.match(html, /登録対象の情報はありません/);
+  assert.doesNotMatch(html, /未確認|0\s*\/\s*0|確認する/);
 });
 test('actual public model display identifies external destinations, routing, retention and unknown reference pricing', async () => {
   const Component = await component('MailProcessingModels');

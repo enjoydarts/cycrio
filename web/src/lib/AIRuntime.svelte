@@ -151,7 +151,9 @@
     >
       <div class="runtime-fields">
         <div>
-          <label for="runtime-input">入力上限（bytes）</label><input
+          <label for="runtime-input"
+            >旧方式・接続テストの入力基準（bytes）</label
+          ><input
             id="runtime-input"
             type="number"
             min="1024"

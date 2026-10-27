@@ -10,6 +10,7 @@
   } from './subscriptions-api.ts';
   import {
     blankSubscription,
+    subscriptionFromEvent,
     createSubscriptionEditor,
     type EditorView,
     type SubscriptionDrafts,
@@ -85,16 +86,7 @@
         : undefined,
     );
     view = controller.state();
-    if (event && !view.dirty)
-      controller.edit({
-        service: event.service,
-        plan: event.plan,
-        amount: event.amount,
-        currency: event.currency,
-        interval_unit: event.interval_unit,
-        interval_count: event.interval_count,
-        next_billing_date: event.next_billing_at,
-      });
+    if (event && !view.dirty) controller.edit(subscriptionFromEvent(event));
     return () => {
       controller?.dispose();
       onBusyChange(false);
@@ -205,10 +197,12 @@
         value={view.values.status}
         disabled={frozen}
         onchange={(e) =>
-          edit({ status: e.currentTarget.value as 'active' | 'ended' })}
-        ><option value="active">利用中</option><option value="ended"
-          >終了済み</option
-        ></select
+          edit({
+            status: e.currentTarget.value as SubscriptionValues['status'],
+          })}
+        ><option value="unknown">状態不明</option><option value="active"
+          >利用中</option
+        ><option value="ended">終了済み</option></select
       ></label
     >
   </div>
@@ -243,7 +237,13 @@
             </div>
             <div>
               <dt>最新の状態</dt>
-              <dd>{view.latest.status === 'active' ? '利用中' : '終了済み'}</dd>
+              <dd>
+                {view.latest.status === 'active'
+                  ? '利用中'
+                  : view.latest.status === 'ended'
+                    ? '終了済み'
+                    : '状態不明'}
+              </dd>
             </div>
           </dl>
           <div class="actions">

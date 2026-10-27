@@ -1,6 +1,7 @@
 import type { PolicyState } from './mail-processing-api.ts';
 import { createRevisionDraft, type RevisionDraft } from './model-catalog.ts';
 export type StandardConsent = {
+  full_email_allowed: boolean;
   primary_mode: 'standard' | 'custom';
   primary_retention: string;
   secondary_retention: string;
@@ -12,11 +13,27 @@ export type StandardReview = {
   scope: string;
   conflict: boolean;
 };
+export function editStandardConsent(
+  value: StandardConsent,
+  patch: Partial<StandardConsent>,
+): StandardConsent {
+  const scopeChanged =
+    patch.full_email_allowed !== undefined &&
+    patch.full_email_allowed !== value.full_email_allowed;
+  return {
+    ...value,
+    ...patch,
+    ...(scopeChanged
+      ? { primary_confirmed: false, secondary_confirmed: false }
+      : {}),
+  };
+}
 const scope = (state: PolicyState) =>
   JSON.stringify([
     state.runtime_version,
     state.profile?.id,
     state.policy?.version ?? 0,
+    state.policy?.full_email_allowed ?? false,
     state.standard_terms,
   ]);
 export function createStandardReview(state: PolicyState): StandardReview {
@@ -27,6 +44,7 @@ export function createStandardReview(state: PolicyState): StandardReview {
     scope: scope(state),
     conflict: false,
     draft: createRevisionDraft(state.policy?.version ?? 0, {
+      full_email_allowed: state.policy?.full_email_allowed ?? false,
       primary_mode: custom ? 'custom' : 'standard',
       primary_retention: custom ? (state.policy?.primary_retention ?? '') : '',
       secondary_retention: state.policy?.secondary_retention ?? '',

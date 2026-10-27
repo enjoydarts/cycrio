@@ -10,6 +10,8 @@
   import SubscriptionForm from './SubscriptionForm.svelte';
   import AnalysisAttach from './AnalysisAttach.svelte';
   import AnalysisStart from './AnalysisStart.svelte';
+  import AnalysisResultStatus from './AnalysisResultStatus.svelte';
+  import { acknowledgeAnalysisRegistration } from './analysis-controller.ts';
   let {
     result,
     active,
@@ -31,39 +33,87 @@
     onBackToResults: () => void;
     onBusyChange?: (busy: boolean) => void;
   } = $props();
-  let registrations = $state<AnalysisResult['registrations']>([]),
+  let registrations = $derived(result.registrations),
     action = $state<{ index: number; kind: 'create' | 'attach' } | null>(null),
-    busy = $state(false);
-  $effect(() => {
-    registrations = result.registrations;
-  });
+    busy = $state(false),
+    registrationError = $state(false);
   function changed(value: boolean) {
     busy = value;
     onBusyChange(value);
   }
   function saved(index: number, s: Subscription) {
-    registrations = [
-      ...registrations.filter((r) => r.event_index !== index),
-      { event_index: index, subscription_id: s.id },
-    ];
+    const acknowledged = acknowledgeAnalysisRegistration(result, s, index);
+    if (!acknowledged) {
+      registrationError = true;
+      action = null;
+      return;
+    }
+    registrations = acknowledged.registrations;
+    registrationError = false;
     action = null;
-    onRegistered({ ...result, registrations });
+    onRegistered(acknowledged);
   }
+  const automationReasons: Record<string, string> = {
+    ambiguous_identity:
+      '登録先のサブスクを一意に特定できませんでした。新規登録か既存のサブスクへの紐付けを選んでください。',
+    invalid_facts:
+      '契約に必要な情報を確定できませんでした。内容を確認してください。',
+    recording_failed:
+      '自動登録を完了できませんでした。現在の登録状況を確認してください。',
+  };
+  const billingReasons: Record<string, string> = {
+    missing_facts: '明細に必要な金額・通貨・日付などが不足しています。',
+    invalid_facts: '明細の情報を確定できませんでした。',
+    duplicate_candidate: '重複している可能性がある明細があります。',
+    refund_target_ambiguous:
+      '返金に対応する支払いを一意に特定できませんでした。',
+    source_conflict: 'この根拠は別の履歴と競合しています。',
+    recording_failed: '明細の自動記録を完了できませんでした。',
+  };
 </script>
 
 <div class="daily">
+  {#if registrationError}<p class="notice" role="alert">
+      保存は受け付けられましたが、この解析結果との紐付けを確認できません。<button
+        onclick={onBackToResults}>結果一覧で最新の登録状況を確認</button
+      >
+    </p>{/if}
   <p class="muted">
     {result.account_label} · {processingDate(result.finished_at)}（日本時間）
   </p>
-  {#if result.state === 'succeeded'}<p class="notice">
-      AI
-      抽出・未確認。抽出したイベントごとに内容を確認して登録します。契約は自動で作成・更新しません。
-    </p>
-    <p>{registrations.length} / {result.events.length} イベントを登録済み</p>
+  {#if result.state === 'succeeded'}<AnalysisResultStatus {result} />
     {#each result.events as event, index}{@const registration =
         registrations.find((r) => r.event_index === index)}
+      {@const contractOutcome = result.automation?.find(
+        (a) => a.event_index === index,
+      )}
+      {@const financialOutcome = result.billing_automation?.find(
+        (a) => a.event_index === index,
+      )}
+      {@const manualRegistration =
+        !!contractOutcome &&
+        ['needs_review', 'failed'].includes(contractOutcome.state)}
+      {@const financialSourceAction =
+        !!financialOutcome &&
+        (['needs_review', 'failed'].includes(financialOutcome.state) ||
+          (financialOutcome.state === 'recorded' &&
+            !!financialOutcome.entry_id))}
       <section class="section">
         <h3>{index + 1}. {event.service} · {eventNames[event.event_type]}</h3>
+        {#if contractOutcome && ['needs_review', 'failed'].includes(contractOutcome.state) && !registration}<p
+            class="notice"
+          >
+            {automationReasons[contractOutcome.reason] ??
+              '登録内容を確認してください。'}
+          </p>{/if}
+        {#if financialOutcome && ['needs_review', 'failed'].includes(financialOutcome.state)}<p
+            class="notice"
+          >
+            {billingReasons[financialOutcome.reason] ??
+              '明細の内容を確認してください。'}{registration
+              ? '支払・請求履歴から内容を確認して記録できます。'
+              : 'サブスクを登録した後、支払・請求履歴で内容を確認して記録できます。'}
+          </p>{/if}
         <EventFields {event} />
         {#if registration}<a
             class="button"
@@ -72,9 +122,10 @@
           >
           <a
             class="button"
-            href={`/subscriptions/${registration.subscription_id}?tab=history&source_result_id=${result.id}&source_event_index=${index}`}
-            >履歴に記録</a
-          >{:else if action?.index === index}{#if action.kind === 'create'}<h3>
+            href={`/subscriptions/${registration.subscription_id}?tab=history${financialSourceAction ? `&source_result_id=${result.id}&source_event_index=${index}` : ''}`}
+            >支払・請求履歴を見る</a
+          >{:else if manualRegistration && action?.index === index}{#if action.kind === 'create'}<h3
+            >
               新規サブスクに登録
             </h3>
             <SubscriptionForm
@@ -90,7 +141,7 @@
               {onBackToResults}
               onBusyChange={changed}
               onSaved={(s) => saved(index, s)}
-            />{/if}{:else}<div class="actions">
+            />{/if}{:else if manualRegistration}<div class="actions">
             <button
               class="primary"
               disabled={busy}
@@ -101,7 +152,13 @@
               onclick={() => (action = { index, kind: 'attach' })}
               >既存のサブスクに紐付ける</button
             >
-          </div>{/if}
+          </div>{:else}<p class="muted">
+            {contractOutcome?.state === 'registered'
+              ? 'この情報には現在の登録先がありません。'
+              : result.automation_state === 'not_applicable'
+                ? 'この情報は自動登録の対象外です。'
+                : '自動登録待ちです。処理が進むと登録先が表示されます。'}
+          </p>{/if}
       </section>{/each}
   {:else if result.state === 'not_related'}<p class="empty">
       サブスクに関連しないと判定されました。抽出したイベントはありません。

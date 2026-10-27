@@ -49,8 +49,11 @@
   {#each view.baseline?.sources ?? [] as source (`${source.result_id}/${source.event_index}`)}
     <details>
       <summary
-        >元の AI 抽出値 · イベント {source.event_index + 1}<span
-          class="secondary billing-id">{source.result_id}</span
+        >元の AI 抽出値 · イベント {source.event_index + 1} · {source.provenance ===
+        'automatic'
+          ? '自動紐付け'
+          : '本人確認'}<span class="secondary billing-id"
+          >{source.result_id}</span
         ></summary
       ><EventFields event={source.original_event} />
       <button

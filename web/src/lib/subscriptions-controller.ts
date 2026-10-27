@@ -1,5 +1,6 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
 import { createFeed } from './daily-controller.ts';
+import type { ProcessingEvent } from './mail-processing-api.ts';
 import {
   parseValues,
   type Subscription,
@@ -17,6 +18,17 @@ export const blankSubscription = (): SubscriptionValues => ({
   interval_count: null,
   next_billing_date: null,
   status: 'active',
+});
+export const subscriptionFromEvent = (
+  event: ProcessingEvent,
+): SubscriptionValues => ({
+  ...blankSubscription(),
+  service: event.service,
+  plan: event.plan,
+  interval_unit: event.interval_unit,
+  interval_count: event.interval_count,
+  next_billing_date: event.next_billing_at,
+  status: 'unknown',
 });
 export type EditorView = {
   values: SubscriptionValues;

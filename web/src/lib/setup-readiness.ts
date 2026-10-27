@@ -50,6 +50,7 @@ export function processingAction(
     case 'folders_required':
       return { label: 'メール連携を確認', href: '/settings/mail' };
     case 'policy_disabled':
+    case 'full_email_not_allowed':
     case 'policy_reconfirmation_required':
       return {
         label: admin
@@ -99,30 +100,35 @@ export function setupReadiness(input: {
       label: 'メールを連携する',
       href: '/settings/mail',
     };
-  if (input.preview?.ready)
+  if (input.preview?.ready && input.preview.full_email_allowed)
     return {
       stage: 'ready',
       title: '解析を始められます',
       label: 'メールを解析する',
-      href: '/analysis?start=true',
+      href: '/analysis',
     };
-  const action = processingAction(
-    input.preview?.blocked_reason ?? 'configuration_unavailable',
-    input.admin,
-  );
+  const effectiveReason =
+    input.preview?.ready && !input.preview.full_email_allowed
+      ? 'full_email_not_allowed'
+      : (input.preview?.blocked_reason ?? 'configuration_unavailable');
+  const action = processingAction(effectiveReason, input.admin);
   return {
-    stage: input.preview?.blocked_reason?.startsWith('policy_')
-      ? 'permission'
-      : input.preview?.blocked_reason === 'runtime_inactive' ||
-          input.preview?.blocked_reason === 'configuration_unavailable'
-        ? 'ai'
-        : 'mail',
-    title: input.preview?.blocked_reason?.startsWith('policy_')
-      ? '本文送信の許可が必要です'
-      : input.preview?.blocked_reason === 'runtime_inactive' ||
-          input.preview?.blocked_reason === 'configuration_unavailable'
-        ? 'AI の準備が必要です'
-        : 'メールの接続条件を確認してください',
+    stage:
+      effectiveReason === 'full_email_not_allowed' ||
+      input.preview?.blocked_reason?.startsWith('policy_')
+        ? 'permission'
+        : input.preview?.blocked_reason === 'runtime_inactive' ||
+            input.preview?.blocked_reason === 'configuration_unavailable'
+          ? 'ai'
+          : 'mail',
+    title:
+      effectiveReason === 'full_email_not_allowed' ||
+      input.preview?.blocked_reason?.startsWith('policy_')
+        ? '本文送信の許可が必要です'
+        : input.preview?.blocked_reason === 'runtime_inactive' ||
+            input.preview?.blocked_reason === 'configuration_unavailable'
+          ? 'AI の準備が必要です'
+          : 'メールの接続条件を確認してください',
     label: action?.label ?? 'メール連携を確認',
     href: action?.href ?? null,
   };
@@ -145,6 +151,27 @@ export function analysisSetupLink(
   if (/^(?:[1-9]\d?|100)$/.test(maximum))
     back.searchParams.set('setup_max', maximum);
   back.searchParams.set('start', 'true');
+  target.searchParams.set('return_to', back.pathname + back.search);
+  return target.pathname + target.search;
+}
+export function automationSetupLink(
+  href: string,
+  returnTo: string,
+  account: string,
+): string {
+  const target = new URL(href, 'https://cycrio.invalid');
+  const back = new URL(safeAnalysisReturn(returnTo), 'https://cycrio.invalid');
+  for (const key of ['start', 'setup_max', 'max_messages'])
+    back.searchParams.delete(key);
+  if (
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      account,
+    ) &&
+    account !== '00000000-0000-0000-0000-000000000000'
+  ) {
+    back.searchParams.set('setup_account', account);
+    back.searchParams.set('account_id', account);
+  }
   target.searchParams.set('return_to', back.pathname + back.search);
   return target.pathname + target.search;
 }

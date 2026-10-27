@@ -55,7 +55,8 @@
       !busy &&
       !view.uncertain &&
       !view.conflict &&
-      !!view.preview?.ready,
+      !!view.preview?.ready &&
+      view.preview.full_email_allowed === true,
   );
   const scope = $derived(JSON.stringify(view.form.basis));
   $effect(() => {
@@ -203,7 +204,9 @@
           /></label
         >{/if}
       <ProcessingReadiness
-        reason={view.preview?.blocked_reason ?? ''}
+        reason={view.preview?.ready && !view.preview.full_email_allowed
+          ? 'full_email_not_allowed'
+          : (view.preview?.blocked_reason ?? '')}
         role={session.user?.role ?? 'user'}
         {returnTo}
         account={selected}
@@ -220,7 +223,7 @@
           disabled={!canSend}
           onchange={(e) =>
             controller?.edit({ confirmed: e.currentTarget.checked })}
-        />上記のモデル・配信先・保持条件・入力と出力の上限を確認し、メール本文の外部送信と料金の発生に同意します</label
+        />本文全体・上記のモデル・配信先・保持条件・出力上限を確認し、メール本文の外部送信と料金の発生に同意します</label
       >
       {#if retry?.state === 'unknown'}<label class="check"
           ><input

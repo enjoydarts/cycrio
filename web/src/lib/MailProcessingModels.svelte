@@ -78,9 +78,15 @@
   0 として扱いません。
 </p>
 <p class="note">
-  入力上限 {max_input_bytes} bytes / 出力上限 {max_output_tokens} tokens / 1回の待機上限
+  本文入力：本文全体 / 出力上限 {max_output_tokens} tokens / 1回の待機上限
   {timeout_seconds} 秒
 </p>
+<details class="note">
+  <summary>技術情報</summary>
+  <p>
+    旧方式・接続テスト用の入力基準：{max_input_bytes} bytes。本文全体の処理ではこの基準による切り詰めを行いません。送信先やモデルが扱えるサイズには制約があります。
+  </p>
+</details>
 
 <style>
   .models {

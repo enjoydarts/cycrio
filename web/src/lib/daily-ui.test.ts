@@ -32,12 +32,13 @@ test('daily mutation dialogs propagate saving state and original AI fields are s
   assert.match(fields, /請求日/);
   assert.match(fields, /不明/);
 });
-test('subscription list links to the server counted pending analysis messages', async () => {
+test('subscription list links to the server counted attention messages across all AI states', async () => {
   const source = await readFile(
     new URL('./Subscriptions.svelte', import.meta.url),
     'utf8',
   );
-  assert.match(source, /review:\s*'pending'/);
+  assert.match(source, /review:\s*'attention'/);
+  assert.match(source, /state:\s*'all'/);
   assert.match(source, /limit:\s*1/);
   assert.match(source, /pending\.page\.total/);
   assert.match(source, /メール単位/);

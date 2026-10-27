@@ -4,6 +4,9 @@
   import { beforeNavigate, goto } from '$app/navigation';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
+  import { ApiError } from './api.ts';
+  import { findBillingSource } from './billing-source.ts';
+  import { uuid, integer } from './daily-api.ts';
   import {
     createBillingAPI,
     billingMonth,
@@ -51,6 +54,9 @@
     navigationMessage = $state('');
   let handledSource = '';
   let editorSequence = 0;
+  let sourceSequence = 0,
+    sourceAbort: AbortController | undefined,
+    disposed = false;
   const filter = $derived.by(() => {
     const params = page.url.searchParams;
     let month = '';
@@ -85,6 +91,8 @@
   ) {
     if (busy || (initial && initial.subscription_id !== subscription.id))
       return false;
+    sourceSequence++;
+    sourceAbort?.abort();
     const targetKey = `${subscription.id}/${source ? `source/${source.result_id}/${source.event_index}` : initial ? `event/${initial.id}` : 'manual'}`;
     if (editor?.targetKey === targetKey) return true;
     const key = `${targetKey}/${++editorSequence}`;
@@ -105,23 +113,79 @@
   function openRequestedSource() {
     if (busy) return;
     if (sourceQuery === '/') {
+      sourceSequence++;
+      sourceAbort?.abort();
       const leftSourceURL = handledSource !== '';
       handledSource = '';
       if (leftSourceURL && untrack(() => editor?.source)) editor = null;
       return;
     }
     if (handledSource === sourceQuery) return;
-    const source = subscription.sources.find(
-      (source) => `${source.result_id}/${source.event_index}` === sourceQuery,
-    );
-    if (source) {
-      sourceMessage = '';
-      if (open(null, source)) handledSource = sourceQuery;
-    } else {
-      handledSource = sourceQuery;
+    handledSource = sourceQuery;
+    const [result, index] = sourceQuery.split('/');
+    try {
+      if (!/^\d+$/.test(index)) throw new Error();
+      void openSource({
+        result_id: uuid(result),
+        event_index: integer(Number(index), 0, 31),
+      });
+    } catch {
       editor = null;
+      sourceMessage = '根拠の指定を確認できません。';
+    }
+  }
+  async function openSource(reference: {
+    result_id: string;
+    event_index: number;
+  }) {
+    if (busy || disposed) return;
+    sourceAbort?.abort();
+    sourceAbort = new AbortController();
+    const seq = ++sourceSequence,
+      signal = sourceAbort.signal;
+    sourceMessage = '記録済みの履歴を確認しています…';
+    try {
+      const entry = await findBillingSource(
+        api,
+        subscription.id,
+        reference,
+        token,
+        signal,
+      );
+      if (disposed || signal.aborted || seq !== sourceSequence) return;
+      sourceMessage = '';
+      if (entry) {
+        open(entry);
+        return;
+      }
+      const source = subscription.sources.find(
+        (s) =>
+          s.result_id === reference.result_id &&
+          s.event_index === reference.event_index,
+      );
+      if (source) open(null, source);
+      else {
+        editor = null;
+        sourceMessage =
+          'この根拠は契約に紐付いていません。契約の元の AI 抽出情報を確認してください。根拠は自動で追加しません。';
+      }
+    } catch (error) {
+      if (disposed || signal.aborted || seq !== sourceSequence) return;
+      if (
+        error instanceof ApiError &&
+        ['authentication_required', 'access_denied'].includes(error.code)
+      ) {
+        sourceSequence++;
+        sourceAbort?.abort();
+        editor = null;
+        sourceMessage = '';
+        drafts.clear();
+        session.onDenied();
+        return;
+      }
       sourceMessage =
-        'この根拠は契約に紐付いていません。契約の元の AI 抽出情報を確認してください。根拠は自動で追加しません。';
+        '記録済みの履歴を確認できません。再読み込みしてから操作してください。';
+      handledSource = '';
     }
   }
   function close(key: string) {
@@ -152,6 +216,9 @@
     void controller.load(filter);
     openRequestedSource();
     return () => {
+      disposed = true;
+      sourceSequence++;
+      sourceAbort?.abort();
       controller?.dispose();
       drafts.clear();
     };
@@ -170,7 +237,7 @@
     <div>
       <h2 id="billing-history-heading">請求・支払い履歴</h2>
       <p>
-        確認した請求・支払い・返金を記録します。契約の料金や次回請求日は変更しません。
+        メールからの自動記録と、本人が保存した請求・支払い・返金です。契約の料金や次回請求日は変更しません。
       </p>
     </div>
     <button class="primary" onclick={() => open()}>＋ 履歴を記録</button>
@@ -278,7 +345,7 @@
       </p>
       <div class="billing-source-picker">
         {#each subscription.sources as source}<button
-            onclick={() => open(null, source)}
+            onclick={() => openSource(source)}
             >{source.original_event.service} · {source.original_event
               .billed_at ?? '日付不明'} · イベント {source.event_index +
               1}</button

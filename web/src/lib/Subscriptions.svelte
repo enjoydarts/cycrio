@@ -42,7 +42,7 @@
     const p = page.url.searchParams;
     return {
       q: p.get('q') ?? '',
-      status: ['active', 'ended'].includes(p.get('status') ?? '')
+      status: ['active', 'ended', 'unknown'].includes(p.get('status') ?? '')
         ? p.get('status')
         : 'all',
       sort: ['service', 'updated'].includes(p.get('sort') ?? '')
@@ -65,8 +65,8 @@
     );
     void pendingController.load({
       account_id: '',
-      state: 'related',
-      review: 'pending',
+      state: 'all',
+      review: 'attention',
       limit: 1,
       offset: 0,
     });
@@ -92,18 +92,21 @@
   <header class="titlebar">
     <div>
       <h1>サブスク</h1>
-      <p>確認した契約と、次回の請求を管理します。</p>
+      <p>メールから自動登録した契約と、確認・保存した契約を管理します。</p>
     </div>
     <button class="primary" onclick={() => (adding = true)}
       >＋ サブスクを追加</button
     >
   </header>
   <div class="actions">
-    <a class="button" href="/subscriptions/summary">確認済み明細の月次集計</a>
+    <a class="button" href="/subscriptions/summary">支払・返金明細の月次集計</a>
   </div>
   {#if pending.page && pending.page.total > 0}<aside class="notice">
-      <strong>確認待ちの解析結果 {pending.page.total} 件（メール単位）</strong>
-      <div class="actions"><a href="/analysis">確認する →</a></div>
+      <strong>対応が必要な解析結果 {pending.page.total} 件（メール単位）</strong
+      >
+      <div class="actions">
+        <a href="/analysis?tab=attention">要対応の結果を見る →</a>
+      </div>
     </aside>{/if}
   <form
     class="toolbar"
@@ -129,7 +132,9 @@
             )}
           ><option value="all">すべて</option><option value="active"
             >利用中</option
-          ><option value="ended">終了済み</option></select
+          ><option value="ended">終了済み</option><option value="unknown"
+            >状態不明</option
+          ></select
         ></label
       ><label
         >並び順<select
@@ -166,6 +171,10 @@
               ><td
                 ><strong>{item.service}</strong><span class="secondary"
                   >{item.plan ?? 'プラン不明'}</span
+                ><span class="secondary"
+                  >{item.provenance === 'automatic'
+                    ? '自動登録'
+                    : '本人確認'}</span
                 ></td
               ><td data-label="料金" class="money"
                 >{money(item.amount, item.currency)}<span class="secondary"
@@ -175,7 +184,11 @@
                 >{item.next_billing_date ?? '不明'}</td
               ><td data-label="状態"
                 ><span class="badge"
-                  >{item.status === 'active' ? '利用中' : '終了済み'}</span
+                  >{item.status === 'active'
+                    ? '利用中'
+                    : item.status === 'ended'
+                      ? '終了済み'
+                      : '状態不明'}</span
                 ></td
               ><td
                 ><a class="button" href={`/subscriptions/${item.id}`}

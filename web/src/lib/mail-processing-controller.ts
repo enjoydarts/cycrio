@@ -135,7 +135,9 @@ export function createMailProcessingController(
       ]);
       if (!current(seq)) return;
       const latest = basis(preview),
-        stale = !sameBasis(view.form.basis, latest);
+        stale =
+          !sameBasis(view.form.basis, latest) ||
+          view.preview?.full_email_allowed !== preview.full_email_allowed;
       const preserve = view.form.dirty || view.uncertain || view.conflict;
       publish({
         preview,
@@ -201,6 +203,7 @@ export function createMailProcessingController(
     !view.uncertain &&
     !view.conflict &&
     !!view.preview?.ready &&
+    view.preview.full_email_allowed === true &&
     !!view.form.basis &&
     sameBasis(view.form.basis, basis(view.preview)) &&
     !view.runs.some(processingActive);
@@ -270,6 +273,7 @@ export function createMailProcessingController(
         message: null,
         input: {
           ...view.form.basis!,
+          full_email: true,
           request_id: randomUUID(),
           max_messages: Number(view.form.max_messages),
           confirmed: true,
@@ -307,6 +311,7 @@ export function createMailProcessingController(
         message: result.message_id,
         input: {
           ...view.form.basis!,
+          full_email: true,
           request_id: randomUUID(),
           max_messages: 1,
           confirmed: true,

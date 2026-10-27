@@ -69,3 +69,19 @@ test('same verified auth reload preserves dirty text, confirmation, and original
   assert.equal(next.draft.values.primary_confirmed, false);
   assert.equal(next.draft.values.secondary_confirmed, false);
 });
+test('whole-email scope change clears both stage confirmations and retains entered terms', async () => {
+  const module = await import('./standard-policy-draft.ts');
+  assert.equal(typeof module.editStandardConsent, 'function');
+  const value = {
+    ...createStandardReview(state()).draft.values,
+    full_email_allowed: false,
+    primary_retention: '個別契約',
+    primary_confirmed: true,
+    secondary_confirmed: true,
+  };
+  const next = module.editStandardConsent(value, { full_email_allowed: true });
+  assert.equal(next.primary_confirmed, false);
+  assert.equal(next.secondary_confirmed, false);
+  assert.equal(next.primary_retention, '個別契約');
+  assert.equal(next.full_email_allowed, true);
+});

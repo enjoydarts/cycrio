@@ -80,7 +80,12 @@
     {#if page.url.searchParams.get('tab') === 'history'}<BillingHistory
         subscription={s}
       />{:else}
-      <h2>確認済みの契約内容</h2>
+      <h2>契約内容</h2>
+      <p class="muted">
+        {s.provenance === 'automatic'
+          ? 'メール解析から自動登録'
+          : '本人が確認・保存'}。取引額と契約料金は別に管理します。
+      </p>
       <dl class="field-grid">
         <div>
           <dt>料金</dt>
@@ -105,7 +110,13 @@
         </div>
         <div>
           <dt>状態</dt>
-          <dd>{s.status === 'active' ? '利用中' : '終了済み'}</dd>
+          <dd>
+            {s.status === 'active'
+              ? '利用中'
+              : s.status === 'ended'
+                ? '終了済み'
+                : '状態不明'}
+          </dd>
         </div>
         <div>
           <dt>更新日時（日本時間）</dt>
@@ -118,6 +129,11 @@
       </p>
       {#each s.sources as source}<section class="section">
           <h3>AI 抽出 · イベント {source.event_index + 1}</h3>
+          <p class="muted">
+            紐付け：{source.provenance === 'automatic'
+              ? '自動登録'
+              : '本人確認'}
+          </p>
           <EventFields event={source.original_event} />
         </section>{:else}<p class="empty">
           手動で登録された契約です。元の AI 抽出情報はありません。

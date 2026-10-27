@@ -46,6 +46,7 @@
       !view.uncertain &&
       !view.conflict &&
       !!view.preview?.ready &&
+      view.preview.full_email_allowed === true &&
       !view.runs.some(processingActive),
   );
   const confirmationScope = $derived(
@@ -163,7 +164,9 @@
       /></label
     >
     <ProcessingReadiness
-      reason={view.preview?.blocked_reason ?? ''}
+      reason={view.preview?.ready && !view.preview.full_email_allowed
+        ? 'full_email_not_allowed'
+        : (view.preview?.blocked_reason ?? '')}
       {role}
       {returnTo}
       account={account.id}
@@ -180,7 +183,7 @@
         disabled={!canSend}
         onchange={(event) =>
           controller?.edit({ confirmed: event.currentTarget.checked })}
-      />上記のモデル・配信先・保持条件・入力と出力の上限を確認し、メール本文の外部送信と料金の発生に同意します</label
+      />本文全体・上記のモデル・配信先・保持条件・出力上限を確認し、メール本文の外部送信と料金の発生に同意します</label
     >
     <p class="help">
       一次判定で関連性を確認し、必要なメールを二次抽出へ送信します。停止時も送信済みの処理には料金が発生する場合があります。

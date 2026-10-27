@@ -77,7 +77,7 @@
   <a class="button" href="/subscriptions">← サブスク一覧</a>
   <header class="titlebar">
     <div>
-      <h1 id="billing-summary-heading">確認済み明細の集計</h1>
+      <h1 id="billing-summary-heading">支払・返金明細の集計</h1>
       <p>記録した支払い・返金を月ごとに確認します。</p>
     </div>
   </header>
@@ -123,7 +123,7 @@
       role="status"
       class="notice"
     >
-      確認済み明細を集計しています…
+      保存済みの明細を集計しています…
     </p>{:else if view.error}<div class="notice" role="alert">
       <p>{processingErrors[view.error]}</p>
       <button onclick={() => controller?.load(filter)}>集計を再読み込み</button>
@@ -172,7 +172,11 @@
                         >{s.plan ?? 'プラン不明'}</span
                       ><span class="secondary billing-id">{s.id}</span></td
                     ><td data-label="状態"
-                      >{s.status === 'active' ? '利用中' : '終了済み'}</td
+                      >{s.status === 'active'
+                        ? '利用中'
+                        : s.status === 'ended'
+                          ? '終了済み'
+                          : '状態不明'}</td
                     ><td
                       ><button onclick={() => choose(s.id)}
                         >このサブスクを集計</button

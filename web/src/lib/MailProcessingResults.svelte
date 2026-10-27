@@ -23,7 +23,7 @@
     unknown = {};
   });
   const states = {
-    succeeded: 'AI抽出・未確認',
+    succeeded: '解析完了',
     not_related: '非関連',
     failed: '処理失敗',
     unknown: '結果不明',
@@ -51,7 +51,9 @@
   <span>各メールの最新結果 · 最新100件 · 日本時間</span>
 </div>
 <p class="help">
-  AI抽出・未確認の情報です。請求日・次回日・記載周期はメールから得た候補として確認してください。
+  メールから抽出した情報です。サブスクと支払・請求履歴への現在の登録状況は<a
+    href="/analysis">メール解析の結果一覧</a
+  >で確認できます。
 </p>
 <ol class="results">
   {#each results as result (result.id)}
@@ -64,6 +66,9 @@
       </div>
       {#if result.state === 'not_related'}<p>
           サブスクリプションに関連しないと判定されました。
+        </p>{/if}
+      {#if result.state === 'succeeded' && !result.events.length}<p>
+          解析は完了しました。登録対象の情報はありません。
         </p>{/if}
       {#if result.classification === 'uncertain'}<p>
           関連性の判定も未確定です。

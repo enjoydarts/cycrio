@@ -35,11 +35,13 @@ export const blockedReasons = [
   'folders_required',
   'runtime_inactive',
   'policy_disabled',
+  'full_email_not_allowed',
   'policy_reconfirmation_required',
   'processing_active',
   'configuration_unavailable',
 ] as const;
 export type ProcessingPreview = {
+  full_email_allowed?: boolean;
   account_id: string;
   expected_version: number;
   runtime_version: number;
@@ -57,6 +59,7 @@ export type ProcessingPreview = {
   timeout_seconds: number;
 };
 export type ProcessingInput = {
+  full_email?: boolean;
   expected_version: number;
   runtime_version: number;
   profile_id: string;
@@ -145,6 +148,7 @@ export type ProcessingResult = {
   finished_at: string;
 };
 export type ProcessingPolicy = {
+  full_email_allowed?: boolean;
   standard_proof?: StandardProof | null;
   profile_id: string;
   version: number;
@@ -179,6 +183,7 @@ export type StandardTerms = {
   fixed_retention_days: number | null;
 };
 export type StandardProof = {
+  full_email_allowed?: boolean;
   profile_id: string;
   policy_version: number;
   primary_mode: 'standard' | 'custom';
@@ -190,6 +195,7 @@ export type StandardProof = {
   confirmed_at: string;
 };
 export type StandardPolicyInput = {
+  full_email_allowed?: boolean;
   expected_version: number;
   runtime_version: number;
   profile_id: string;
@@ -334,6 +340,8 @@ export function parseProcessingPreview(
     return invalid();
   return {
     account_id: accountID,
+    full_email_allowed:
+      v.full_email_allowed === undefined ? false : bool(v.full_email_allowed),
     expected_version: integer(v.expected_version, 1),
     runtime_version: integer(v.runtime_version),
     profile_id,
@@ -461,6 +469,8 @@ export function parsePolicyState(value: unknown): PolicyState {
         ? {}
         : { standard_proof: nullable(p.standard_proof, parseStandardProof) }),
       profile_id: uuid(p.profile_id),
+      full_email_allowed:
+        p.full_email_allowed === undefined ? false : bool(p.full_email_allowed),
       version: integer(p.version),
       enabled: bool(p.enabled),
       primary_retention: retention(p.primary_retention),
@@ -504,6 +514,8 @@ function parseTerms(value: unknown): StandardTerms {
 function parseStandardProof(value: unknown): StandardProof {
   const v = record(value);
   return {
+    full_email_allowed:
+      v.full_email_allowed === undefined ? false : bool(v.full_email_allowed),
     profile_id: uuid(v.profile_id),
     policy_version: integer(v.policy_version),
     primary_mode: choice(v.primary_mode, ['standard', 'custom']),
@@ -533,6 +545,9 @@ function parseStandardTermsState(
 }
 function processingBody(input: ProcessingInput): ProcessingInput {
   return {
+    ...(input.full_email === undefined
+      ? {}
+      : { full_email: bool(input.full_email) }),
     expected_version: integer(input.expected_version, 1),
     runtime_version: integer(input.runtime_version, 1),
     profile_id: uuid(input.profile_id),
@@ -613,6 +628,9 @@ export function createMailProcessingAPI(
         body = {
           expected_version: integer(input.expected_version),
           runtime_version: integer(input.runtime_version, 1),
+          ...(input.full_email_allowed === undefined
+            ? {}
+            : { full_email_allowed: bool(input.full_email_allowed) }),
           profile_id: uuid(input.profile_id),
           enabled: bool(input.enabled),
           primary_mode: choice(input.primary_mode, ['standard', 'custom']),
@@ -741,6 +759,9 @@ export function createMailProcessingAPI(
         body = {
           expected_version: integer(input.expected_version),
           profile_id: uuid(input.profile_id),
+          ...(input.full_email_allowed === undefined
+            ? {}
+            : { full_email_allowed: bool(input.full_email_allowed) }),
           enabled: bool(input.enabled),
           primary_retention: retention(input.primary_retention),
           secondary_retention: retention(input.secondary_retention),

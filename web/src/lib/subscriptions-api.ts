@@ -26,14 +26,16 @@ export type SubscriptionValues = {
   interval_unit: 'day' | 'week' | 'month' | 'year' | null;
   interval_count: number | null;
   next_billing_date: string | null;
-  status: 'active' | 'ended';
+  status: 'active' | 'ended' | 'unknown';
 };
 export type Subscription = SubscriptionValues & {
+  provenance?: 'automatic' | 'owner_confirmed';
   id: string;
   version: number;
   created_at: string;
   updated_at: string;
   sources: {
+    provenance?: 'automatic' | 'owner_confirmed';
     result_id: string;
     event_index: number;
     original_event: ProcessingEvent;
@@ -41,7 +43,7 @@ export type Subscription = SubscriptionValues & {
 };
 export type SubscriptionFilter = {
   q: string;
-  status: 'all' | 'active' | 'ended';
+  status: 'all' | 'active' | 'ended' | 'unknown';
   sort: 'next_billing' | 'service' | 'updated';
   limit: number;
   offset: number;
@@ -102,7 +104,7 @@ export function parseValues(value: unknown): SubscriptionValues {
     interval_unit,
     interval_count,
     next_billing_date: nullable(v.next_billing_date, date),
-    status: choice(v.status, ['active', 'ended']),
+    status: choice(v.status, ['active', 'ended', 'unknown']),
   };
 }
 export function parseSubscription(value: unknown): Subscription {
@@ -112,6 +114,10 @@ export function parseSubscription(value: unknown): Subscription {
     (x) => {
       const s = record(x);
       return {
+        provenance:
+          s.provenance === undefined
+            ? ('owner_confirmed' as const)
+            : choice(s.provenance, ['automatic', 'owner_confirmed']),
         result_id: uuid(s.result_id),
         event_index: integer(s.event_index, 0, 31),
         original_event: parseProcessingEvent(s.original_event),
@@ -126,6 +132,10 @@ export function parseSubscription(value: unknown): Subscription {
     return invalid();
   return {
     ...parseValues(v),
+    provenance:
+      v.provenance === undefined
+        ? 'owner_confirmed'
+        : choice(v.provenance, ['automatic', 'owner_confirmed'] as const),
     id: uuid(v.id),
     version: integer(v.version, 1),
     created_at: timestamp(v.created_at),
@@ -150,7 +160,12 @@ export function createSubscriptionsAPI(
         () =>
           new URLSearchParams({
             q: text(filter.q, 200, true),
-            status: choice(filter.status, ['all', 'active', 'ended']),
+            status: choice(filter.status, [
+              'all',
+              'active',
+              'ended',
+              'unknown',
+            ]),
             sort: choice(filter.sort, ['next_billing', 'service', 'updated']),
             limit: String(integer(filter.limit, 1, 100)),
             offset: String(integer(filter.offset)),

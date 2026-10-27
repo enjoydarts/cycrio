@@ -13,6 +13,7 @@ import {
   integer,
   invalid,
   pagination,
+  nullable,
   record,
   text,
   uuid,
@@ -21,12 +22,47 @@ export type AnalysisResult = ProcessingResult & {
   account_id: string;
   account_label: string;
   registrations: { event_index: number; subscription_id: string }[];
+  automation_state?:
+    | 'pending'
+    | 'not_applicable'
+    | 'no_events'
+    | 'registered'
+    | 'needs_review'
+    | 'failed';
+  automation?: {
+    event_index: number;
+    state: 'registered' | 'needs_review' | 'failed';
+    reason:
+      | 'created'
+      | 'attached'
+      | 'already_registered'
+      | 'ambiguous_identity'
+      | 'invalid_facts'
+      | 'recording_failed';
+    subscription_id: string | null;
+  }[];
+  billing_automation?: {
+    event_index: number;
+    state: 'recorded' | 'not_applicable' | 'needs_review' | 'failed';
+    reason:
+      | 'created'
+      | 'already_recorded'
+      | 'missing_facts'
+      | 'invalid_facts'
+      | 'duplicate_candidate'
+      | 'refund_target_ambiguous'
+      | 'source_conflict'
+      | 'recording_failed'
+      | 'owner_detached'
+      | 'non_financial_event';
+    entry_id: string | null;
+  }[];
 };
 export type AnalysisRun = ProcessingRun & { account_label: string };
 export type AnalysisFilter = {
   account_id: string;
   state: 'all' | 'related' | 'failed' | 'unknown' | 'not_related';
-  review: 'all' | 'pending' | 'registered';
+  review: 'all' | 'pending' | 'registered' | 'attention';
   limit: number;
   offset: number;
 };
@@ -66,6 +102,86 @@ export function parseAnalysisResult(value: unknown): AnalysisResult {
     account_id: uuid(v.account_id),
     account_label: text(v.account_label, 200),
     registrations,
+    automation_state:
+      v.automation_state === undefined
+        ? result.events.length
+          ? 'pending'
+          : 'no_events'
+        : choice(v.automation_state, [
+            'pending',
+            'not_applicable',
+            'no_events',
+            'registered',
+            'needs_review',
+            'failed',
+          ] as const),
+    automation:
+      v.automation === undefined
+        ? []
+        : array(
+            v.automation,
+            (x) => {
+              const a = record(x);
+              return {
+                event_index: integer(
+                  a.event_index,
+                  0,
+                  result.events.length - 1,
+                ),
+                state: choice(a.state, [
+                  'registered',
+                  'needs_review',
+                  'failed',
+                ]),
+                reason: choice(a.reason, [
+                  'created',
+                  'attached',
+                  'already_registered',
+                  'ambiguous_identity',
+                  'invalid_facts',
+                  'recording_failed',
+                ]),
+                subscription_id: nullable(a.subscription_id, uuid),
+              };
+            },
+            32,
+          ),
+    billing_automation:
+      v.billing_automation === undefined
+        ? []
+        : array(
+            v.billing_automation,
+            (x) => {
+              const a = record(x);
+              return {
+                event_index: integer(
+                  a.event_index,
+                  0,
+                  result.events.length - 1,
+                ),
+                state: choice(a.state, [
+                  'recorded',
+                  'not_applicable',
+                  'needs_review',
+                  'failed',
+                ]),
+                reason: choice(a.reason, [
+                  'created',
+                  'already_recorded',
+                  'missing_facts',
+                  'invalid_facts',
+                  'duplicate_candidate',
+                  'refund_target_ambiguous',
+                  'source_conflict',
+                  'recording_failed',
+                  'owner_detached',
+                  'non_financial_event',
+                ]),
+                entry_id: nullable(a.entry_id, uuid),
+              };
+            },
+            32,
+          ),
   };
 }
 export function createAnalysisAPI(base: string, fetcher: typeof fetch = fetch) {
@@ -84,8 +200,14 @@ export function createAnalysisAPI(base: string, fetcher: typeof fetch = fetch) {
             'unknown',
             'not_related',
           ]),
-          review = choice(f.review, ['all', 'pending', 'registered']);
-        if (review !== 'all' && state !== 'related') return invalid();
+          review = choice(f.review, [
+            'all',
+            'pending',
+            'registered',
+            'attention',
+          ]);
+        if (['pending', 'registered'].includes(review) && state !== 'related')
+          return invalid();
         return new URLSearchParams({
           ...(f.account_id ? { account_id: uuid(f.account_id) } : {}),
           state,

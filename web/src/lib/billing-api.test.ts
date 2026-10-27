@@ -76,6 +76,7 @@ test('billing values require real dates, exact nonnegative money, explicit nulla
 });
 test('billing sources preserve independent original AI values and event index zero', () => {
   const source = {
+    provenance: 'automatic' as const,
     result_id: rid,
     event_index: 0,
     original_event: {

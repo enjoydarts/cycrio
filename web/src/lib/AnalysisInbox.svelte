@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
-  import { goto } from '$app/navigation';
+  import { goto, beforeNavigate } from '$app/navigation';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import { ApiError } from './api.ts';
@@ -11,7 +11,11 @@
     type AnalysisPage,
     type AnalysisResult,
   } from './analysis-api.ts';
-  import { createAnalysisController } from './analysis-controller.ts';
+  import {
+    createAnalysisController,
+    createAnalysisDetailController,
+    adoptFreshAnalysisSelection,
+  } from './analysis-controller.ts';
   import type { FeedView } from './daily-controller.ts';
   import type { MailAccount } from './mail-api.ts';
   import type { SubscriptionDrafts } from './subscriptions-controller.ts';
@@ -22,6 +26,8 @@
   import AnalysisDetail from './AnalysisDetail.svelte';
   import AnalysisStart from './AnalysisStart.svelte';
   import AnalysisHistory from './AnalysisHistory.svelte';
+  import MailAutomation from './MailAutomation.svelte';
+  import AnalysisResultStatus from './AnalysisResultStatus.svelte';
   import './daily.css';
   const session = getAppSession(),
     token = session.token,
@@ -41,16 +47,21 @@
     saving = $state(false),
     starting = $state(false),
     startKey = $state(0),
-    historyKey = $state(0);
+    historyKey = $state(0),
+    automationFrozen = $state(false),
+    navigationMessage = $state('');
   let controller = $state<ReturnType<typeof createAnalysisController>>(),
+    detailController:
+      ReturnType<typeof createAnalysisDetailController> | undefined,
+    detailReadError = $state(false),
     abort: AbortController | undefined,
     disposed = false;
   const tab = $derived(
-    ['registered', 'all', 'history'].includes(
+    ['pending', 'attention', 'registered', 'all', 'history'].includes(
       page.url.searchParams.get('tab') ?? '',
     )
       ? page.url.searchParams.get('tab')!
-      : 'pending',
+      : 'all',
   );
   const filter = $derived.by(() => {
     const p = page.url.searchParams;
@@ -62,15 +73,17 @@
           p.get('state') ?? '',
         )
           ? p.get('state')
-          : tab === 'all'
+          : tab === 'all' || tab === 'attention'
             ? 'all'
             : 'related',
       review:
-        tab === 'pending'
-          ? 'pending'
-          : tab === 'registered'
-            ? 'registered'
-            : 'all',
+        tab === 'attention'
+          ? 'attention'
+          : tab === 'pending'
+            ? 'pending'
+            : tab === 'registered'
+              ? 'registered'
+              : 'all',
       limit: 20,
       offset: /^\d+$/.test(p.get('offset') ?? '') ? Number(p.get('offset')) : 0,
     } as AnalysisFilter;
@@ -103,7 +116,15 @@
     }
   }
   function registered(result: AnalysisResult) {
-    selected = result;
+    if (detailOpen && selected?.id === result.id) {
+      selected = result;
+      detailReadError = false;
+      void detailController?.load({
+        id: result.id,
+        account_id: result.account_id,
+        fallback: result,
+      });
+    }
     void controller?.load(filter);
   }
   function accepted() {
@@ -119,51 +140,81 @@
     controller = createAnalysisController(
       api,
       token,
-      (v) => (view = v),
+      (v) => {
+        view = v;
+        selected = adoptFreshAnalysisSelection(selected, v);
+      },
       session.onDenied,
+    );
+    detailController = createAnalysisDetailController(
+      api,
+      token,
+      (next) => {
+        if (disposed || !detailOpen) return;
+        detailReadError = !!next.error;
+        selected = adoptFreshAnalysisSelection(selected, next);
+      },
+      () => {
+        selected = null;
+        detailOpen = false;
+        requests.clear();
+        drafts.clear();
+        session.onDenied();
+      },
     );
     if (tab !== 'history') void controller.load(filter);
     void loadAccounts();
     return () => {
       disposed = true;
       controller?.dispose();
+      detailController?.dispose();
       abort?.abort();
       requests.clear();
       drafts.clear();
     };
   });
   $effect(() => {
-    if (tab !== 'history') void controller?.load(filter);
+    const current = controller,
+      query = filter,
+      currentTab = tab;
+    if (currentTab !== 'history')
+      untrack(() => {
+        void current?.load(query);
+      });
   });
   const resultNames = {
-    succeeded: 'AI 抽出・未確認',
+    succeeded: '解析完了',
     not_related: '非関連',
     failed: '解析失敗',
     unknown: '結果不明',
   };
+  beforeNavigate(({ cancel }) => {
+    if (automationFrozen) {
+      cancel();
+      navigationMessage =
+        '受付状況を確認するまで画面の移動を停止しています。同じ要求で受付を確認してください。';
+    }
+  });
 </script>
 
 <section class="daily">
   <header class="titlebar">
     <div>
       <h1>メール解析</h1>
-      <p>AI が見つけた情報を確認して、サブスクに登録します。</p>
+      <p>
+        初回の取り込みから新着確認・解析・サブスクと支払履歴への登録まで、自動で進めます。
+      </p>
     </div>
-    <button class="primary" onclick={() => (startOpen = true)}
-      >メールを解析</button
-    >
   </header>
-  <nav class="tabs" aria-label="解析結果の表示">
-    {#each [['pending', '未確認'], ['registered', '登録済み'], ['all', 'すべて'], ['history', '実行履歴']] as [key, label]}<a
-        href={link({ tab: key, offset: 0, state: 'all' })}
-        aria-current={tab === key ? 'page' : undefined}>{label}</a
-      >{/each}
-  </nav>
-  <div class="toolbar">
+  {#if navigationMessage && automationFrozen}<p class="notice" role="status">
+      {navigationMessage}
+    </p>{/if}
+  <div class="toolbar analysis-toolbar">
     <div class="filters">
       <label
         >メールアカウント<select
           value={filter.account_id}
+          disabled={automationFrozen}
           onchange={(e) =>
             goto(link({ account_id: e.currentTarget.value, offset: 0 }))}
           ><option value="">すべてのアカウント</option
@@ -194,13 +245,49 @@
         >再読み込み</button
       >
     </p>{/if}
+  <MailAutomation
+    account={accounts.find(
+      (a) =>
+        a.id ===
+        (filter.account_id || page.url.searchParams.get('setup_account')),
+    ) ??
+      accounts[0] ??
+      null}
+    returnTo={page.url.pathname + page.url.search}
+    onFrozen={(value) => (automationFrozen = value)}
+    onRefresh={() => {
+      if (!saving && tab !== 'history') void controller?.load(filter);
+    }}
+  />
+  <details class="section">
+    <summary>詳細操作</summary>
+    <p>
+      必要な場合だけ、同期済みメールの件数を指定して解析できます。失敗・結果不明の再解析は各結果の詳細から行えます。
+    </p>
+    <button disabled={automationFrozen} onclick={() => (startOpen = true)}
+      >件数を指定して手動解析</button
+    ><a href="/settings/mail">メール接続・手動同期を確認</a>
+  </details>
+  <nav class="tabs" aria-label="解析結果の表示">
+    {#each [['all', '最近の結果'], ['attention', '要対応'], ['registered', '登録済み'], ['history', '実行履歴']] as [key, label]}<a
+        href={link({ tab: key, offset: 0, state: 'all' })}
+        aria-current={tab === key ? 'page' : undefined}>{label}</a
+      >{/each}
+    {#if tab === 'pending'}<a
+        href={link({ tab: 'pending', offset: 0 })}
+        aria-current="page">未登録（旧表示）</a
+      >{/if}
+  </nav>
   {#if tab === 'history'}{#key historyKey}<AnalysisHistory
         account={filter.account_id}
         offset={filter.offset}
         previous={link({ offset: Math.max(0, filter.offset - 20) })}
         next={link({ offset: filter.offset + 20 })}
       />{/key}
-  {:else if view.status === 'loading'}<p class="notice" role="status">
+  {:else if view.status === 'loading' && !view.page}<p
+      class="notice"
+      role="status"
+    >
       解析結果を読み込んでいます…
     </p>{:else if view.error}<div class="notice" role="alert">
       <p>{processingErrors[view.error]}</p>
@@ -210,7 +297,7 @@
         <thead
           ><tr
             ><th>検出した情報</th><th>抽出金額</th><th>解析日時（日本時間）</th
-            ><th>確認状況</th><th>詳細</th></tr
+            ><th>処理状況・登録先</th><th>詳細</th></tr
           ></thead
         ><tbody
           >{#each view.page.results as result (result.id)}<tr
@@ -229,19 +316,28 @@
                   : '—'}</td
               ><td data-label="解析日時"
                 >{processingDate(result.finished_at)}</td
-              ><td data-label="確認状況"
-                ><span class="badge"
-                  >{result.state === 'succeeded'
-                    ? `${result.registrations.length} / ${result.events.length} 登録済み`
-                    : resultNames[result.state]}</span
-                ></td
+              ><td data-label="確認状況"><AnalysisResultStatus {result} /></td
               ><td
-                ><button
-                  onclick={() => {
-                    selected = result;
-                    detailOpen = true;
-                  }}>確認する</button
-                ></td
+                >{#if result.events.length || ['failed', 'unknown'].includes(result.state)}<button
+                    onclick={() => {
+                      selected = result;
+                      detailReadError = false;
+                      detailOpen = true;
+                      void detailController?.load({
+                        id: result.id,
+                        account_id: result.account_id,
+                        fallback: result,
+                      });
+                    }}
+                    >{result.state === 'failed' ||
+                    result.state === 'unknown' ||
+                    result.automation_state === 'needs_review' ||
+                    result.billing_automation?.some((a) =>
+                      ['needs_review', 'failed'].includes(a.state),
+                    )
+                      ? '対応する'
+                      : '詳細を見る'}</button
+                  >{/if}</td
               ></tr
             >{/each}</tbody
         >
@@ -254,7 +350,11 @@
               ? '登録済みの解析結果はありません'
               : '解析結果はありません'}
         </h2>
-        <p>メールを接続・同期してから、条件を確認して解析を開始できます。</p>
+        <p>
+          {tab === 'attention'
+            ? '対応が必要な解析結果はありません。'
+            : '自動処理を始めると、ここに結果が届きます。'}
+        </p>
         <div class="actions">
           <a href="/settings/mail">メールの接続・同期</a>
         </div>
@@ -277,8 +377,22 @@
   open={detailOpen}
   title="解析結果を確認"
   busy={saving}
-  onclose={() => (detailOpen = false)}
-  >{#if selected}{#key selected.id}<AnalysisDetail
+  onclose={() => {
+    detailOpen = false;
+    selected = null;
+    detailReadError = false;
+  }}
+  >{#if detailReadError}<p class="notice" role="alert">
+      最新の登録状況を取得できません。表示中の結果を保持しています。<button
+        onclick={() => {
+          if (selected)
+            void detailController?.load({
+              id: selected.id,
+              account_id: selected.account_id,
+            });
+        }}>登録状況を再読み込み</button
+      >
+    </p>{/if}{#if selected}{#key selected.id}<AnalysisDetail
         result={selected}
         active={detailOpen}
         {accounts}
@@ -315,3 +429,34 @@
       initialMaximum={page.url.searchParams.get('setup_max') ?? ''}
     />{/key}</Modal
 >
+
+<style>
+  .analysis-toolbar .filters {
+    flex: 1 1 28rem;
+    min-width: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  .analysis-toolbar .filters > label:first-child {
+    flex: 0 1 24rem;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .analysis-toolbar .filters > label:not(:first-child) {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+  @media (max-width: 550px) {
+    .analysis-toolbar .filters {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      flex-basis: 100%;
+      width: 100%;
+    }
+    .analysis-toolbar .filters > label {
+      width: 100%;
+      min-width: 0;
+    }
+  }
+</style>

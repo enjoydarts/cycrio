@@ -510,9 +510,9 @@
             onDirty={(value) => (priceDirty = value)}
           />{/key}{/if}
       <details class="setup-details">
-        <summary>入力・出力・待機上限を変更</summary>
+        <summary>出力・待機上限と接続テストの技術設定</summary>
         <div class="setup-grid">
-          {#each [{ key: 'max_input_bytes', label: '本文の入力上限（bytes）', min: 1024, max: 65536 }, { key: 'max_output_tokens', label: '出力上限（tokens）', min: 64, max: 16384 }, { key: 'timeout_seconds', label: '待機上限（秒）', min: 1, max: 120 }] as field}<label
+          {#each [{ key: 'max_input_bytes', label: '旧方式・接続テストの入力基準（bytes）', min: 1024, max: 65536 }, { key: 'max_output_tokens', label: '出力上限（tokens）', min: 64, max: 16384 }, { key: 'timeout_seconds', label: '待機上限（秒）', min: 1, max: 120 }] as field}<label
               >{field.label}<input
                 type="number"
                 min={field.min}
@@ -527,7 +527,7 @@
             >{/each}
         </div>
         <p class="muted">
-          上限を変更した場合は、配信先情報も更新して適合を確認してください。
+          通常の解析では本文全体を送信します。入力基準は旧方式・接続テスト用で、全文の上限やモデルの文脈容量の保証ではありません。基準を変更した場合は、配信先情報も更新して適合を確認してください。
         </p>
         {#if secondary?.provider === 'openrouter' && (view.routeLimits?.max_input_bytes !== selection.max_input_bytes || view.routeLimits?.max_output_tokens !== selection.max_output_tokens)}<button
             disabled={locked ||

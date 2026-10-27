@@ -9,6 +9,7 @@
   import { datetime } from './model-catalog.ts';
   import {
     createStandardReview,
+    editStandardConsent,
     reconcileStandardReview,
     type StandardReview,
     type StandardConsent,
@@ -73,7 +74,11 @@
     if (!form || !review || busy) return;
     review = {
       ...review,
-      draft: { ...form, dirty: true, values: { ...form.values, ...patch } },
+      draft: {
+        ...form,
+        dirty: true,
+        values: editStandardConsent(form.values, patch),
+      },
     };
     saved = false;
     onDirty(true);
@@ -109,6 +114,7 @@
           expected_version: form.baseline_version,
           profile_id: policyState.profile.id,
           enabled: true,
+          full_email_allowed: value.full_email_allowed,
           primary_retention: value.primary_retention,
           secondary_retention: value.secondary_retention,
           primary_confirmed: value.primary_confirmed,
@@ -119,6 +125,7 @@
           runtime_version: policyState.runtime_version,
           profile_id: policyState.profile.id,
           enabled: true,
+          full_email_allowed: value.full_email_allowed,
           primary_mode: value.primary_mode,
           primary_terms_id:
             value.primary_mode === 'standard' ? terms!.primary.id : '',
@@ -140,6 +147,7 @@
       expected_version: policy.version,
       profile_id: policy.profile_id,
       enabled: false,
+      full_email_allowed: policy.full_email_allowed ?? false,
       primary_retention: policy.primary_retention,
       secondary_retention: policy.secondary_retention,
       primary_confirmed: policy.primary_confirmed,
@@ -155,7 +163,9 @@
     <div class="setup-complete">
       <strong
         >現在の許可：{policyState.policy?.enabled
-          ? '許可済み'
+          ? policyState.policy.full_email_allowed
+            ? '本文全体の送信を許可済み'
+            : '従来範囲のみ許可済み'
           : '停止中・未許可'}</strong
       >{#if policyState.policy?.enabled}<button disabled={busy} onclick={stop}
           >送信許可を停止</button
@@ -195,6 +205,18 @@
           void submit();
         }}
       >
+        <label class="check"
+          ><input
+            type="checkbox"
+            checked={form.values.full_email_allowed}
+            disabled={busy || conflict}
+            onchange={(e) =>
+              edit({ full_email_allowed: e.currentTarget.checked })}
+          />本文全体の送信を許可する（自動処理と新しい手動解析に必要）</label
+        >
+        <p class="muted">
+          本文全体を一次判定・二次処理の各送信先へ送ります。範囲を変更すると、両段階の保持・学習利用条件を確認し直す必要があります。
+        </p>
         <div class="setup-grid">
           <article class="setup-panel">
             <h3>一次判定 · Liquid AI D1</h3>

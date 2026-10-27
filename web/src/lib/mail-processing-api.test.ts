@@ -297,6 +297,7 @@ test('retry, cancel, result and policy routes use exact public bodies and fixed 
     Object.keys(JSON.parse(String(calls[4].init.body))).sort(),
     [
       'expected_version',
+      'full_email_allowed',
       'profile_id',
       'enabled',
       'primary_retention',

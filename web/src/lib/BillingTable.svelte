@@ -31,6 +31,8 @@
         <td data-label="状態"
           ><span class="badge"
             >{entry.state === 'active' ? '有効' : '無効'}</span
+          ><span class="secondary"
+            >{entry.provenance === 'automatic' ? '自動記録' : '本人確認'}</span
           ></td
         >
         <td data-label="根拠">{entry.sources.length} 件</td>

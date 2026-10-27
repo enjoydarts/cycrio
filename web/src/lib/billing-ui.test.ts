@@ -25,7 +25,7 @@ test('billing history is a detail tab and monthly summary remains under subscrip
 });
 test('registered AI event offers explicit history navigation preserving event zero without writing', async () => {
   const detail = await source('AnalysisDetail.svelte');
-  assert.match(detail, /履歴に記録/);
+  assert.match(detail, /支払・請求履歴を見る/);
   assert.match(detail, /source_result_id/);
   assert.match(detail, /source_event_index/);
 });

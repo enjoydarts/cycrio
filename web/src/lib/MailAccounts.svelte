@@ -36,7 +36,11 @@
     view.status === 'saving' || view.status === 'loading' || syncSaving,
   );
   const returnTarget = $derived(
-    returnTo === null ? null : safeAnalysisReturn(returnTo),
+    returnTo === null
+      ? account
+        ? `/analysis?setup_account=${account.id}&account_id=${account.id}`
+        : null
+      : safeAnalysisReturn(returnTo),
   );
   const returnLocked = $derived(busy || view.uncertain || view.form !== null);
   const folders = $derived(
@@ -191,7 +195,7 @@
       Fastmail 専用のアプリパスワードで <code>imap.fastmail.com:993</code
       >（TLS）に接続します。Google
       ログインとは別の設定です。保存だけでは同期しません。本文取得・AI
-      送信は「メール解析」で個別に確認して実行します。
+      送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
     </p>
   </details>
   {#if returnTarget}<div class="mail-return">
@@ -402,6 +406,12 @@
               onclick={() => controller?.saveFolders()}
               >フォルダー選択を保存</button
             >
+            {#if account.state === 'ready' && account.folders.some((f) => f.selected) && !view.form.credentialsDirty && !view.form.foldersDirty}<a
+                class="mail-button"
+                href={returnTarget ??
+                  `/analysis?setup_account=${account.id}&account_id=${account.id}`}
+                >このアカウントの自動処理を設定</a
+              >{/if}
           </section>
           {#if syncAPI}<details class="mail-step">
               <summary>メールの同期</summary>

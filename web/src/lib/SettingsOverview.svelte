@@ -28,7 +28,11 @@
     disposed = false,
     generation = 0;
   const admin = $derived(session.user?.role === 'platform_admin');
-  const best = $derived(previews.find((p) => p.ready) ?? previews[0] ?? null);
+  const best = $derived(
+    previews.find((p) => p.ready && p.full_email_allowed) ??
+      previews[0] ??
+      null,
+  );
   const readiness = $derived(
     setupReadiness({
       loaded,
@@ -40,6 +44,7 @@
   );
   const permission = $derived(
     !!policy?.policy?.enabled &&
+      !!policy.policy.full_email_allowed &&
       !!policy.policy.primary_retention &&
       !!policy.policy.secondary_retention &&
       (policy.policy.standard_proof?.primary_mode !== 'standard' ||
@@ -210,7 +215,7 @@
           <strong>メール解析</strong>
           <p class="muted">
             {rowStatus ||
-              (best?.ready
+              (best?.ready && best.full_email_allowed
                 ? 'モデルと送信許可を確認済み'
                 : accounts.length
                   ? '管理者の準備が必要な場合は、管理者へお問い合わせください'

@@ -11,6 +11,7 @@ export const values: SubscriptionValues = {
   status: 'active',
 };
 export const subscription = (): Subscription => ({
+  provenance: 'owner_confirmed',
   ...values,
   id,
   version: 1,

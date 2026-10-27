@@ -8,7 +8,7 @@
     対象期間: {summary.start_date} 以上、{summary.end_date} 未満（{summary.timezone}）
   </p>
   <p class="muted">
-    確認済みの有効な支払い・返金だけを、明細の日付で集計します。通貨の換算・月額換算は行いません。請求と無効な明細は金額に含みません。
+    自動記録と本人が保存した有効な支払い・返金を、明細の日付で集計します。通貨の換算・月額換算は行いません。請求と無効な明細は金額に含みません。
   </p>
 </div>
 {#if summary.currencies.length}

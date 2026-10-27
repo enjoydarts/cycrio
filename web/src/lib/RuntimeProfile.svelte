@@ -46,7 +46,7 @@
       </div>
     {/each}
     <p>
-      入力上限 {profile.max_input_bytes} bytes · 出力上限 {profile.max_output_tokens}
+      本文入力：本文全体 · 出力上限 {profile.max_output_tokens}
       token · 制限時間 {profile.timeout_seconds} 秒
     </p>
     {#if profile.openrouter_provider}<p>
@@ -60,6 +60,9 @@
     </p>
     <details>
       <summary>技術情報（設定と参照版の ID）</summary>
+      <p>
+        旧方式・接続テストの入力基準：{profile.max_input_bytes} bytes。通常の本文全体の解析の上限ではありません。
+      </p>
       <dl>
         <div>
           <dt>実行設定</dt>

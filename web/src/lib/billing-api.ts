@@ -26,11 +26,13 @@ export type BillingValues = {
   state: 'active' | 'voided';
 };
 export type BillingSource = {
+  provenance?: 'automatic' | 'owner_confirmed';
   result_id: string;
   event_index: number;
   original_event: ProcessingEvent;
 };
 export type BillingEntry = BillingValues & {
+  provenance?: 'automatic' | 'owner_confirmed';
   id: string;
   subscription_id: string;
   version: number;
@@ -142,6 +144,10 @@ export function parseBillingEntry(value: unknown): BillingEntry {
       (item) => {
         const s = record(item);
         return {
+          provenance:
+            s.provenance === undefined
+              ? ('owner_confirmed' as const)
+              : choice(s.provenance, ['automatic', 'owner_confirmed']),
           result_id: uuid(s.result_id),
           event_index: integer(s.event_index, 0, 31),
           original_event: parseProcessingEvent(s.original_event),
@@ -156,6 +162,10 @@ export function parseBillingEntry(value: unknown): BillingEntry {
     return invalid();
   return {
     ...parseBillingValues(v),
+    provenance:
+      v.provenance === undefined
+        ? 'owner_confirmed'
+        : choice(v.provenance, ['automatic', 'owner_confirmed'] as const),
     id: uuid(v.id),
     subscription_id: uuid(v.subscription_id),
     version: integer(v.version, 1),
