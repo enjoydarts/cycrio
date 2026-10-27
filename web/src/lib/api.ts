@@ -11,6 +11,8 @@ export const credentialProviders = [
   'openai',
   'anthropic',
   'resend',
+  'clerk_webhook',
+  'resend_webhook',
 ] as const;
 export type CredentialProvider = (typeof credentialProviders)[number];
 export type CredentialSummary = {

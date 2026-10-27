@@ -20,6 +20,7 @@ type CredentialService interface {
 }
 
 type handlerOptions struct {
+	integrations    IntegrationService
 	credentials     CredentialService
 	catalog         ModelCatalogService
 	runtime         AIRuntimeService

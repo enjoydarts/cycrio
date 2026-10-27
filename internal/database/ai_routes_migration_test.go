@@ -20,7 +20,7 @@ import (
 func allLegacyRouteRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','ai_routes','ai_route_snapshots','ai_routes_state','ai_routes_audit','mail_processing_standard_proofs') ORDER BY tablename`)
+	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','ai_routes','ai_route_snapshots','ai_routes_state','ai_routes_audit','mail_processing_standard_proofs') ORDER BY tablename`)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -39,7 +39,7 @@ func allLegacyRouteRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	out := map[string]string{}
 	for _, name := range names {
 		var doc string
-		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed'-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t) x`).Scan(&doc); e != nil {
+		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed'-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook')) x`).Scan(&doc); e != nil {
 			t.Fatal(name, e)
 		}
 		out[name] = doc
@@ -77,21 +77,21 @@ func TestAIRoutesMigrationTwelvePreservesEveryV11Record(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 11)
-	if e != nil || len(down) != 6 || down[0].Source.Version != 17 || down[1].Source.Version != 16 || down[2].Source.Version != 15 || down[3].Source.Version != 14 || down[4].Source.Version != 13 || down[5].Source.Version != 12 {
+	if e != nil || len(down) != 7 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 || down[3].Source.Version != 15 || down[4].Source.Version != 14 || down[5].Source.Version != 13 || down[6].Source.Version != 12 {
 		t.Fatal(down, e)
 	}
 	if !reflect.DeepEqual(before, allLegacyRouteRecords(t, f.runtime.pool)) {
 		t.Fatal("v11 records changed on down")
 	}
 	up, e := p.Up(ctx)
-	if e != nil || len(up) != 6 || up[0].Source.Version != 12 || up[1].Source.Version != 13 || up[2].Source.Version != 14 || up[3].Source.Version != 15 || up[4].Source.Version != 16 || up[5].Source.Version != 17 {
+	if e != nil || len(up) != 7 || up[0].Source.Version != 12 || up[1].Source.Version != 13 || up[2].Source.Version != 14 || up[3].Source.Version != 15 || up[4].Source.Version != 16 || up[5].Source.Version != 17 || up[6].Source.Version != 18 {
 		t.Fatal(up, e)
 	}
 	if !reflect.DeepEqual(before, allLegacyRouteRecords(t, f.runtime.pool)) {
 		t.Fatal("v11 records changed on up")
 	}
 	var version, count int
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM ai_routes)+(SELECT count(*) FROM ai_route_snapshots)+(SELECT count(*) FROM ai_routes_audit)+(SELECT count(*) FROM mail_processing_standard_proofs)`).Scan(&version, &count); e != nil || version != 17 || count != 0 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM ai_routes)+(SELECT count(*) FROM ai_route_snapshots)+(SELECT count(*) FROM ai_routes_audit)+(SELECT count(*) FROM mail_processing_standard_proofs)`).Scan(&version, &count); e != nil || version != 18 || count != 0 {
 		t.Fatal(version, count, e)
 	}
 	state, e := NewAIRoutesRepository(f.runtime.pool).List(ctx, airoutes.Filter{})

@@ -53,6 +53,13 @@ func (s *Store) AllowIdentity(ctx context.Context, issuer, subject string, admin
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, issuer+"|"+subject); err != nil {
 		return Principal{}, ErrUnavailable
 	}
+	var externallyBlocked bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM integration_profiles WHERE issuer=$1 AND subject=$2 AND (blocked OR deleted))`, issuer, subject).Scan(&externallyBlocked); err != nil {
+		return Principal{}, ErrUnavailable
+	}
+	if externallyBlocked {
+		return Principal{}, ErrForbidden
+	}
 	var id, state string
 	err = tx.QueryRow(ctx, `SELECT u.id,u.state FROM auth_identities i JOIN users u ON u.id=i.user_id
 		WHERE i.issuer=$1 AND i.subject=$2 FOR UPDATE OF u`, issuer, subject).Scan(&id, &state)

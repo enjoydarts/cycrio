@@ -73,6 +73,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		}{p.Role})
 	}))
 	registerCredentials(mux, settings.credentials, protect)
+	registerIntegrations(mux, settings.integrations, protect)
 	registerModelCatalog(mux, settings.catalog, protect)
 	registerAIRuntime(mux, settings.runtime, protect)
 	registerAIRoutes(mux, settings.routes, protect)
@@ -90,7 +91,8 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		w.Header().Set("X-Request-ID", uuid.NewString())
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
-		if strings.HasPrefix(r.URL.Path, "/v1/") {
+		providerWebhook := r.Method == http.MethodPost && (r.URL.Path == "/v1/webhooks/clerk" || r.URL.Path == "/v1/webhooks/resend")
+		if strings.HasPrefix(r.URL.Path, "/v1/") && !providerWebhook {
 			origin := r.Header.Get("Origin")
 			w.Header().Add("Vary", "Origin")
 			if origin != "" {

@@ -18,6 +18,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/httpapi"
+	"github.com/enjoydarts/cycrio/internal/integrations"
 	"github.com/enjoydarts/cycrio/internal/mailautomation"
 	"github.com/enjoydarts/cycrio/internal/mailprocessingruntime"
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
@@ -68,11 +69,12 @@ func run() error {
 	store := database.NewStore(pool)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
 	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
+	integrationService := integrations.NewService(database.NewIntegrationRepository(pool, keyring, config.Issuer()), credentialService, integrations.NewResendSender(nil))
 	subscriptionRepository := database.NewSubscriptionRepository(pool)
 	billingRepository := database.NewBillingRepository(pool)
 	billingScheduleRepository := database.NewBillingScheduleRepository(pool)
 	mailAutomationService := mailautomation.NewService(database.NewMailAutomationRepository(pool))
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

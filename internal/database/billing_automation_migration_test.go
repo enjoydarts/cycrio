@@ -15,7 +15,7 @@ import (
 func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
+	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 			drop = []string{"provenance"}
 		}
 		var raw string
-		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t)x`, drop).Scan(&raw); err != nil {
+		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook'))x`, drop).Scan(&raw); err != nil {
 			t.Fatal(err)
 		}
 		out[name] = raw
@@ -63,7 +63,7 @@ func TestBillingAutomationMigrationSeventeenPreservesEverySixteenRecord(t *testi
 	}
 	provider := automationMigrationProvider(t, f.runtime.pool)
 	down, err := provider.DownTo(ctx, 16)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 17 {
+	if err != nil || len(down) != 2 || down[0].Source.Version != 18 || down[1].Source.Version != 17 {
 		t.Fatal(down, err)
 	}
 	if !reflect.DeepEqual(before, billingLegacyRecords(t, f.runtime.pool)) {
@@ -73,7 +73,7 @@ func TestBillingAutomationMigrationSeventeenPreservesEverySixteenRecord(t *testi
 		t.Fatal("exact v16 audit restrictions must be restored")
 	}
 	up, err := provider.Up(ctx)
-	if err != nil || len(up) != 1 || up[0].Source.Version != 17 {
+	if err != nil || len(up) != 2 || up[0].Source.Version != 17 || up[1].Source.Version != 18 {
 		t.Fatal(up, err)
 	}
 	if !reflect.DeepEqual(before, billingLegacyRecords(t, f.runtime.pool)) {

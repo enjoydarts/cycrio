@@ -7,14 +7,20 @@ import {
   type CredentialsState,
 } from './credentials.ts';
 
-const rows = ['liquid', 'openrouter', 'openai', 'anthropic', 'resend'].map(
-  (provider) => ({
-    provider,
-    state: 'not_configured',
-    version: 0,
-    updated_at: null,
-  }),
-);
+const rows = [
+  'liquid',
+  'openrouter',
+  'openai',
+  'anthropic',
+  'resend',
+  'clerk_webhook',
+  'resend_webhook',
+].map((provider) => ({
+  provider,
+  state: 'not_configured',
+  version: 0,
+  updated_at: null,
+}));
 function fixture(
   handle?: (url: string, init?: RequestInit) => Promise<Response>,
 ) {
@@ -64,7 +70,7 @@ test('load publishes metadata and audit only, without storing secret inputs', as
   const f = fixture();
   await f.controller.load();
   assert.equal(f.controller.state.status, 'ready');
-  assert.equal(f.controller.state.credentials.length, 5);
+  assert.equal(f.controller.state.credentials.length, 7);
   assert.deepEqual(f.controller.state.events, []);
   await f.controller.put('openai', 'invalid', 0);
   assert.equal(f.controller.state.error, 'invalid_request');
@@ -124,7 +130,7 @@ test('conflict reloads current metadata and requires a new explicit submit', asy
   await f.controller.load();
   await f.controller.put('openai', 'private-secret', 0);
   assert.equal(f.controller.state.error, 'conflict');
-  assert.equal(f.controller.state.credentials.length, 5);
+  assert.equal(f.controller.state.credentials.length, 7);
   assert.equal(f.calls.filter((call) => call.startsWith('PUT')).length, 1);
   assert.equal(f.calls.length, 5);
 });

@@ -34,6 +34,11 @@
     openai: { label: 'OpenAI', purpose: '二次処理' },
     anthropic: { label: 'Anthropic', purpose: '二次処理' },
     resend: { label: 'Resend', purpose: 'メール送信' },
+    clerk_webhook: { label: 'Clerk Webhook', purpose: 'イベント署名の検証' },
+    resend_webhook: {
+      label: 'Resend Webhook',
+      purpose: '配信イベント署名の検証',
+    },
   };
   const statuses = {
     not_configured: '未登録',

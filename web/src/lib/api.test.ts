@@ -129,14 +129,20 @@ test('cancellation is passed to fetch and remains distinguishable', async () => 
   });
 });
 
-const summaries = ['liquid', 'openrouter', 'openai', 'anthropic', 'resend'].map(
-  (provider) => ({
-    provider,
-    state: 'not_configured',
-    version: 0,
-    updated_at: null,
-  }),
-);
+const summaries = [
+  'liquid',
+  'openrouter',
+  'openai',
+  'anthropic',
+  'resend',
+  'clerk_webhook',
+  'resend_webhook',
+].map((provider) => ({
+  provider,
+  state: 'not_configured',
+  version: 0,
+  updated_at: null,
+}));
 const event = {
   id: 'event-id',
   actor_id: 'internal-admin',

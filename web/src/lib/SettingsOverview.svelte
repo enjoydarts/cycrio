@@ -11,6 +11,7 @@
   import type { SettingsState } from './catalog-api.ts';
   import type { RoutesResult } from './ai-routes-api.ts';
   import { setupReadiness } from './setup-readiness.ts';
+  import SettingsNavigation from './SettingsNavigation.svelte';
   import './setup.css';
   const session = getAppSession();
   let accounts = $state<MailAccount[]>([]),
@@ -153,6 +154,13 @@
     </div>
     <button disabled={busy || denied} onclick={load}>準備状況を更新</button>
   </div>
+  <div class="mobile-settings-index">
+    <SettingsNavigation
+      role={session.user?.role ?? 'user'}
+      section=""
+      variant="list"
+    />
+  </div>
   <article class="setup-next" aria-live="polite">
     <p class="eyebrow">次のステップ</p>
     <h2>{readiness.title}</h2>
@@ -246,3 +254,15 @@
       </div>
     </details>{/if}
 </section>
+
+<style>
+  .mobile-settings-index {
+    display: none;
+  }
+  @media (max-width: 700px) {
+    .mobile-settings-index {
+      display: block;
+      margin-bottom: 28px;
+    }
+  }
+</style>

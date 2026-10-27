@@ -60,7 +60,7 @@ func NewService(repository Repository, keyring *secretstore.Keyring) *Service {
 }
 func validProvider(provider string) bool {
 	switch provider {
-	case "liquid", "openrouter", "openai", "anthropic", "resend":
+	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_webhook", "resend_webhook":
 		return true
 	}
 	return false
@@ -143,7 +143,13 @@ func (s *Service) Resolve(ctx context.Context, id string) ([]byte, error) {
 	if err != nil {
 		return nil, safeError(err)
 	}
-	plain, err := s.keyring.Open(v.Envelope, credentialAAD(v))
+	return OpenVersion(s.keyring, v)
+}
+
+// OpenVersion decrypts metadata read by an authorized caller in its own
+// transaction, so dispatch need not acquire another database connection.
+func OpenVersion(keyring *secretstore.Keyring, v CredentialVersion) ([]byte, error) {
+	plain, err := keyring.Open(v.Envelope, credentialAAD(v))
 	if err != nil {
 		return nil, ErrUnavailable
 	}

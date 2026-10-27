@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Snippet } from 'svelte';
   import type { CurrentUser } from './api.ts';
+  import SettingsNavigation from './SettingsNavigation.svelte';
   let {
     user,
     pathname,
@@ -24,7 +25,7 @@
       icon: 'M3 5h18v14H3z M3 6l9 7 9-7',
     },
     {
-      href: '/settings/mail',
+      href: '/settings',
       title: '設定',
       icon: 'M4 7h16 M4 17h16 M8 4v6 M16 14v6',
     },
@@ -51,27 +52,42 @@
         alt=""
       />Cycrio</a
     >
-    <nav aria-label="メイン">
-      {#each navigation as item}
-        <a
-          href={item.href}
-          aria-current={current === item.title ? 'page' : undefined}
-        >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.6"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"><path d={item.icon} /></svg
+    <div class="sidebar-navigation">
+      <nav aria-label="メイン">
+        {#each navigation as item}
+          <a
+            href={item.href}
+            class:active={current === item.title}
+            aria-current={current === item.title
+              ? item.title === '設定'
+                ? 'location'
+                : 'page'
+              : undefined}
           >
-          <span>{item.title}</span>
-        </a>
-      {/each}
-    </nav>
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"><path d={item.icon} /></svg
+            >
+            <span>{item.title}</span>
+          </a>
+        {/each}
+      </nav>
+      {#if current === '設定'}
+        <SettingsNavigation
+          role={user.role}
+          section={pathname.startsWith('/settings/')
+            ? pathname.slice('/settings/'.length).split('/')[0]
+            : ''}
+        />
+      {/if}
+    </div>
     <div class="account">
       <span class="account-icon" aria-hidden="true"
         ><svg
@@ -152,6 +168,12 @@
   .sidebar > .brand {
     padding: 0 12px 36px;
   }
+  .sidebar-navigation {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 3px 12px;
+  }
   nav {
     display: grid;
     gap: 6px;
@@ -167,7 +189,7 @@
     text-decoration: none;
     font-weight: 600;
   }
-  nav a[aria-current='page'] {
+  nav a.active {
     background: var(--color-surface-soft);
     color: var(--color-action);
   }
@@ -175,6 +197,7 @@
     flex-shrink: 0;
   }
   .account {
+    flex-shrink: 0;
     margin-top: auto;
     border-top: 1px solid var(--color-border);
     padding: 18px 0 0;
@@ -277,6 +300,9 @@
     .account,
     .breadcrumb {
       display: none;
+    }
+    .sidebar-navigation {
+      display: contents;
     }
     nav {
       grid-template-columns: repeat(3, minmax(0, 1fr));

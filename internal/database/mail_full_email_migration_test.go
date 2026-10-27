@@ -40,14 +40,14 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 		t.Fatal(err)
 	}
 	down, err := p.DownTo(ctx, 14)
-	if err != nil || len(down) != 3 || down[0].Source.Version != 17 || down[1].Source.Version != 16 || down[2].Source.Version != 15 {
+	if err != nil || len(down) != 4 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 || down[3].Source.Version != 15 {
 		t.Fatal(down, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("v14 data changed on down15", err)
 	}
 	up, err := p.Up(ctx)
-	if err != nil || len(up) != 3 || up[0].Source.Version != 15 || up[1].Source.Version != 16 || up[2].Source.Version != 17 {
+	if err != nil || len(up) != 4 || up[0].Source.Version != 15 || up[1].Source.Version != 16 || up[2].Source.Version != 17 || up[3].Source.Version != 18 {
 		t.Fatal(up, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
@@ -55,7 +55,7 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 	}
 	var bounded bool
 	var version int
-	if err = f.runtime.pool.QueryRow(ctx, `SELECT NOT full_email_allowed,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_policies`).Scan(&bounded, &version); err != nil || !bounded || version != 17 {
+	if err = f.runtime.pool.QueryRow(ctx, `SELECT NOT full_email_allowed,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_policies`).Scan(&bounded, &version); err != nil || !bounded || version != 18 {
 		t.Fatal(bounded, version, err)
 	}
 }
