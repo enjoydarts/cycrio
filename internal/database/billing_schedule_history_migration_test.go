@@ -62,7 +62,7 @@ func TestBillingScheduleMigrationElevenPreservesTen(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 10)
-	if e != nil || len(down) != 2 || down[0].Source.Version != 12 || down[1].Source.Version != 11 {
+	if e != nil || len(down) != 3 || down[0].Source.Version != 13 || down[1].Source.Version != 12 || down[2].Source.Version != 11 {
 		t.Fatal(down, e)
 	}
 	var version int
@@ -78,13 +78,13 @@ func TestBillingScheduleMigrationElevenPreservesTen(t *testing.T) {
 		}
 	}
 	up, e := provider.Up(ctx)
-	if e != nil || len(up) != 2 || up[0].Source.Version != 11 || up[1].Source.Version != 12 {
+	if e != nil || len(up) != 3 || up[0].Source.Version != 11 || up[1].Source.Version != 12 || up[2].Source.Version != 13 {
 		t.Fatal(up, e)
 	}
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); e != nil || before != after {
 		t.Fatal("v10 data changed on up", e)
 	}
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 12 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 13 {
 		t.Fatal(version, e)
 	}
 	replay, e := r.Save(ctx, f.owner, s.ID, in)

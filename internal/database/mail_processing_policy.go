@@ -22,6 +22,9 @@ func processingPolicy(ctx context.Context, q runtimeQuery, id string, lock bool)
 	if e != nil {
 		return p, mailprocessing.ErrUnavailable
 	}
+	if e = processingStandardProof(ctx, q, &p); e != nil {
+		return p, e
+	}
 	return p, nil
 }
 
@@ -65,7 +68,10 @@ func (r *MailProcessingRepository) AdminRead(ctx context.Context, actor string) 
 	if e = runtimeAdmin(ctx, tx, actor, false); e != nil {
 		return mailprocessing.PolicyState{}, processingError(e)
 	}
-	s, _, e := processingState(ctx, tx, false)
+	s, p, e := processingState(ctx, tx, false)
+	if e == nil {
+		s.StandardTerms, e = processingStandardTerms(ctx, tx, p)
+	}
 	return s, e
 }
 func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string, in mailprocessing.PolicyInput) (mailprocessing.PolicyState, error) {
@@ -104,23 +110,8 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 			return mailprocessing.PolicyState{}, processingError(e)
 		}
 	}
-	tag, e := tx.Exec(ctx, `INSERT INTO mail_processing_policies(profile_id,version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed)VALUES($1,1,$2,$3,$4,$5,$6) ON CONFLICT(profile_id) DO UPDATE SET version=mail_processing_policies.version+1,enabled=excluded.enabled,primary_retention=excluded.primary_retention,secondary_retention=excluded.secondary_retention,primary_confirmed=excluded.primary_confirmed,secondary_confirmed=excluded.secondary_confirmed WHERE mail_processing_policies.version=$7`, in.ProfileID, in.Enabled, in.PrimaryRetention, in.SecondaryRetention, in.PrimaryConfirmed, in.SecondaryConfirmed, in.ExpectedVersion)
-	if e != nil {
-		return mailprocessing.PolicyState{}, processingError(e)
-	}
-	if tag.RowsAffected() != 1 {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrConflict
-	}
-	// First-write races have no existing policy row to lock; inspect the version
-	// after the upsert before auditing, so a losing CAS cannot report success.
-	if e = tx.QueryRow(ctx, `SELECT version FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&v); e != nil {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
-	}
-	if v != in.ExpectedVersion+1 {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrConflict
-	}
-	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_policy_audit(id,actor_id,profile_id,version,action) VALUES($1,$2,$3,$4,'policy_saved')`, uuid.NewString(), actor, in.ProfileID, v); e != nil {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
+	if e = writeProcessingPolicy(ctx, tx, actor, in); e != nil {
+		return mailprocessing.PolicyState{}, e
 	}
 	s, _, e := processingState(ctx, tx, false)
 	if e != nil {
@@ -130,4 +121,27 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 		return mailprocessing.PolicyState{}, processingError(e)
 	}
 	return s, nil
+}
+
+func writeProcessingPolicy(ctx context.Context, tx pgx.Tx, actor string, in mailprocessing.PolicyInput) error {
+	var v int64
+	tag, e := tx.Exec(ctx, `INSERT INTO mail_processing_policies(profile_id,version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed)VALUES($1,1,$2,$3,$4,$5,$6) ON CONFLICT(profile_id) DO UPDATE SET version=mail_processing_policies.version+1,enabled=excluded.enabled,primary_retention=excluded.primary_retention,secondary_retention=excluded.secondary_retention,primary_confirmed=excluded.primary_confirmed,secondary_confirmed=excluded.secondary_confirmed WHERE mail_processing_policies.version=$7`, in.ProfileID, in.Enabled, in.PrimaryRetention, in.SecondaryRetention, in.PrimaryConfirmed, in.SecondaryConfirmed, in.ExpectedVersion)
+	if e != nil {
+		return processingError(e)
+	}
+	if tag.RowsAffected() != 1 {
+		return mailprocessing.ErrConflict
+	}
+	// First-write races have no existing policy row to lock; inspect the version
+	// after the upsert before auditing, so a losing CAS cannot report success.
+	if e = tx.QueryRow(ctx, `SELECT version FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&v); e != nil {
+		return mailprocessing.ErrUnavailable
+	}
+	if v != in.ExpectedVersion+1 {
+		return mailprocessing.ErrConflict
+	}
+	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_policy_audit(id,actor_id,profile_id,version,action) VALUES($1,$2,$3,$4,'policy_saved')`, uuid.NewString(), actor, in.ProfileID, v); e != nil {
+		return mailprocessing.ErrUnavailable
+	}
+	return nil
 }

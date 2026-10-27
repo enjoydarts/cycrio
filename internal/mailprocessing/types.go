@@ -4,6 +4,7 @@ package mailprocessing
 import (
 	"context"
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/airoutes"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
@@ -28,23 +29,25 @@ type PolicyInput struct {
 	SecondaryConfirmed bool   `json:"secondary_confirmed"`
 }
 type Policy struct {
-	ProfileID          string `json:"profile_id"`
-	Version            int64  `json:"version"`
-	Enabled            bool   `json:"enabled"`
-	PrimaryRetention   string `json:"primary_retention"`
-	SecondaryRetention string `json:"secondary_retention"`
-	PrimaryConfirmed   bool   `json:"primary_confirmed"`
-	SecondaryConfirmed bool   `json:"secondary_confirmed"`
+	StandardProof      *StandardProof `json:"standard_proof,omitempty"`
+	ProfileID          string         `json:"profile_id"`
+	Version            int64          `json:"version"`
+	Enabled            bool           `json:"enabled"`
+	PrimaryRetention   string         `json:"primary_retention"`
+	SecondaryRetention string         `json:"secondary_retention"`
+	PrimaryConfirmed   bool           `json:"primary_confirmed"`
+	SecondaryConfirmed bool           `json:"secondary_confirmed"`
 }
 
 // PublicModel omits key identities and private workspace configuration.
 type PublicModel struct {
-	Provider        string              `json:"provider"`
-	ModelID         string              `json:"model_id"`
-	DisplayName     string              `json:"display_name"`
-	Price           *modelcatalog.Price `json:"price"`
-	Retention       string              `json:"retention"`
-	RoutingProvider string              `json:"routing_provider"`
+	RetentionSourceURL string              `json:"retention_source_url,omitempty"`
+	Provider           string              `json:"provider"`
+	ModelID            string              `json:"model_id"`
+	DisplayName        string              `json:"display_name"`
+	Price              *modelcatalog.Price `json:"price"`
+	Retention          string              `json:"retention"`
+	RoutingProvider    string              `json:"routing_provider"`
 }
 type PublicProfile struct {
 	ID              string      `json:"id"`
@@ -55,9 +58,10 @@ type PublicProfile struct {
 	TimeoutSeconds  int         `json:"timeout_seconds"`
 }
 type PolicyState struct {
-	RuntimeVersion int64          `json:"runtime_version"`
-	Profile        *PublicProfile `json:"profile"`
-	Policy         *Policy        `json:"policy"`
+	StandardTerms  *StandardTermsState `json:"standard_terms,omitempty"`
+	RuntimeVersion int64               `json:"runtime_version"`
+	Profile        *PublicProfile      `json:"profile"`
+	Policy         *Policy             `json:"policy"`
 }
 type Preview struct {
 	AccountID       string       `json:"account_id"`
@@ -159,9 +163,20 @@ func Public(p airuntime.Profile, policy Policy) PublicProfile {
 	model := func(m airuntime.ModelRef, retention string) PublicModel {
 		return PublicModel{Provider: m.Provider, ModelID: m.ModelID, DisplayName: m.DisplayName, Price: m.Price, Retention: retention}
 	}
+	primary := model(p.Primary, policy.PrimaryRetention)
 	secondary := model(p.Secondary, policy.SecondaryRetention)
 	if p.Secondary.Provider == "openrouter" {
 		secondary.RoutingProvider = p.OpenRouterProvider
 	}
-	return PublicProfile{p.ID, model(p.Primary, policy.PrimaryRetention), secondary, p.MaxInputBytes, p.MaxOutputTokens, p.TimeoutSeconds}
+	// Only publish official sources from the policy's own frozen proof. Legacy
+	// custom text and unrelated proof metadata never establish a known source.
+	if proof := policy.StandardProof; proof != nil && policy.ProfileID == p.ID && proof.ProfileID == p.ID && proof.PolicyVersion == policy.Version {
+		if p.Primary.Provider == "liquid" && proof.PrimaryMode == "standard" && proof.PrimaryTerms != nil && proof.PrimaryTerms.SourceURL == CurrentPrimaryTerms().SourceURL {
+			primary.RetentionSourceURL = proof.PrimaryTerms.SourceURL
+		}
+		if route := proof.SecondaryRoute; p.Secondary.Provider == "openrouter" && route.UpstreamModelID == p.Secondary.ModelID && route.Tag == p.OpenRouterProvider && route.ZDR && route.SourceURL == airoutes.SourceURL {
+			secondary.RetentionSourceURL = route.SourceURL
+		}
+	}
+	return PublicProfile{p.ID, primary, secondary, p.MaxInputBytes, p.MaxOutputTokens, p.TimeoutSeconds}
 }

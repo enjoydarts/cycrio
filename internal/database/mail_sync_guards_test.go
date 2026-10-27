@@ -156,7 +156,7 @@ func TestMailSyncMigrationDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	var version int64
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 12 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 13 {
 		t.Fatal(version, e)
 	}
 }

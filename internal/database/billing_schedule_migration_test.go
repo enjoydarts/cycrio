@@ -63,7 +63,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 9)
-	if e != nil || len(down) != 3 || down[0].Source.Version != 12 || down[1].Source.Version != 11 || down[2].Source.Version != 10 {
+	if e != nil || len(down) != 4 || down[0].Source.Version != 13 || down[1].Source.Version != 12 || down[2].Source.Version != 11 || down[3].Source.Version != 10 {
 		t.Fatal(down, e)
 	}
 	var version int
@@ -74,7 +74,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal("v9 changed on down", e)
 	}
 	up, e := provider.Up(ctx)
-	if e != nil || len(up) != 3 || up[0].Source.Version != 10 || up[1].Source.Version != 11 || up[2].Source.Version != 12 {
+	if e != nil || len(up) != 4 || up[0].Source.Version != 10 || up[1].Source.Version != 11 || up[2].Source.Version != 12 || up[3].Source.Version != 13 {
 		t.Fatal(up, e)
 	}
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); e != nil || before != after {

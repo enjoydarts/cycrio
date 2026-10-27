@@ -70,16 +70,18 @@ type ActivationInput struct {
 	TestID          string `json:"test_id"`
 }
 type TestRun struct {
-	ID               string     `json:"id"`
-	ProfileID        string     `json:"profile_id"`
-	State            string     `json:"state"`
-	PrimaryOutcome   *string    `json:"primary_outcome"`
-	SecondaryOutcome *string    `json:"secondary_outcome"`
-	Classification   *string    `json:"classification"`
-	ExtractedEvents  *int       `json:"extracted_events"`
-	CreatedAt        time.Time  `json:"created_at"`
-	StartedAt        *time.Time `json:"started_at"`
-	FinishedAt       *time.Time `json:"finished_at"`
+	PrimaryFailure   *TestFailure `json:"primary_failure,omitempty"`
+	SecondaryFailure *TestFailure `json:"secondary_failure,omitempty"`
+	ID               string       `json:"id"`
+	ProfileID        string       `json:"profile_id"`
+	State            string       `json:"state"`
+	PrimaryOutcome   *string      `json:"primary_outcome"`
+	SecondaryOutcome *string      `json:"secondary_outcome"`
+	Classification   *string      `json:"classification"`
+	ExtractedEvents  *int         `json:"extracted_events"`
+	CreatedAt        time.Time    `json:"created_at"`
+	StartedAt        *time.Time   `json:"started_at"`
+	FinishedAt       *time.Time   `json:"finished_at"`
 }
 type Lease struct {
 	TestRunID string `json:"test_run_id"`

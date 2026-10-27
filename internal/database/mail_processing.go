@@ -117,6 +117,8 @@ func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lo
 		out.BlockedReason = "runtime_inactive"
 	case !settings.Policy.Enabled:
 		out.BlockedReason = "policy_disabled"
+	case !mailprocessing.StandardProofCurrent(*settings.Policy):
+		out.BlockedReason = "policy_reconfirmation_required"
 	case active:
 		out.BlockedReason = "processing_active"
 	default:

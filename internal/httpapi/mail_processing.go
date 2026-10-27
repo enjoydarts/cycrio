@@ -115,4 +115,15 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 		}
 		return service.SavePolicy(r.Context(), actor, in)
 	})
+	register("PUT /v1/admin/mail-processing/standard-policy", true, 200, func(w http.ResponseWriter, r *http.Request, actor string) (any, error) {
+		var in mailprocessing.StandardPolicyInput
+		if err := readAdminJSON(w, r, &in, "expected_version", "runtime_version", "profile_id", "enabled", "primary_mode", "primary_terms_id", "primary_retention", "primary_confirmed", "secondary_route_id", "secondary_confirmed"); err != nil {
+			return nil, err
+		}
+		standard, ok := service.(mailprocessing.StandardPolicyRepository)
+		if !ok {
+			return nil, mailprocessing.ErrUnavailable
+		}
+		return standard.SaveStandardPolicy(r.Context(), actor, in)
+	})
 }

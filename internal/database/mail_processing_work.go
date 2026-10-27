@@ -55,7 +55,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(e)
 	}
 	w.work.Profile = p
-	w.valid = w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && state.RuntimeVersion == w.runtimeVersion && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion
+	w.valid = w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && state.RuntimeVersion == w.runtimeVersion && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && mailprocessing.StandardProofCurrent(*state.Policy)
 	if w.valid {
 		if e = runtimeProfileReady(ctx, tx, p, true, true); e != nil {
 			if errors.Is(e, airuntime.ErrUnavailable) {

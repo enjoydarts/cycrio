@@ -30,6 +30,9 @@ func (r *AIRuntimeRepository) RequestTest(ctx context.Context, actor string, in 
 		if old.ProfileID != in.ProfileID {
 			return airuntime.TestRun{}, airuntime.ErrConflict
 		}
+		if err = runtimeTestFailures(ctx, tx, &old); err != nil {
+			return airuntime.TestRun{}, err
+		}
 		return old, runtimeCommit(ctx, tx)
 	}
 	if !errors.Is(err, airuntime.ErrNotFound) {
@@ -58,7 +61,11 @@ func (r *AIRuntimeRepository) Test(ctx context.Context, id string) (airuntime.Te
 	if !runtimeID(id) {
 		return airuntime.TestRun{}, airuntime.ErrInvalid
 	}
-	return scanRuntimeTest(r.pool.QueryRow(ctx, `SELECT `+runtimeTestColumns+` FROM ai_test_runs WHERE id=$1`, id))
+	run, e := scanRuntimeTest(r.pool.QueryRow(ctx, `SELECT `+runtimeTestColumns+` FROM ai_test_runs WHERE id=$1`, id))
+	if e == nil {
+		e = runtimeTestFailures(ctx, r.pool, &run)
+	}
+	return run, e
 }
 func (r *AIRuntimeRepository) Activate(ctx context.Context, actor string, in airuntime.ActivationInput) (airuntime.State, error) {
 	if !runtimeID(in.ProfileID) || !runtimeID(in.TestID) || !validRevision(in.ExpectedVersion) {

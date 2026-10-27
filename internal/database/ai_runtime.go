@@ -161,6 +161,9 @@ func runtimeState(ctx context.Context, q runtimeQuery) (airuntime.State, error) 
 		s.Draft = &p
 		t, err := scanRuntimeTest(q.QueryRow(ctx, `SELECT `+runtimeTestColumns+` FROM ai_test_runs WHERE profile_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, *draft))
 		if err == nil {
+			if err = runtimeTestFailures(ctx, q, &t); err != nil {
+				return s, err
+			}
 			s.LatestTest = &t
 		} else if !errors.Is(err, airuntime.ErrNotFound) {
 			return s, err
