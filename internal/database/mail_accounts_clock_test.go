@@ -23,7 +23,7 @@ func waitMailOwnerLock(t *testing.T, pool *pgxpool.Pool) time.Time {
 	defer ticker.Stop()
 	for {
 		var started time.Time
-		err := pool.QueryRow(ctx, `SELECT xact_start FROM pg_stat_activity WHERE wait_event_type='Lock' AND query=$1 AND pid<>pg_backend_pid() ORDER BY xact_start DESC LIMIT 1`, `SELECT state FROM users WHERE id=$1 FOR UPDATE`).Scan(&started)
+		err := pool.QueryRow(ctx, `SELECT xact_start FROM pg_stat_activity WHERE wait_event_type='Lock' AND query IN ($1,$2) AND pid<>pg_backend_pid() ORDER BY xact_start DESC LIMIT 1`, `SELECT state FROM users WHERE id=$1 FOR UPDATE`, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`).Scan(&started)
 		if err == nil {
 			return started
 		}

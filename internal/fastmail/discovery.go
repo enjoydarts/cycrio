@@ -9,6 +9,7 @@ import (
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailautomation"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 )
 
@@ -17,7 +18,9 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	since, e1 := time.Parse(time.DateOnly, input.Since)
 	before, e2 := time.Parse(time.DateOnly, input.Before)
-	if !validName(input.Folder) || e1 != nil || e2 != nil || since.Year() < 1900 || before.Year() < 1900 || !before.After(since) || before.Sub(since) > 366*24*time.Hour || input.Limit < 1 || input.Limit > 100 || (input.UIDValidity == 0 && (input.AfterUID != 0 || input.UpperUID != 0)) || (input.UpperUID != 0 && input.AfterUID > input.UpperUID) {
+	automatic := input.Mode != "" && input.Mode != "manual"
+	dates := !automatic || input.Mode == "historical"
+	if !validName(input.Folder) || dates && (e1 != nil || e2 != nil || since.Year() < 1900 || before.Year() < 1900 || !before.After(since) || before.Sub(since) > 366*24*time.Hour) || input.Limit < 1 || input.Limit > 100 || (input.UIDValidity == 0 && (input.AfterUID != 0 || input.UpperUID != 0)) || (input.UpperUID != 0 && input.AfterUID > input.UpperUID) || automatic && input.Mode != "bootstrap" && input.Mode != "historical" && input.Mode != "incremental" || input.Mode == "historical" && (!input.Initialized || input.UIDValidity == 0) || input.Mode == "incremental" && input.UIDValidity == 0 || input.Mode == "bootstrap" && (input.Initialized || input.UIDValidity != 0 || input.Since != "" || input.Before != "") || automatic && !dates && (input.Since != "" || input.Before != "") {
 		return mailsync.Page{}, invalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
@@ -43,6 +46,11 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	}()
 	deadline, _ := ctx.Deadline()
 	wire := &boundedConn{Conn: conn, deadline: deadline}
+	var guard *automaticDiscoveryGuard
+	if automatic {
+		guard = &automaticDiscoveryGuard{}
+		wire.observe = guard.accept
+	}
 	client := imapclient.New(wire, &imapclient.Options{DebugWriter: nil})
 	defer client.Close()
 	fail := func(err error) (mailsync.Page, error) {
@@ -70,11 +78,19 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 		return mailsync.Page{}, invalid
 	}
 	maximum := uint32(selected.UIDNext) - 1
-	p := mailsync.Page{UIDValidity: selected.UIDValidity, AfterUID: input.AfterUID, UpperUID: input.UpperUID, UIDs: []uint32{}}
-	if input.UIDValidity != selected.UIDValidity {
+	if automatic && input.UIDValidity != 0 && input.UIDValidity != selected.UIDValidity {
+		return mailsync.Page{}, mailaccounts.AdapterError{Code: "uid_validity_changed"}
+	}
+	p := mailsync.Page{UIDValidity: selected.UIDValidity, AfterUID: input.AfterUID, UpperUID: input.UpperUID, UIDs: []uint32{}, Initialized: automatic}
+	if input.Mode == "bootstrap" {
+		p.UpperUID = maximum
+		p.Done = true
+		return p, nil
+	}
+	if !automatic && input.UIDValidity != selected.UIDValidity {
 		p.AfterUID = 0
 		p.UpperUID = maximum
-	} else if input.UpperUID == 0 {
+	} else if automatic && !input.Initialized || !automatic && input.UpperUID == 0 {
 		p.UpperUID = maximum
 	}
 	if p.UpperUID > maximum || p.AfterUID > p.UpperUID {
@@ -92,7 +108,16 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	if high > uint64(p.UpperUID) {
 		high = uint64(p.UpperUID)
 	}
-	data, err := client.UIDSearch(&imap.SearchCriteria{UID: []imap.UIDSet{{{Start: imap.UID(low), Stop: imap.UID(high)}}}, Since: since, Before: before}, nil).Wait()
+	criteria := &imap.SearchCriteria{UID: []imap.UIDSet{{{Start: imap.UID(low), Stop: imap.UID(high)}}}}
+	if dates {
+		criteria.Since = since
+		criteria.Before = before
+	}
+	if input.Mode == "historical" {
+		criteria.Since = since.AddDate(0, 0, -1)
+		criteria.Before = before.AddDate(0, 0, 1)
+	}
+	data, err := client.UIDSearch(criteria, nil).Wait()
 	if err != nil {
 		return fail(err)
 	}
@@ -107,10 +132,28 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	}
 	// Validate compressed ranges before expansion, including results the server
 	// sends outside the requested UID window. Never expand an unbounded set.
+	previous := uint32(0)
 	for _, r := range set {
-		if r.Start == 0 || r.Stop < r.Start || uint32(r.Start) < low || uint64(r.Stop) > high {
+		if r.Start == 0 || r.Stop < r.Start || uint32(r.Start) < low || uint64(r.Stop) > high || uint32(r.Start) <= previous {
 			return mailsync.Page{}, invalid
 		}
+		previous = uint32(r.Stop)
+	}
+	finish := func() (mailsync.Page, error) {
+		if input.Mode == "historical" && len(p.UIDs) > 0 {
+			start, end, e := mailautomation.Bounds(mailautomation.Scope{Since: input.Since, Before: input.Before})
+			if e != nil {
+				return mailsync.Page{}, invalid
+			}
+			p.UIDs, e = historicalUIDs(client, conn, p.UIDs, start, end, guard)
+			if e != nil {
+				return fail(e)
+			}
+		}
+		if ctx.Err() != nil {
+			return fail(ctx.Err())
+		}
+		return p, nil
 	}
 	for _, r := range set {
 		for uid := uint64(r.Start); uid <= uint64(r.Stop); uid++ {
@@ -119,17 +162,11 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 			} else {
 				p.AfterUID = p.UIDs[len(p.UIDs)-1]
 				p.Done = p.AfterUID >= p.UpperUID
-				if ctx.Err() != nil {
-					return fail(ctx.Err())
-				}
-				return p, nil
+				return finish()
 			}
 		}
 	}
 	p.AfterUID = uint32(high)
 	p.Done = p.AfterUID >= p.UpperUID
-	if ctx.Err() != nil {
-		return fail(ctx.Err())
-	}
-	return p, nil
+	return finish()
 }

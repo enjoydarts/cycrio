@@ -78,7 +78,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 		return nil
 	}
 	readCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-	text, e := s.reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{Folder: w.FolderName, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail})
+	text, e := s.reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{Folder: w.FolderName, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail, StrictGeneration: w.Automatic})
 	defer clear(text)
 	if e == nil {
 		e = readCtx.Err()
@@ -181,7 +181,7 @@ func SourceErrorCode(err error) string {
 		code = p.Code
 	}
 	switch code {
-	case "source_missing", "input_too_large", "unsupported_content", "authentication_failed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled":
+	case "source_missing", "input_too_large", "unsupported_content", "authentication_failed", "credentials_unavailable", "uid_validity_changed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled":
 		return code
 	}
 	if errors.Is(err, context.DeadlineExceeded) {

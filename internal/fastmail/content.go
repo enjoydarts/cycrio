@@ -19,6 +19,12 @@ var _ mailcontent.Reader = (*Client)(nil)
 
 func (c *Client) ReadText(ctx context.Context, login string, password []byte, source mailcontent.Source) ([]byte, error) {
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
+	generationError := func() error {
+		if source.StrictGeneration {
+			return mailaccounts.AdapterError{Code: "uid_validity_changed"}
+		}
+		return mailaccounts.AdapterError{Code: "source_missing"}
+	}
 	if !validName(source.Folder) || source.UIDValidity == 0 || source.UID == 0 || (!source.FullEmail && source.MaxTextBytes <= 0) {
 		return nil, invalid
 	}
@@ -50,7 +56,7 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 	defer client.Close()
 	fail := func(err error) ([]byte, error) {
 		if guard.sourceMissing.Load() {
-			return nil, mailaccounts.AdapterError{Code: "source_missing"}
+			return nil, generationError()
 		}
 		if wire.exceeded.Load() {
 			return nil, mailaccounts.AdapterError{Code: "input_too_large"}
@@ -82,7 +88,7 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 		return nil, invalid
 	}
 	if selected.UIDValidity != source.UIDValidity {
-		return nil, mailaccounts.AdapterError{Code: "source_missing"}
+		return nil, generationError()
 	}
 	guard.phase.Store(1)
 	structure, _, err := readContentFetch(client, conn, source.UID, nil)

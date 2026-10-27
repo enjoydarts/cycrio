@@ -13,6 +13,11 @@ type lockedSync struct {
 	owner, account, userState, accountState, state, credential, lease string
 	version, accountVersion, credentialVersion                        int64
 	alive                                                             bool
+	automation                                                        string
+	generation, automationVersion                                     int64
+	window                                                            int
+	mode                                                              string
+	automaticValid                                                    bool
 }
 
 // Every mutation follows the same user -> account -> run lock order. Deadline
@@ -31,14 +36,23 @@ func (r *MailSyncRepository) lockWork(ctx context.Context, id string) (pgx.Tx, l
 		return nil, w, mailsync.ErrUnavailable
 	}
 	fail := func() (pgx.Tx, lockedSync, error) { tx.Rollback(ctx); return nil, w, mailsync.ErrUnavailable }
-	if tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR UPDATE`, w.owner).Scan(&w.userState) != nil {
+	if tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`, w.owner).Scan(&w.userState) != nil {
 		return fail()
 	}
 	if tx.QueryRow(ctx, `SELECT state,version,credential_version FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.account, w.owner).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion) != nil {
 		return fail()
 	}
-	if tx.QueryRow(ctx, `SELECT state,config_version,credential_id,coalesce(lease_id::text,'') FROM mail_sync_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.version, &w.credential, &w.lease) != nil {
+	if lockAutomation(ctx, tx, w.owner, w.account) != nil {
 		return fail()
+	}
+	if tx.QueryRow(ctx, `SELECT state,config_version,credential_id,coalesce(lease_id::text,''),coalesce(automation_id::text,''),coalesce(automation_generation,0),coalesce(automation_version,0),mode,window_index FROM mail_sync_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.version, &w.credential, &w.lease, &w.automation, &w.generation, &w.automationVersion, &w.mode, &w.window) != nil {
+		return fail()
+	}
+	w.automaticValid = true
+	if w.automation != "" {
+		if tx.QueryRow(ctx, `SELECT state='enabled' AND generation=$2 AND version=$3 FROM mail_automations WHERE id=$1`, w.automation, w.generation, w.automationVersion).Scan(&w.automaticValid) != nil {
+			return fail()
+		}
 	}
 	if tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_sync_runs WHERE id=$1`, id).Scan(&w.alive) != nil {
 		return fail()
@@ -46,7 +60,7 @@ func (r *MailSyncRepository) lockWork(ctx context.Context, id string) (pgx.Tx, l
 	return tx, w, nil
 }
 func validSyncWork(w lockedSync) bool {
-	return w.userState == "active" && w.accountState == "ready" && w.version == w.accountVersion
+	return w.userState == "active" && w.accountState == "ready" && w.version == w.accountVersion && w.automaticValid
 }
 func (r *MailSyncRepository) Claim(ctx context.Context) ([]mailsync.Lease, error) {
 	// Candidate filtering avoids healthy leases occupying every queue slot.
@@ -90,6 +104,9 @@ func (r *MailSyncRepository) Claim(ctx context.Context) ([]mailsync.Lease, error
 				state = "cancelled"
 			} else if state == "running" && !w.alive {
 				e = endSync(ctx, tx, id, "failed", "lease_expired")
+				if e == nil && w.automation != "" {
+					e = suspendAutomation(ctx, tx, w.automation, "lease_expired")
+				}
 				state = "failed"
 			} else if state == "leased" && !w.alive {
 				state = "queued"
@@ -129,7 +146,7 @@ func loadSyncPage(ctx context.Context, tx pgx.Tx, w lockedSync, id string) (mail
 	// availability. Filtering first could redirect an in-flight result to a
 	// different folder after a concurrent discovery marks the original absent.
 	var available bool
-	e = tx.QueryRow(ctx, `SELECT f.folder_id,coalesce(m.name,''),f.uid_validity,f.after_uid,f.upper_uid,coalesce(m.selected AND m.available AND m.selectable,false) FROM mail_sync_run_folders f LEFT JOIN mail_account_folders m ON m.id=f.folder_id AND m.account_id=f.account_id WHERE f.run_id=$1 AND NOT f.done ORDER BY f.folder_id LIMIT 1`, id).Scan(&out.FolderID, &out.Page.Folder, &out.Page.UIDValidity, &out.Page.AfterUID, &out.Page.UpperUID, &available)
+	e = tx.QueryRow(ctx, `SELECT f.folder_id,coalesce(m.name,''),f.uid_validity,f.after_uid,f.upper_uid,coalesce(m.selected AND m.available AND m.selectable,false),f.initialized FROM mail_sync_run_folders f LEFT JOIN mail_account_folders m ON m.id=f.folder_id AND m.account_id=f.account_id WHERE f.run_id=$1 AND NOT f.done ORDER BY f.folder_id LIMIT 1`, id).Scan(&out.FolderID, &out.Page.Folder, &out.Page.UIDValidity, &out.Page.AfterUID, &out.Page.UpperUID, &available, &out.Page.Initialized)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return out, mailsync.ErrNotFound
 	}
@@ -142,7 +159,8 @@ func loadSyncPage(ctx context.Context, tx pgx.Tx, w lockedSync, id string) (mail
 	out.Page.Since = out.Run.Since
 	out.Page.Before = out.Run.Before
 	out.Page.Limit = min(100, out.Run.MaxMessages-out.Run.ExaminedCount)
-	if out.Page.UIDValidity == 0 {
+	out.Page.Mode = w.mode
+	if w.automation == "" && out.Page.UIDValidity == 0 {
 		e = tx.QueryRow(ctx, `SELECT uid_validity,after_uid FROM mail_sync_cursors WHERE owner_id=$1 AND account_id=$2 AND folder_id=$3 AND since=$4::date AND before=$5::date`, w.owner, w.account, out.FolderID, out.Run.Since, out.Run.Before).Scan(&out.Page.UIDValidity, &out.Page.AfterUID)
 		if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 			return out, mailsync.ErrUnavailable
@@ -218,6 +236,19 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 		if endSync(ctx, tx, l.RunID, "failed", code) != nil {
 			return mailsync.ErrUnavailable
 		}
+		if w.automation != "" {
+			if code == "timeout" || code == "connection_failed" {
+				e = retryAutomaticDiscovery(ctx, tx, w, code)
+			} else if code == "uid_validity_changed" || code == "authentication_failed" || code == "credentials_unavailable" {
+				e = pauseAutomation(ctx, tx, w.automation, code)
+			} else {
+				e = suspendAutomation(ctx, tx, w.automation, code)
+			}
+			if e != nil || tx.Commit(ctx) != nil {
+				return mailsync.ErrUnavailable
+			}
+			return nil
+		}
 		// Mark the run terminal first so the permanent cancellation trigger cannot overwrite it.
 		if _, e = tx.Exec(ctx, `UPDATE mail_accounts SET last_error=$2,state=CASE WHEN $2 IN ('authentication_failed','credentials_unavailable') THEN 'needs_reauth' ELSE state END,updated_at=clock_timestamp() WHERE id=$1`, w.account, code); e != nil || tx.Commit(ctx) != nil {
 			return mailsync.ErrUnavailable
@@ -237,6 +268,11 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 	if !mailsync.ValidPage(work.Page, p) || len(refs) != len(p.UIDs) {
 		return mailsync.ErrInvalid
 	}
+	if w.automation != "" {
+		if _, e = tx.Exec(ctx, `UPDATE mail_automations SET discovery_failure_count=0,retry_after=NULL,retry_lane='',retry_window_index=0,reason='' WHERE id=$1`, w.automation); e != nil {
+			return mailsync.ErrUnavailable
+		}
+	}
 	added := 0
 	for _, ref := range refs {
 		if !mailsync.ValidID(ref.ID) || ref.Fingerprint == "" || ref.Envelope.KeyID == "" || len(ref.Envelope.Ciphertext) == 0 {
@@ -247,14 +283,30 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 			return mailsync.ErrUnavailable
 		}
 		added += int(tag.RowsAffected())
+		if w.automation != "" {
+			// A fingerprint hit retains the original encrypted row identity/AAD.
+			if _, e = tx.Exec(ctx, `INSERT INTO mail_automation_messages(owner_id,account_id,automation_id,generation,message_id,lane) SELECT owner_id,account_id,$1,$2,id,$3 FROM mail_discovered_messages WHERE owner_id=$4 AND account_id=$5 AND folder_id=$6 AND fingerprint=$7 ON CONFLICT(automation_id,generation,message_id) DO NOTHING`, w.automation, w.generation, w.mode, w.owner, w.account, work.FolderID, ref.Fingerprint); e != nil {
+				return mailsync.ErrUnavailable
+			}
+		}
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO mail_sync_cursors(owner_id,account_id,folder_id,since,before,uid_validity,after_uid) VALUES($1,$2,$3,$4::date,$5::date,$6,$7) ON CONFLICT(folder_id,since,before) DO UPDATE SET uid_validity=excluded.uid_validity,after_uid=excluded.after_uid`, w.owner, w.account, work.FolderID, work.Run.Since, work.Run.Before, int64(p.UIDValidity), int64(p.AfterUID)); e != nil {
-		return mailsync.ErrUnavailable
+	if w.automation == "" {
+		if _, e = tx.Exec(ctx, `INSERT INTO mail_sync_cursors(owner_id,account_id,folder_id,since,before,uid_validity,after_uid) VALUES($1,$2,$3,$4::date,$5::date,$6,$7) ON CONFLICT(folder_id,since,before) DO UPDATE SET uid_validity=excluded.uid_validity,after_uid=excluded.after_uid`, w.owner, w.account, work.FolderID, work.Run.Since, work.Run.Before, int64(p.UIDValidity), int64(p.AfterUID)); e != nil {
+			return mailsync.ErrUnavailable
+		}
+	} else {
+		if _, e = tx.Exec(ctx, `UPDATE mail_automation_progress SET uid_validity=$6,after_uid=$7,upper_uid=$8,done=$9,initialized=$10 WHERE automation_id=$1 AND generation=$2 AND lane=$3 AND window_index=$4 AND folder_id=$5`, w.automation, w.generation, w.mode, w.window, work.FolderID, int64(p.UIDValidity), int64(p.AfterUID), int64(p.UpperUID), p.Done, p.Initialized); e != nil {
+			return mailsync.ErrUnavailable
+		}
 	}
-	if _, e = tx.Exec(ctx, `UPDATE mail_sync_run_folders SET uid_validity=$3,after_uid=$4,upper_uid=$5,done=$6 WHERE run_id=$1 AND folder_id=$2`, l.RunID, work.FolderID, int64(p.UIDValidity), int64(p.AfterUID), int64(p.UpperUID), p.Done); e != nil {
+	if _, e = tx.Exec(ctx, `UPDATE mail_sync_run_folders SET uid_validity=$3,after_uid=$4,upper_uid=$5,done=$6,initialized=$7 WHERE run_id=$1 AND folder_id=$2`, l.RunID, work.FolderID, int64(p.UIDValidity), int64(p.AfterUID), int64(p.UpperUID), p.Done, p.Initialized); e != nil {
 		return mailsync.ErrUnavailable
 	}
 	examined := work.Run.ExaminedCount + len(p.UIDs)
+	pages := work.Run.DiscoveryPageCount
+	if w.automation != "" {
+		pages++
+	}
 	completed := work.Run.CompletedFolders
 	if p.Done {
 		completed++
@@ -262,10 +314,20 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 	state := "queued"
 	if completed == work.Run.FolderCount {
 		state = "completed"
-	} else if examined >= work.Run.MaxMessages {
+	} else if examined >= work.Run.MaxMessages || w.automation != "" && pages >= mailsync.AutomaticDiscoveryPageLimit {
 		state = "limited"
 	}
-	if _, e = tx.Exec(ctx, `UPDATE mail_sync_runs SET state=$2,examined_count=$3,added_count=added_count+$4,completed_folders=$5,lease_id=NULL,lease_until=NULL,finished_at=CASE WHEN $2 IN ('completed','limited') THEN clock_timestamp() ELSE NULL END WHERE id=$1`, l.RunID, state, examined, added, completed); e != nil || tx.Commit(ctx) != nil {
+	if w.automation != "" && state == "completed" && w.mode == "bootstrap" {
+		if _, e = tx.Exec(ctx, `UPDATE mail_automations SET next_check_at=clock_timestamp()+(SELECT interval_seconds*interval '1 second' FROM mail_automation_scopes WHERE automation_id=$1 AND generation=$2) WHERE id=$1`, w.automation, w.generation); e != nil {
+			return mailsync.ErrUnavailable
+		}
+	}
+	if w.automation != "" && state == "completed" && w.mode != "bootstrap" {
+		if _, e = tx.Exec(ctx, `UPDATE mail_automations SET last_success_at=clock_timestamp(),next_check_at=CASE WHEN $2='incremental' THEN clock_timestamp()+(SELECT interval_seconds*interval '1 second' FROM mail_automation_scopes WHERE automation_id=$1 AND generation=$3) ELSE next_check_at END WHERE id=$1`, w.automation, w.mode, w.generation); e != nil {
+			return mailsync.ErrUnavailable
+		}
+	}
+	if _, e = tx.Exec(ctx, `UPDATE mail_sync_runs SET state=$2,examined_count=$3,added_count=added_count+$4,completed_folders=$5,discovery_page_count=$6,lease_id=NULL,lease_until=NULL,finished_at=CASE WHEN $2 IN ('completed','limited') THEN clock_timestamp() ELSE NULL END WHERE id=$1`, l.RunID, state, examined, added, completed, pages); e != nil || tx.Commit(ctx) != nil {
 		return mailsync.ErrUnavailable
 	}
 	return nil

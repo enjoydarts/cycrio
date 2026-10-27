@@ -16,6 +16,8 @@ type lockedProcessing struct {
 	state, lease, userState, accountState, credentialID                             string
 	configVersion, accountVersion, credentialVersion, runtimeVersion, policyVersion int64
 	alive, valid                                                                    bool
+	automation                                                                      string
+	generation, automationVersion                                                   int64
 }
 
 // Every worker transition locks user -> account -> run -> settings -> policy ->
@@ -42,9 +44,12 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 	if e = tx.QueryRow(ctx, `SELECT state,version,credential_version FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.work.Run.AccountID, w.work.OwnerID).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion); e != nil {
 		return fail(e)
 	}
+	if e = lockAutomation(ctx, tx, w.work.OwnerID, w.work.Run.AccountID); e != nil {
+		return fail(e)
+	}
 	var profileID string
 	var requestDoc []byte
-	if e = tx.QueryRow(ctx, `SELECT state,config_version,credential_id,runtime_version,profile_id,policy_version,coalesce(lease_id::text,''),request_doc FROM mail_processing_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.configVersion, &w.credentialID, &w.runtimeVersion, &profileID, &w.policyVersion, &w.lease, &requestDoc); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT state,config_version,credential_id,runtime_version,profile_id,policy_version,coalesce(lease_id::text,''),request_doc,coalesce(automation_id::text,''),coalesce(automation_generation,0),coalesce(automation_version,0) FROM mail_processing_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.configVersion, &w.credentialID, &w.runtimeVersion, &profileID, &w.policyVersion, &w.lease, &requestDoc, &w.automation, &w.generation, &w.automationVersion); e != nil {
 		return fail(e)
 	}
 	var request processingRequest
@@ -52,6 +57,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(mailprocessing.ErrUnavailable)
 	}
 	w.work.FullEmail = request.Input.FullEmail
+	w.work.Automatic = w.automation != ""
 	w.work.Run, e = scanProcessingRun(tx.QueryRow(ctx, `SELECT `+processingRunColumns+` FROM mail_processing_runs WHERE id=$1`, id))
 	if e != nil {
 		return fail(e)
@@ -61,7 +67,13 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(e)
 	}
 	w.work.Profile = p
-	w.valid = w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && state.RuntimeVersion == w.runtimeVersion && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && (!w.work.FullEmail || state.Policy.FullEmailAllowed) && mailprocessing.StandardProofCurrent(*state.Policy)
+	automaticValid := true
+	if w.automation != "" {
+		if e = tx.QueryRow(ctx, `SELECT state='enabled' AND generation=$2 AND version=$3 FROM mail_automations WHERE id=$1`, w.automation, w.generation, w.automationVersion).Scan(&automaticValid); e != nil {
+			return fail(e)
+		}
+	}
+	w.valid = automaticValid && w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && (w.automation != "" || state.RuntimeVersion == w.runtimeVersion) && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && (!w.work.FullEmail || state.Policy.FullEmailAllowed) && mailprocessing.StandardProofCurrent(*state.Policy)
 	if w.valid {
 		if e = runtimeProfileReady(ctx, tx, p, true, true); e != nil {
 			if errors.Is(e, airuntime.ErrUnavailable) {
@@ -93,6 +105,13 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 			return fail(e)
 		}
 		w.valid = w.valid && available
+	}
+	if w.automation != "" && w.work.MessageID != "" {
+		var member bool
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_automation_messages WHERE automation_id=$1 AND generation=$2 AND message_id=$3 AND owner_id=$4 AND account_id=$5)`, w.automation, w.generation, w.work.MessageID, w.work.OwnerID, w.work.Run.AccountID).Scan(&member); e != nil {
+			return fail(e)
+		}
+		w.valid = w.valid && member
 	}
 	if e = tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_processing_runs WHERE id=$1`, id).Scan(&w.alive); e != nil {
 		return fail(e)
@@ -133,7 +152,11 @@ func (r *MailProcessingRepository) Claim(ctx context.Context) ([]mailprocessing.
 		state := w.state
 		if state == "queued" || state == "leased" || state == "running" {
 			if !w.valid {
-				e = stopProcessing(ctx, tx, id, "cancelled", "configuration_unavailable")
+				if w.automation != "" {
+					e = pauseAutomation(ctx, tx, w.automation, "configuration_changed")
+				} else {
+					e = stopProcessing(ctx, tx, id, "cancelled", "configuration_unavailable")
+				}
 				state = "cancelled"
 			} else if state == "running" && !w.alive {
 				e = stopProcessing(ctx, tx, id, "failed", "lease_expired")
@@ -166,7 +189,13 @@ func (r *MailProcessingRepository) Claim(ctx context.Context) ([]mailprocessing.
 }
 func rejectProcessing(ctx context.Context, tx pgx.Tx, l mailprocessing.Lease, w lockedProcessing) error {
 	if !w.valid {
-		if e := stopProcessing(ctx, tx, l.RunID, "cancelled", "configuration_unavailable"); e != nil {
+		var e error
+		if w.automation != "" {
+			e = pauseAutomation(ctx, tx, w.automation, "configuration_changed")
+		} else {
+			e = stopProcessing(ctx, tx, l.RunID, "cancelled", "configuration_unavailable")
+		}
+		if e != nil {
 			return e
 		}
 		if e := tx.Commit(ctx); e != nil {
@@ -291,7 +320,7 @@ func validProcessingCompletion(c mailprocessing.Completion) bool {
 		return false
 	}
 	switch c.ErrorCode {
-	case "", "authentication_failed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled", "credentials_unavailable", "source_missing", "input_too_large", "unsupported_content", "configuration_unavailable", "execution_panic", "recording_failed", "lease_expired", "invalid_request", "transport_error", "request_cancelled", "response_read", "response_too_large", "invalid_json", "provider_http", "provider_error", "model_mismatch", "invalid_output", "refusal", "incomplete", "generation_mismatch", "provider_unavailable":
+	case "", "authentication_failed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled", "credentials_unavailable", "source_missing", "uid_validity_changed", "input_too_large", "unsupported_content", "configuration_unavailable", "execution_panic", "recording_failed", "lease_expired", "invalid_request", "transport_error", "request_cancelled", "response_read", "response_too_large", "invalid_json", "provider_http", "provider_error", "model_mismatch", "invalid_output", "refusal", "incomplete", "generation_mismatch", "provider_unavailable":
 	default:
 		return false
 	}
@@ -332,6 +361,15 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state=$2,classification=$3,error_code=$4,events=$5,finished_at=clock_timestamp() WHERE id=$1 AND state='running'`, w.work.AttemptID, in.State, in.Classification, in.ErrorCode, raw); e != nil {
 		return mailprocessing.ErrUnavailable
+	}
+	// Mail access can detect a changed generation or invalid credentials before
+	// the next UID discovery. Preserve this one result and atomically stop the
+	// remaining automatic snapshots; only new explicit scope consent can resume.
+	if w.automation != "" && (in.ErrorCode == "uid_validity_changed" || in.ErrorCode == "authentication_failed" || in.ErrorCode == "credentials_unavailable") {
+		if e = pauseAutomation(ctx, tx, w.automation, in.ErrorCode); e != nil {
+			return e
+		}
+		return processingError(tx.Commit(ctx))
 	}
 	var queued bool
 	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued')`, l.RunID).Scan(&queued); e != nil {

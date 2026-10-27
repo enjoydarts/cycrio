@@ -87,16 +87,15 @@ func run() error {
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	name := "cycrio-worker-" + uuid.NewString()
 	discovery := mailsyncruntime.New(pool, keyring)
+	discoveryWake := make(chan struct{}, 1)
+	automationWake := make(chan struct{}, 1)
 	discoverTask := client.NewStandaloneTask(mailDiscoverTaskName, func(ctx hatchet.Context, input mailsync.Lease) (MailDiscoverOutput, error) {
-		if err := discovery.Execute(ctx, input); err != nil {
-			return MailDiscoverOutput{Status: "failed"}, errors.New("mail discovery unavailable")
-		}
-		return MailDiscoverOutput{Status: "handled"}, nil
+		return executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	processing := mailprocessingruntime.New(pool, keyring)
 	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
-		return executeMailProcessing(ctx, input, processing.Execute, processingWake)
+		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask, processingTask), hatchet.WithSlots(2))
 	if err != nil {
@@ -108,6 +107,7 @@ func run() error {
 	}
 	defer func() { _ = cleanup() }()
 	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)
 		return err
@@ -123,7 +123,7 @@ func run() error {
 	go dispatchMailDiscovery(ctx, discovery.Claim, func(ctx context.Context, input mailsync.Lease) error {
 		_, err := discoverTask.RunNoWait(ctx, input)
 		return err
-	}, 10*time.Second)
+	}, 10*time.Second, discoveryWake)
 	go dispatchMailProcessing(ctx, processing.Claim, func(ctx context.Context, input mailprocessing.Lease) error {
 		_, err := processingTask.RunNoWait(ctx, input)
 		return err

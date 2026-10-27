@@ -27,6 +27,7 @@ type handlerOptions struct {
 	mail            MailAccountService
 	mailSync        MailSyncService
 	mailProcessing  MailProcessingService
+	mailAutomation  MailAutomationService
 	subscriptions   SubscriptionService
 	analysisFeed    AnalysisFeedService
 	billing         BillingService

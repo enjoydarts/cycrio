@@ -15,6 +15,10 @@ var (
 	ErrUnavailable = mailaccounts.ErrUnavailable
 )
 
+// AutomaticDiscoveryPageLimit bounds external discovery work even when a page
+// contains no matching UID. Each adapter page examines at most 100 candidates.
+const AutomaticDiscoveryPageLimit = 10
+
 type Input struct {
 	ExpectedVersion int64  `json:"expected_version"`
 	RequestID       string `json:"request_id"`
@@ -23,20 +27,22 @@ type Input struct {
 	MaxMessages     int    `json:"max_messages"`
 }
 type Run struct {
-	ID               string     `json:"id"`
-	AccountID        string     `json:"account_id"`
-	State            string     `json:"state"`
-	Since            string     `json:"since"`
-	Before           string     `json:"before"`
-	ErrorCode        string     `json:"error_code"`
-	MaxMessages      int        `json:"max_messages"`
-	ExaminedCount    int        `json:"examined_count"`
-	AddedCount       int        `json:"added_count"`
-	FolderCount      int        `json:"folder_count"`
-	CompletedFolders int        `json:"completed_folders"`
-	CreatedAt        time.Time  `json:"created_at"`
-	StartedAt        *time.Time `json:"started_at"`
-	FinishedAt       *time.Time `json:"finished_at"`
+	DiscoveryPageCount int        `json:"-"`
+	Mode               string     `json:"mode"`
+	ID                 string     `json:"id"`
+	AccountID          string     `json:"account_id"`
+	State              string     `json:"state"`
+	Since              string     `json:"since"`
+	Before             string     `json:"before"`
+	ErrorCode          string     `json:"error_code"`
+	MaxMessages        int        `json:"max_messages"`
+	ExaminedCount      int        `json:"examined_count"`
+	AddedCount         int        `json:"added_count"`
+	FolderCount        int        `json:"folder_count"`
+	CompletedFolders   int        `json:"completed_folders"`
+	CreatedAt          time.Time  `json:"created_at"`
+	StartedAt          *time.Time `json:"started_at"`
+	FinishedAt         *time.Time `json:"finished_at"`
 }
 
 // Lease is the entire durable queue payload; it contains no mailbox data.
@@ -45,6 +51,9 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type PageRequest struct {
+	// Mode is private worker input; the manual API never accepts it.
+	Mode        string `json:"-"`
+	Initialized bool   `json:"-"`
 	Folder      string `json:"-"`
 	Since       string `json:"-"`
 	Before      string `json:"-"`
@@ -54,6 +63,7 @@ type PageRequest struct {
 	Limit       int    `json:"-"`
 }
 type Page struct {
+	Initialized bool     `json:"-"`
 	UIDValidity uint32   `json:"-"`
 	AfterUID    uint32   `json:"-"`
 	UpperUID    uint32   `json:"-"`

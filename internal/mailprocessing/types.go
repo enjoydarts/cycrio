@@ -127,6 +127,7 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type Work struct {
+	Automatic  bool                           `json:"-"`
 	FullEmail  bool                           `json:"-"`
 	Run        Run                            `json:"-"`
 	AttemptID  string                         `json:"-"`

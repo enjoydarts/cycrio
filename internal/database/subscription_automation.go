@@ -35,6 +35,15 @@ func (r *SubscriptionRepository) SaveAutomation(ctx context.Context, owner strin
 		return autoregistration.Preference{}, err
 	}
 	defer tx.Rollback(ctx)
+	p, err := saveAutomationPreference(ctx, tx, owner, in)
+	if err != nil {
+		return p, err
+	}
+	return p, subscriptionError(tx.Commit(ctx))
+}
+
+// saveAutomationPreference joins an existing owner transaction.
+func saveAutomationPreference(ctx context.Context, tx pgx.Tx, owner string, in autoregistration.PreferenceInput) (autoregistration.Preference, error) {
 	p, err := automationPreference(ctx, tx, owner)
 	if err != nil {
 		return p, err
@@ -52,7 +61,7 @@ func (r *SubscriptionRepository) SaveAutomation(ctx context.Context, owner strin
 	if err != nil {
 		return p, subscriptionError(err)
 	}
-	return p, subscriptionError(tx.Commit(ctx))
+	return p, nil
 }
 
 // RegisterDue reads only saved results. It has no provider, mailbox or key access.

@@ -10,11 +10,12 @@ const (
 
 // Source is a private reference to an already discovered message.
 type Source struct {
-	FullEmail    bool   `json:"-"`
-	Folder       string `json:"-"`
-	UIDValidity  uint32 `json:"-"`
-	UID          uint32 `json:"-"`
-	MaxTextBytes int    `json:"-"`
+	StrictGeneration bool   `json:"-"`
+	FullEmail        bool   `json:"-"`
+	Folder           string `json:"-"`
+	UIDValidity      uint32 `json:"-"`
+	UID              uint32 `json:"-"`
+	MaxTextBytes     int    `json:"-"`
 }
 
 // Reader returns only transient normalized body text, never message headers.

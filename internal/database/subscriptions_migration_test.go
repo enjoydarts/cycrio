@@ -30,7 +30,7 @@ func TestSubscriptionsMigrationEightDownUpPreservesProcessing(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 7)
-	if e != nil || len(down) != 8 || down[0].Source.Version != 15 || down[1].Source.Version != 14 || down[2].Source.Version != 13 || down[3].Source.Version != 12 || down[4].Source.Version != 11 || down[5].Source.Version != 10 || down[6].Source.Version != 9 || down[7].Source.Version != 8 {
+	if e != nil || len(down) != 9 || down[0].Source.Version != 16 || down[1].Source.Version != 15 || down[2].Source.Version != 14 || down[3].Source.Version != 13 || down[4].Source.Version != 12 || down[5].Source.Version != 11 || down[6].Source.Version != 10 || down[7].Source.Version != 9 || down[8].Source.Version != 8 {
 		t.Fatal(down, e)
 	}
 	var preserved bool
@@ -41,7 +41,7 @@ func TestSubscriptionsMigrationEightDownUpPreservesProcessing(t *testing.T) {
 		t.Fatal(e)
 	}
 	var version int
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 15 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 16 {
 		t.Fatal(version, e)
 	}
 	if _, e = NewSubscriptionRepository(f.runtime.pool).Create(ctx, f.owner, subscriptionInput()); e != nil {

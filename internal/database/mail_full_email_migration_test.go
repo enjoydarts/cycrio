@@ -20,7 +20,7 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 	if _, err := f.repo.Request(ctx, f.owner, f.account, f.in); err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(p)-'full_email_allowed' ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_policy_audit p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_items p),(SELECT jsonb_agg(p ORDER BY id) FROM ai_calls p),(SELECT jsonb_agg(p ORDER BY id) FROM subscriptions p))`
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(p)-'full_email_allowed' ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_policy_audit p),(SELECT jsonb_agg(to_jsonb(p)-'automation_id'-'automation_generation'-'automation_version' ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_items p),(SELECT jsonb_agg(p ORDER BY id) FROM ai_calls p),(SELECT jsonb_agg(p ORDER BY id) FROM subscriptions p))`
 	var before, after string
 	if err := f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -40,14 +40,14 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 		t.Fatal(err)
 	}
 	down, err := p.DownTo(ctx, 14)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 15 {
+	if err != nil || len(down) != 2 || down[0].Source.Version != 16 || down[1].Source.Version != 15 {
 		t.Fatal(down, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("v14 data changed on down15", err)
 	}
 	up, err := p.Up(ctx)
-	if err != nil || len(up) != 1 || up[0].Source.Version != 15 {
+	if err != nil || len(up) != 2 || up[0].Source.Version != 15 || up[1].Source.Version != 16 {
 		t.Fatal(up, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
@@ -55,7 +55,7 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 	}
 	var bounded bool
 	var version int
-	if err = f.runtime.pool.QueryRow(ctx, `SELECT NOT full_email_allowed,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_policies`).Scan(&bounded, &version); err != nil || !bounded || version != 15 {
+	if err = f.runtime.pool.QueryRow(ctx, `SELECT NOT full_email_allowed,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_policies`).Scan(&bounded, &version); err != nil || !bounded || version != 16 {
 		t.Fatal(bounded, version, err)
 	}
 }
@@ -90,7 +90,7 @@ func TestMailFullEmailMigrationDownProtectsScopeAndRequestData(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(p ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY profile_id,policy_version) FROM mail_processing_standard_proofs p))`
+			const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(p ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(to_jsonb(p)-'automation_id'-'automation_generation'-'automation_version' ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY profile_id,policy_version) FROM mail_processing_standard_proofs p))`
 			var before, after string
 			if err := f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 				t.Fatal(err)

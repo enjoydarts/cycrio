@@ -20,13 +20,24 @@ func ValidInput(in Input) bool {
 
 // ValidPage checks a complete adapter result before any durable state advances.
 func ValidPage(req PageRequest, p Page) bool {
+	if req.Mode != "" && req.Mode != "manual" {
+		if !p.Initialized || req.UIDValidity != 0 && req.UIDValidity != p.UIDValidity {
+			return false
+		}
+		if req.Mode == "bootstrap" {
+			return req.Limit >= 1 && req.Limit <= 100 && p.UIDValidity > 0 && p.Done && p.AfterUID == 0 && len(p.UIDs) == 0
+		}
+		if req.Initialized && p.UpperUID != req.UpperUID {
+			return false
+		}
+	}
 	if p.UIDValidity == 0 || req.Limit < 1 || req.Limit > 100 || len(p.UIDs) > req.Limit || p.AfterUID > p.UpperUID {
 		return false
 	}
 	after := uint32(0)
 	if req.UIDValidity == p.UIDValidity {
 		after = req.AfterUID
-		if req.UpperUID > 0 && p.UpperUID != req.UpperUID {
+		if (req.Initialized || (req.Mode == "" || req.Mode == "manual") && req.UpperUID > 0) && p.UpperUID != req.UpperUID {
 			return false
 		}
 	}

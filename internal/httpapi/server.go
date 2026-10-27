@@ -79,6 +79,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerMailAccounts(mux, settings.mail, protect)
 	registerMailSync(mux, settings.mailSync, protect)
 	registerMailProcessing(mux, settings.mailProcessing, protect)
+	registerMailAutomation(mux, settings.mailAutomation, protect)
 	registerSubscriptions(mux, settings.subscriptions, protect)
 	registerSubscriptionAutomation(mux, settings.subscriptions, protect)
 	registerBilling(mux, settings.billing, protect)

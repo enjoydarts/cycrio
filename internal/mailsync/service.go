@@ -77,7 +77,7 @@ func ErrorCode(err error) string {
 		code = p.Code
 	}
 	switch code {
-	case "authentication_failed", "tls_failed", "connection_failed", "timeout", "response_too_large", "folder_limit", "invalid_response", "credentials_unavailable", "cancelled", "lease_expired":
+	case "authentication_failed", "tls_failed", "connection_failed", "timeout", "response_too_large", "folder_limit", "invalid_response", "credentials_unavailable", "cancelled", "lease_expired", "uid_validity_changed":
 		return code
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
@@ -123,6 +123,8 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 				code = ErrorCode(e)
 			} else if callctx.Err() != nil {
 				code = ErrorCode(callctx.Err())
+			} else if w.Page.Mode != "" && w.Page.Mode != "manual" && w.Page.UIDValidity != 0 && page.UIDValidity != w.Page.UIDValidity {
+				code = "uid_validity_changed"
 			} else if !ValidPage(w.Page, page) {
 				code = "invalid_response"
 			}

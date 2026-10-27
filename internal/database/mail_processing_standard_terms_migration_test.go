@@ -19,7 +19,7 @@ import (
 func allStandardLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','mail_processing_standard_proofs') ORDER BY tablename`)
+	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','mail_processing_standard_proofs') ORDER BY tablename`)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -38,7 +38,7 @@ func allStandardLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]strin
 	result := map[string]string{}
 	for _, name := range names {
 		var doc string
-		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t) x`).Scan(&doc); e != nil {
+		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed'-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t) x`).Scan(&doc); e != nil {
 			t.Fatal(e)
 		}
 		result[name] = doc
@@ -85,21 +85,21 @@ func TestStandardTermsMigrationThirteenPreservesAllV12Records(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 12)
-	if e != nil || len(down) != 3 || down[0].Source.Version != 15 || down[1].Source.Version != 14 || down[2].Source.Version != 13 {
+	if e != nil || len(down) != 4 || down[0].Source.Version != 16 || down[1].Source.Version != 15 || down[2].Source.Version != 14 || down[3].Source.Version != 13 {
 		t.Fatal(down, e)
 	}
 	if !reflect.DeepEqual(before, allStandardLegacyRecords(t, r.pool)) {
 		t.Fatal("v12 data changed on down13")
 	}
 	up, e := provider.Up(ctx)
-	if e != nil || len(up) != 3 || up[0].Source.Version != 13 || up[1].Source.Version != 14 || up[2].Source.Version != 15 {
+	if e != nil || len(up) != 4 || up[0].Source.Version != 13 || up[1].Source.Version != 14 || up[2].Source.Version != 15 || up[3].Source.Version != 16 {
 		t.Fatal(up, e)
 	}
 	if !reflect.DeepEqual(before, allStandardLegacyRecords(t, r.pool)) {
 		t.Fatal("v12 data changed on up13")
 	}
 	var count, version int
-	if e = r.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_standard_proofs),(SELECT max(version_id) FROM goose_db_version WHERE is_applied)`).Scan(&count, &version); e != nil || count != 0 || version != 15 {
+	if e = r.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_standard_proofs),(SELECT max(version_id) FROM goose_db_version WHERE is_applied)`).Scan(&count, &version); e != nil || count != 0 || version != 16 {
 		t.Fatal(count, version, e)
 	}
 }

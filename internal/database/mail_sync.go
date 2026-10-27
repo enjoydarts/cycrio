@@ -15,11 +15,11 @@ var _ mailsync.Repository = (*MailSyncRepository)(nil)
 
 func NewMailSyncRepository(p *pgxpool.Pool) *MailSyncRepository { return &MailSyncRepository{p} }
 
-const mailSyncColumns = `id,account_id,state,since::text,before::text,error_code,max_messages,examined_count,added_count,folder_count,completed_folders,created_at,started_at,finished_at`
+const mailSyncColumns = `id,account_id,state,coalesce(since::text,''),coalesce(before::text,''),error_code,max_messages,examined_count,added_count,folder_count,completed_folders,created_at,started_at,finished_at,mode,discovery_page_count`
 
 func scanMailSync(row pgx.Row) (mailsync.Run, error) {
 	var r mailsync.Run
-	e := row.Scan(&r.ID, &r.AccountID, &r.State, &r.Since, &r.Before, &r.ErrorCode, &r.MaxMessages, &r.ExaminedCount, &r.AddedCount, &r.FolderCount, &r.CompletedFolders, &r.CreatedAt, &r.StartedAt, &r.FinishedAt)
+	e := row.Scan(&r.ID, &r.AccountID, &r.State, &r.Since, &r.Before, &r.ErrorCode, &r.MaxMessages, &r.ExaminedCount, &r.AddedCount, &r.FolderCount, &r.CompletedFolders, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.Mode, &r.DiscoveryPageCount)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return r, mailsync.ErrNotFound
 	}
@@ -107,7 +107,7 @@ func (r *MailSyncRepository) List(ctx context.Context, owner, id string) ([]mail
 		return nil, e
 	}
 	defer tx.Rollback(ctx)
-	rows, e := tx.Query(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 ORDER BY created_at DESC,id DESC LIMIT 20`, owner, id)
+	rows, e := tx.Query(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 AND mode='manual' ORDER BY created_at DESC,id DESC LIMIT 20`, owner, id)
 	if e != nil {
 		return nil, mailsync.ErrUnavailable
 	}
