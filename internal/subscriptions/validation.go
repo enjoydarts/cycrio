@@ -19,7 +19,7 @@ func validLabel(s string) bool {
 }
 func Normalize(v Values) (Values, error) {
 	v.Service = strings.TrimSpace(v.Service)
-	if !validLabel(v.Service) || !slices.Contains([]string{"active", "ended"}, v.Status) {
+	if !validLabel(v.Service) || !slices.Contains([]string{"active", "ended", "unknown"}, v.Status) {
 		return Values{}, ErrInvalid
 	}
 	if v.Plan != nil {
@@ -66,7 +66,7 @@ func ValidSourceInput(in SourceInput) bool {
 	return in.Confirmed && in.ExpectedVersion > 0 && ValidSource(&in.SourceResultID, &in.SourceEventIndex)
 }
 func InvalidFilter(f Filter) bool {
-	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || !utf8.ValidString(f.Query) || strings.ContainsRune(f.Query, 0) || utf8.RuneCountInString(f.Query) > 200 || !slices.Contains([]string{"", "all", "active", "ended"}, f.Status) || !slices.Contains([]string{"", "next_billing", "service", "updated"}, f.Sort)
+	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || !utf8.ValidString(f.Query) || strings.ContainsRune(f.Query, 0) || utf8.RuneCountInString(f.Query) > 200 || !slices.Contains([]string{"", "all", "active", "ended", "unknown"}, f.Status) || !slices.Contains([]string{"", "next_billing", "service", "updated"}, f.Sort)
 }
 func InvalidAnalysisFilter(f AnalysisFilter) bool {
 	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || f.AccountID != "" && !ValidID(f.AccountID) || !slices.Contains([]string{"", "all", "related", "failed", "unknown", "not_related"}, f.State) || !slices.Contains([]string{"", "all", "pending", "registered"}, f.Review) || (f.Review == "pending" || f.Review == "registered") && f.State != "related"

@@ -27,13 +27,15 @@ type Values struct {
 	Status          string  `json:"status"`
 }
 type Source struct {
+	Provenance    string   `json:"provenance"`
 	ResultID      string   `json:"result_id"`
 	EventIndex    int      `json:"event_index"`
 	OriginalEvent ai.Event `json:"original_event"`
 }
 type Subscription struct {
-	ID      string `json:"id"`
-	Version int64  `json:"version"`
+	Provenance string `json:"provenance"`
+	ID         string `json:"id"`
+	Version    int64  `json:"version"`
 	Values
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -83,9 +85,17 @@ type Registration struct {
 }
 type AnalysisResult struct {
 	mailprocessing.Result
-	AccountID     string         `json:"account_id"`
-	AccountLabel  string         `json:"account_label"`
-	Registrations []Registration `json:"registrations"`
+	AccountID       string              `json:"account_id"`
+	AccountLabel    string              `json:"account_label"`
+	Registrations   []Registration      `json:"registrations"`
+	AutomationState string              `json:"automation_state"`
+	Automation      []AutomationOutcome `json:"automation"`
+}
+type AutomationOutcome struct {
+	EventIndex     int     `json:"event_index"`
+	State          string  `json:"state"`
+	Reason         string  `json:"reason"`
+	SubscriptionID *string `json:"subscription_id"`
 }
 type AnalysisPage struct {
 	Results []AnalysisResult `json:"results"`

@@ -25,6 +25,9 @@ func fillBilling(ctx context.Context, tx pgx.Tx, owner string, out *billing.Entr
 		if e = json.Unmarshal(raw, &s.OriginalEvent); e != nil {
 			return billing.ErrUnavailable
 		}
+		// Financial source links currently require explicit owner confirmation,
+		// independently of how the containing contract's source was registered.
+		s.Provenance = "owner_confirmed"
 		out.Sources = append(out.Sources, s)
 	}
 	return billingError(rows.Err())

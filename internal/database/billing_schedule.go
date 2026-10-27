@@ -143,7 +143,7 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	if candidate == nil || *candidate != in.ExpectedCandidate {
 		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "preview_changed"}
 	}
-	_, e = tx.Exec(ctx, `UPDATE subscriptions SET interval_unit=$3,interval_count=$4,next_billing_date=$5::text::date,version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.IntervalUnit, in.IntervalCount, *candidate)
+	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',interval_unit=$3,interval_count=$4,next_billing_date=$5::text::date,version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.IntervalUnit, in.IntervalCount, *candidate)
 	if e != nil {
 		return billingschedule.SaveResult{}, scheduleError(e)
 	}

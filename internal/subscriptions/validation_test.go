@@ -8,6 +8,17 @@ import (
 func ptr[T any](v T) *T   { return &v }
 func validValues() Values { return Values{Service: " Example ", Status: "active"} }
 
+func TestUnknownContractStatusCanBeEditedAndFiltered(t *testing.T) {
+	v := validValues()
+	v.Status = "unknown"
+	if _, err := Normalize(v); err != nil {
+		t.Fatal("unknown must stay explicit when editing", err)
+	}
+	if InvalidFilter(Filter{Status: "unknown", Limit: 20}) {
+		t.Fatal("unknown must be searchable")
+	}
+}
+
 func TestNormalizeValues(t *testing.T) {
 	v := validValues()
 	v.Plan = ptr(" Pro ")

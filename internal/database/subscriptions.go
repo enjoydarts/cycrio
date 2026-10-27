@@ -59,16 +59,16 @@ func (r *SubscriptionRepository) begin(ctx context.Context, owner string) (pgx.T
 	return tx, nil
 }
 
-const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,created_at,updated_at`
+const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,created_at,updated_at,provenance`
 
 func scanSubscription(row pgx.Row) (subscriptions.Subscription, error) {
 	var s subscriptions.Subscription
-	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt)
+	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.Provenance)
 	s.Sources = []subscriptions.Source{}
 	return s, subscriptionError(e)
 }
 func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscriptions.Subscription) error {
-	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index FROM subscription_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id WHERE s.owner_id=$1 AND s.subscription_id=$2 ORDER BY s.created_at,s.result_id,s.event_index`, owner, s.ID)
+	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance FROM subscription_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id WHERE s.owner_id=$1 AND s.subscription_id=$2 ORDER BY s.created_at,s.result_id,s.event_index`, owner, s.ID)
 	if e != nil {
 		return subscriptionError(e)
 	}
@@ -76,7 +76,7 @@ func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscript
 	for rows.Next() {
 		var source subscriptions.Source
 		var raw []byte
-		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw); e != nil {
+		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance); e != nil {
 			return subscriptionError(e)
 		}
 		if json.Unmarshal(raw, &source.OriginalEvent) != nil {
@@ -201,7 +201,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if e != nil {
 		return subscriptions.Subscription{}, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE subscriptions SET version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status)
+	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}

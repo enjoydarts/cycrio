@@ -14,6 +14,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/airuntimeconfig"
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
+	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
@@ -106,6 +107,7 @@ func run() error {
 		return errors.New("Hatchet worker start failed")
 	}
 	defer func() { _ = cleanup() }()
+	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)
 		return err

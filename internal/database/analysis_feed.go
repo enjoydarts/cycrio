@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -68,6 +69,7 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 			result.Events = []ai.Event{}
 		}
 		result.Registrations = []subscriptions.Registration{}
+		result.Automation = []subscriptions.AutomationOutcome{}
 		out.Results = append(out.Results, result)
 	}
 	e = rows.Err()
@@ -93,9 +95,94 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 		if e != nil {
 			return out, subscriptionError(e)
 		}
+		if e = fillAutomation(ctx, tx, owner, &out.Results[i]); e != nil {
+			return out, e
+		}
 	}
 	return out, nil
 }
+func fillAutomation(ctx context.Context, tx pgx.Tx, owner string, result *subscriptions.AnalysisResult) error {
+	result.AutomationState = "pending"
+	if result.State != "succeeded" {
+		result.AutomationState = "not_applicable"
+		return nil
+	}
+	err := tx.QueryRow(ctx, `SELECT state FROM subscription_automation_results WHERE owner_id=$1 AND result_id=$2`, owner, result.ID).Scan(&result.AutomationState)
+	if errors.Is(err, pgx.ErrNoRows) {
+		if len(result.Events) == 0 {
+			result.AutomationState = "no_events"
+		}
+		overlayAutomationRegistrations(result)
+		return nil
+	}
+	if err != nil {
+		return subscriptionError(err)
+	}
+	rows, err := tx.Query(ctx, `SELECT event_index,state,reason,subscription_id FROM subscription_automation_events WHERE owner_id=$1 AND result_id=$2 ORDER BY event_index`, owner, result.ID)
+	if err != nil {
+		return subscriptionError(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var o subscriptions.AutomationOutcome
+		if err = rows.Scan(&o.EventIndex, &o.State, &o.Reason, &o.SubscriptionID); err != nil {
+			return subscriptionError(err)
+		}
+		result.Automation = append(result.Automation, o)
+	}
+	if err = rows.Err(); err != nil {
+		return subscriptionError(err)
+	}
+	overlayAutomationRegistrations(result)
+	return nil
+}
+
+// The automatic ledger is historical. Current, owner-confirmed source links
+// remain authoritative after a person resolves an ambiguous or failed event.
+func overlayAutomationRegistrations(result *subscriptions.AnalysisResult) {
+	if len(result.Events) == 0 {
+		result.AutomationState = "no_events"
+		return
+	}
+	outcomes := make(map[int]subscriptions.AutomationOutcome, len(result.Automation))
+	for _, outcome := range result.Automation {
+		outcomes[outcome.EventIndex] = outcome
+	}
+	registered := make(map[int]string, len(result.Registrations))
+	for _, source := range result.Registrations {
+		registered[source.EventIndex] = source.SubscriptionID
+	}
+	result.Automation = []subscriptions.AutomationOutcome{}
+	allRegistered := true
+	failed, review := false, false
+	for index := range result.Events {
+		outcome, hasOutcome := outcomes[index]
+		if id, ok := registered[index]; ok {
+			if !hasOutcome || outcome.State != "registered" || outcome.SubscriptionID == nil || *outcome.SubscriptionID != id {
+				outcome = subscriptions.AutomationOutcome{EventIndex: index, State: "registered", Reason: "already_registered", SubscriptionID: &id}
+			}
+			hasOutcome = true
+		} else {
+			allRegistered = false
+			failed = failed || hasOutcome && outcome.State == "failed"
+			review = review || hasOutcome && outcome.State == "needs_review"
+		}
+		if hasOutcome {
+			result.Automation = append(result.Automation, outcome)
+		}
+	}
+	switch {
+	case allRegistered:
+		result.AutomationState = "registered"
+	case failed:
+		result.AutomationState = "failed"
+	case review:
+		result.AutomationState = "needs_review"
+	case result.AutomationState == "registered":
+		result.AutomationState = "pending"
+	}
+}
+
 func (r *SubscriptionRepository) AnalysisRuns(ctx context.Context, owner string, f subscriptions.AnalysisFilter) (subscriptions.RunPage, error) {
 	out := subscriptions.RunPage{Runs: []subscriptions.AnalysisRun{}, Limit: f.Limit, Offset: f.Offset}
 	if subscriptions.InvalidAnalysisFilter(f) || f.State != "" && f.State != "all" || f.Review != "" && f.Review != "all" {

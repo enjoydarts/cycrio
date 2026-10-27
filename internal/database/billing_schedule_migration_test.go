@@ -43,7 +43,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal(e)
 	}
 	// Capture every v8/v9 document, including immutable original request, source, revision and audit.
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(x ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY id) FROM billing_events x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM billing_event_sources x),(SELECT jsonb_agg(x ORDER BY entry_id,version) FROM billing_event_revisions x),(SELECT jsonb_agg(x ORDER BY id) FROM billing_event_audit x))`
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY id) FROM billing_events x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM billing_event_sources x),(SELECT jsonb_agg(x ORDER BY entry_id,version) FROM billing_event_revisions x),(SELECT jsonb_agg(x ORDER BY id) FROM billing_event_audit x))`
 	var before, after string
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); e != nil {
 		t.Fatal(e)
@@ -63,7 +63,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 9)
-	if e != nil || len(down) != 4 || down[0].Source.Version != 13 || down[1].Source.Version != 12 || down[2].Source.Version != 11 || down[3].Source.Version != 10 {
+	if e != nil || len(down) != 5 || down[0].Source.Version != 14 || down[1].Source.Version != 13 || down[2].Source.Version != 12 || down[3].Source.Version != 11 || down[4].Source.Version != 10 {
 		t.Fatal(down, e)
 	}
 	var version int
@@ -74,7 +74,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal("v9 changed on down", e)
 	}
 	up, e := provider.Up(ctx)
-	if e != nil || len(up) != 4 || up[0].Source.Version != 10 || up[1].Source.Version != 11 || up[2].Source.Version != 12 || up[3].Source.Version != 13 {
+	if e != nil || len(up) != 5 || up[0].Source.Version != 10 || up[1].Source.Version != 11 || up[2].Source.Version != 12 || up[3].Source.Version != 13 || up[4].Source.Version != 14 {
 		t.Fatal(up, e)
 	}
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); e != nil || before != after {
