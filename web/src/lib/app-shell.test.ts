@@ -22,6 +22,33 @@ async function component(name: string) {
     )
   ).default;
 }
+test('pending access displays the signed-in Clerk user ID for administrator approval', async () => {
+  const Component = await component('AppAccess');
+  const props = {
+    retry: () => {},
+    signOut: () => {},
+    mountAuth: () => () => {},
+  };
+  for (const id of ['user_first_account', 'user_second_account']) {
+    const html = render(Component, {
+      props: { ...props, state: { status: 'pending', clerkUserId: id } },
+    }).body;
+    assert.ok(
+      html.includes(id),
+      'approval screen must show the current user ID',
+    );
+    assert.match(html, /利用許可を再確認/);
+  }
+  for (const status of ['signed_out', 'denied', 'checking']) {
+    const html = render(Component, {
+      props: {
+        ...props,
+        state: { status, clerkUserId: 'user_hidden_account' },
+      },
+    }).body;
+    assert.ok(!html.includes('user_hidden_account'));
+  }
+});
 test('root layout owns one authentication controller and a stable authorization scope for child routes', async () => {
   const source = await readFile(
     new URL('../routes/+layout.svelte', import.meta.url),

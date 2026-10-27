@@ -50,6 +50,10 @@
       {:else if state.status === 'pending'}
         <h1>利用許可をお待ちください</h1>
         <p>ログインを確認しました。管理者の許可後にご利用いただけます。</p>
+        <p class="approval-identity">
+          管理者に次のユーザーIDをお伝えください。<br />
+          <span>ユーザーID：</span><code>{state.clerkUserId}</code>
+        </p>
         <button class="primary" onclick={retry}>利用許可を再確認</button><button
           onclick={signOut}>ログアウト</button
         >
@@ -138,6 +142,9 @@
     padding-top: 18px;
     margin: 18px 0 0;
     font-size: 12px;
+  }
+  .approval-identity {
+    overflow-wrap: anywhere;
   }
   .clerk-host {
     min-width: 0;
