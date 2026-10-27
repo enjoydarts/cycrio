@@ -278,7 +278,7 @@ func TestBillingMigrationNineDownUpPreservesContracts(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 8)
-	if e != nil || len(down) != 3 || down[0].Source.Version != 11 || down[1].Source.Version != 10 || down[2].Source.Version != 9 {
+	if e != nil || len(down) != 4 || down[0].Source.Version != 12 || down[1].Source.Version != 11 || down[2].Source.Version != 10 || down[3].Source.Version != 9 {
 		t.Fatal(down, e)
 	}
 	if _, e = NewSubscriptionRepository(f.runtime.pool).Get(ctx, f.owner, s.ID); e != nil {
@@ -292,7 +292,7 @@ func TestBillingMigrationNineDownUpPreservesContracts(t *testing.T) {
 		t.Fatal("v8 request/source preserved", preserved, e)
 	}
 	var version, audits int
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM subscription_audit)`).Scan(&version, &audits); e != nil || version != 11 || audits != 1 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM subscription_audit)`).Scan(&version, &audits); e != nil || version != 12 || audits != 1 {
 		t.Fatal(version, audits, e)
 	}
 	if _, e = NewBillingRepository(f.runtime.pool).Create(ctx, f.owner, s.ID, billingInput("invoice", "0", "2024-01-01")); e != nil {

@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"reflect"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/enjoydarts/cycrio/internal/database"
@@ -173,7 +174,10 @@ func readBoundedJSON(w http.ResponseWriter, r *http.Request, target any, maxByte
 	t := reflect.TypeOf(target).Elem()
 	allowed := map[string]bool{}
 	for i := 0; i < t.NumField(); i++ {
-		allowed[t.Field(i).Tag.Get("json")] = true
+		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
+		if name != "" && name != "-" {
+			allowed[name] = true
+		}
 	}
 	values := map[string]json.RawMessage{}
 	for d.More() {

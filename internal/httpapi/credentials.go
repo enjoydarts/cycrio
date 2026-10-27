@@ -23,6 +23,7 @@ type handlerOptions struct {
 	credentials     CredentialService
 	catalog         ModelCatalogService
 	runtime         AIRuntimeService
+	routes          AIRoutesService
 	mail            MailAccountService
 	mailSync        MailSyncService
 	mailProcessing  MailProcessingService

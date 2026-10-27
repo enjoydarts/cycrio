@@ -16,6 +16,9 @@ var monthPattern = regexp.MustCompile(`^(20[0-9]{2}|21[0-9]{2})-(0[1-9]|1[0-2])$
 func validID(id string) bool    { _, err := uuid.Parse(id); return err == nil }
 func validVersion(v int64) bool { return v >= 0 && v < math.MaxInt64 }
 func ValidateConfig(in ConfigInput) error {
+	if in.RouteID != "" && (!validID(in.RouteID) || in.OpenRouterProvider != "") {
+		return ErrInvalid
+	}
 	if !validVersion(in.ExpectedVersion) || !validID(in.CatalogSettingsID) || in.MaxInputBytes < 1024 || in.MaxInputBytes > 65536 || in.MaxOutputTokens < 64 || in.MaxOutputTokens > 16384 || in.TimeoutSeconds < 1 || in.TimeoutSeconds > 120 || in.OpenRouterProvider != "" && (len(in.OpenRouterProvider) > 128 || !slugPattern.MatchString(in.OpenRouterProvider)) {
 		return ErrInvalid
 	}

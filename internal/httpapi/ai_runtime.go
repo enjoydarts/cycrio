@@ -62,7 +62,7 @@ func registerAIRuntime(mux *http.ServeMux, service AIRuntimeService, protect pro
 	})
 	register("PUT /v1/admin/ai/runtime", func(w http.ResponseWriter, r *http.Request, p database.Principal) (any, error) {
 		var in airuntime.ConfigInput
-		if err := readAdminJSON(w, r, &in, "expected_version", "catalog_settings_id", "max_input_bytes", "max_output_tokens", "timeout_seconds", "openrouter_provider"); err != nil {
+		if err := readAdminJSON(w, r, &in, "expected_version", "catalog_settings_id", "max_input_bytes", "max_output_tokens", "timeout_seconds"); err != nil {
 			return nil, err
 		}
 		return service.SaveProfile(r.Context(), p.ID, in)

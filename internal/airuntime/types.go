@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/airoutes"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 )
 
@@ -28,19 +29,21 @@ type ModelRef struct {
 	Price             *modelcatalog.Price `json:"price"`
 }
 type Profile struct {
-	ID                   string    `json:"id"`
-	CatalogSettingsID    string    `json:"catalog_settings_id"`
-	Primary              ModelRef  `json:"primary"`
-	Secondary            ModelRef  `json:"secondary"`
-	MaxInputBytes        int       `json:"max_input_bytes"`
-	MaxOutputTokens      int       `json:"max_output_tokens"`
-	TimeoutSeconds       int       `json:"timeout_seconds"`
-	OpenRouterProvider   string    `json:"openrouter_provider"`
-	AnthropicWorkspaceID string    `json:"anthropic_workspace_id"`
-	PromptVersion        string    `json:"prompt_version"`
-	CreatedAt            time.Time `json:"created_at"`
+	RouteProof           *airoutes.Proof `json:"route_proof,omitempty"`
+	ID                   string          `json:"id"`
+	CatalogSettingsID    string          `json:"catalog_settings_id"`
+	Primary              ModelRef        `json:"primary"`
+	Secondary            ModelRef        `json:"secondary"`
+	MaxInputBytes        int             `json:"max_input_bytes"`
+	MaxOutputTokens      int             `json:"max_output_tokens"`
+	TimeoutSeconds       int             `json:"timeout_seconds"`
+	OpenRouterProvider   string          `json:"openrouter_provider"`
+	AnthropicWorkspaceID string          `json:"anthropic_workspace_id"`
+	PromptVersion        string          `json:"prompt_version"`
+	CreatedAt            time.Time       `json:"created_at"`
 }
 type ConfigInput struct {
+	RouteID            string `json:"route_id,omitempty"`
 	ExpectedVersion    int64  `json:"expected_version"`
 	CatalogSettingsID  string `json:"catalog_settings_id"`
 	MaxInputBytes      int    `json:"max_input_bytes"`

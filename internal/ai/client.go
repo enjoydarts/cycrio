@@ -27,7 +27,7 @@ func NewClient(h *http.Client) *Client {
 }
 
 var identifier = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,255}$`)
-var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*)?$`)
+var slugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*(/[a-z0-9][a-z0-9._-]*){0,3}$`)
 var generationPattern = regexp.MustCompile(`^gen-[0-9A-Za-z-]+$`)
 var liquidModelPattern = regexp.MustCompile(`^d1(?:[-/.].+)?$`)
 

@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/enjoydarts/cycrio/internal/airoutes"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"sort"
-	"strings"
 )
 
 type AIRuntimeRepository struct{ pool *pgxpool.Pool }
@@ -113,6 +116,9 @@ func runtimeProfileReady(ctx context.Context, q runtimeQuery, p airuntime.Profil
 	}
 	if !runtimeSupported(models[p.Primary.ID], models[p.Secondary.ID]) {
 		return airuntime.ErrConflict
+	}
+	if err := routeProfileCompatible(ctx, q, p, models[p.Secondary.ID]); err != nil {
+		return err
 	}
 	refs := []airuntime.ModelRef{p.Primary, p.Secondary}
 	sort.Slice(refs, func(i, j int) bool { return refs[i].Provider < refs[j].Provider })
@@ -216,6 +222,17 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 	if current == nil || *current != in.CatalogSettingsID {
 		return airuntime.State{}, airuntime.ErrConflict
 	}
+	var proof *airoutes.Proof
+	var selection *routeSelection
+	if in.RouteID != "" {
+		p, err := routeProofForSave(ctx, tx, in.RouteID)
+		if err != nil {
+			return airuntime.State{}, err
+		}
+		selection = &p
+		proof = &p.Proof
+		in.OpenRouterProvider = p.Proof.Tag
+	}
 	var p1, p2 string
 	var price1, price2 *string
 	if err := tx.QueryRow(ctx, `SELECT primary_model_id,secondary_model_id,primary_price_id,secondary_price_id FROM catalog_settings_versions WHERE id=$1`, *current).Scan(&p1, &p2, &price1, &price2); err != nil {
@@ -242,7 +259,17 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 	if (models[p2].Provider == "openrouter") != (in.OpenRouterProvider != "") {
 		return airuntime.State{}, airuntime.ErrInvalid
 	}
+	if proof != nil {
+		var now time.Time
+		if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+			return airuntime.State{}, airuntime.ErrUnavailable
+		}
+		if len(airoutes.Reasons(airoutes.Route{Proof: *proof}, models[p2], true, proof.CapturedAt, now, airoutes.Limits{MaxInputBytes: in.MaxInputBytes, MaxOutputTokens: in.MaxOutputTokens})) != 0 {
+			return airuntime.State{}, airuntime.ErrConflict
+		}
+	}
 	profile := airuntime.Profile{ID: uuid.NewString(), CatalogSettingsID: *current, MaxInputBytes: in.MaxInputBytes, MaxOutputTokens: in.MaxOutputTokens, TimeoutSeconds: in.TimeoutSeconds, OpenRouterProvider: in.OpenRouterProvider, AnthropicWorkspaceID: workspace, PromptVersion: "v1"}
+	profile.RouteProof = proof
 	refs := map[string]airuntime.ModelRef{}
 	ids := []string{p1, p2}
 	sort.Slice(ids, func(i, j int) bool { return models[ids[i]].Provider < models[ids[j]].Provider })
@@ -251,6 +278,9 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 		key, v, err := runtimeCredential(ctx, tx, m.Provider, true)
 		if err != nil {
 			return airuntime.State{}, err
+		}
+		if id == p2 && selection != nil && (key != selection.CredentialID || v != selection.CredentialVersion) {
+			return airuntime.State{}, airuntime.ErrConflict
 		}
 		ref := airuntime.ModelRef{ID: id, Provider: m.Provider, ModelID: m.ModelID, DisplayName: m.DisplayName, CredentialID: key, CredentialVersion: v}
 		priceID := price1
@@ -267,6 +297,25 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 				return airuntime.State{}, airuntime.ErrUnavailable
 			}
 			ref.Price = &price
+		}
+		if id == p2 && proof != nil {
+			// A global catalog API quote is never an endpoint quote. Preserve an
+			// explicitly selected manual version; otherwise freeze this endpoint.
+			if ref.Price == nil || ref.Price.Source != "manual" {
+				ref.Price = nil
+				if proof.Price != nil {
+					price := *proof.Price
+					price.ModelID = id
+					raw, err := json.Marshal(price)
+					if err != nil {
+						return airuntime.State{}, airuntime.ErrUnavailable
+					}
+					if _, err := tx.Exec(ctx, `INSERT INTO catalog_prices(id,model_id,source,currency,content_hash,doc,captured_at)VALUES($1,$2,'api',$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`, price.ID, id, price.Currency, proof.PricingHash, raw, price.CapturedAt); err != nil {
+						return airuntime.State{}, runtimeError(err)
+					}
+					ref.Price = &price
+				}
+			}
 		}
 		refs[id] = ref
 	}
