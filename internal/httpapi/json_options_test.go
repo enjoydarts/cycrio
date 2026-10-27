@@ -23,3 +23,14 @@ func TestStrictAdminJSONAcceptsOptionalTagOptions(t *testing.T) {
 		}
 	}
 }
+
+func TestOptionalNullableCapabilitiesRemainUnknown(t *testing.T) {
+	var in struct {
+		TextInput *bool `json:"text_input"`
+	}
+	r := httptest.NewRequest("PUT", "/", strings.NewReader(`{"text_input":null}`))
+	r.Header.Set("Content-Type", "application/json")
+	if err := readAdminJSON(httptest.NewRecorder(), r, &in); err != nil || in.TextInput != nil {
+		t.Fatal("nullable model capability rejected", err)
+	}
+}

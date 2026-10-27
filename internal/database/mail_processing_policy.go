@@ -15,7 +15,7 @@ func processingPolicy(ctx context.Context, q runtimeQuery, id string, lock bool)
 	if lock {
 		suffix = " FOR SHARE"
 	}
-	e := q.QueryRow(ctx, `SELECT version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed FROM mail_processing_policies WHERE profile_id=$1`+suffix, id).Scan(&p.Version, &p.Enabled, &p.PrimaryRetention, &p.SecondaryRetention, &p.PrimaryConfirmed, &p.SecondaryConfirmed)
+	e := q.QueryRow(ctx, `SELECT version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed,full_email_allowed FROM mail_processing_policies WHERE profile_id=$1`+suffix, id).Scan(&p.Version, &p.Enabled, &p.PrimaryRetention, &p.SecondaryRetention, &p.PrimaryConfirmed, &p.SecondaryConfirmed, &p.FullEmailAllowed)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return p, nil
 	}
@@ -125,7 +125,10 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 
 func writeProcessingPolicy(ctx context.Context, tx pgx.Tx, actor string, in mailprocessing.PolicyInput) error {
 	var v int64
-	tag, e := tx.Exec(ctx, `INSERT INTO mail_processing_policies(profile_id,version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed)VALUES($1,1,$2,$3,$4,$5,$6) ON CONFLICT(profile_id) DO UPDATE SET version=mail_processing_policies.version+1,enabled=excluded.enabled,primary_retention=excluded.primary_retention,secondary_retention=excluded.secondary_retention,primary_confirmed=excluded.primary_confirmed,secondary_confirmed=excluded.secondary_confirmed WHERE mail_processing_policies.version=$7`, in.ProfileID, in.Enabled, in.PrimaryRetention, in.SecondaryRetention, in.PrimaryConfirmed, in.SecondaryConfirmed, in.ExpectedVersion)
+	// Omitted scope on an enabled legacy save narrows permission. A disabled
+	// stop preserves the prior scope without requiring metadata reads or a new
+	// confirmation, while an explicit false always revokes whole-email access.
+	tag, e := tx.Exec(ctx, `INSERT INTO mail_processing_policies(profile_id,version,enabled,primary_retention,secondary_retention,primary_confirmed,secondary_confirmed,full_email_allowed)VALUES($1,1,$2,$3,$4,$5,$6,coalesce($8,false)) ON CONFLICT(profile_id) DO UPDATE SET version=mail_processing_policies.version+1,enabled=excluded.enabled,primary_retention=excluded.primary_retention,secondary_retention=excluded.secondary_retention,primary_confirmed=excluded.primary_confirmed,secondary_confirmed=excluded.secondary_confirmed,full_email_allowed=CASE WHEN $8::boolean IS NULL AND NOT excluded.enabled THEN mail_processing_policies.full_email_allowed ELSE excluded.full_email_allowed END WHERE mail_processing_policies.version=$7`, in.ProfileID, in.Enabled, in.PrimaryRetention, in.SecondaryRetention, in.PrimaryConfirmed, in.SecondaryConfirmed, in.ExpectedVersion, in.FullEmailAllowed)
 	if e != nil {
 		return processingError(e)
 	}

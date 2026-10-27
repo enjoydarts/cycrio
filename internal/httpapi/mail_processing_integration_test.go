@@ -69,7 +69,7 @@ func processingHTTPPool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	var version int
-	if err = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 14 {
+	if err = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 15 {
 		t.Fatal("processing migration", version, err)
 	}
 	return pool
@@ -124,12 +124,20 @@ func processingHTTPProfile(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	return secrets, state
 }
 
-type processingHTTPReader struct{ calls int }
+type processingHTTPReader struct {
+	calls     int
+	text      string
+	fullEmail bool
+}
 
 func (r *processingHTTPReader) ReadText(_ context.Context, login string, password []byte, source mailcontent.Source) ([]byte, error) {
 	r.calls++
+	r.fullEmail = source.FullEmail
 	if login != "synthetic-login@example.test" || string(password) != "synthetic-private-app-password" || source.Folder != "INBOX" || source.UIDValidity != 42 || source.UID == 0 {
 		return nil, mailaccounts.AdapterError{Code: "invalid_response"}
+	}
+	if r.text != "" {
+		return []byte(r.text), nil
 	}
 	return []byte("synthetic-private-mail-body"), nil
 }
@@ -137,10 +145,18 @@ func (r *processingHTTPReader) ReadText(_ context.Context, login string, passwor
 type processingHTTPAI struct {
 	calls int
 	mode  string
+	want  string
+	seen  int
 }
 
 func (c *processingHTTPAI) Do(_ context.Context, in ai.Request) (ai.Response, error) {
 	c.calls++
+	if c.want != "" {
+		if in.Input.Text != c.want {
+			return ai.Response{}, &ai.Error{Code: "invalid_request"}
+		}
+		c.seen++
+	}
 	amount, currency := "0.01", "USD"
 	out := ai.Response{Cost: ai.Cost{Status: "provider_reported", Amount: &amount, Currency: &currency}, Usage: ai.Usage{Present: true, Valid: true, InputTokens: 1, OrdinaryInputTokens: 1}}
 	if c.mode == "unknown" {
@@ -342,6 +358,47 @@ func TestMailProcessingHTTPDatabaseExplicitWorkerResultsAndOwnerCosts(t *testing
 		t.Fatal("retry duplicated")
 	}
 	request("POST", base+"/processing-runs/"+run.ID+"/cancel", struct{}{}, "processing_owner", 200, nil)
+	// A general user's explicit whole-email request cannot expand the bounded
+	// policy. The administrator grants scope without another profile/test.
+	input.RequestID = uuid.NewString()
+	input.FullEmail = true
+	request("POST", base+"/processing-runs", input, "processing_owner", 409, nil)
+	var beforeRuns, beforeAudits int
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_runs),(SELECT count(*) FROM mail_processing_audit)`).Scan(&beforeRuns, &beforeAudits); err != nil {
+		t.Fatal(err)
+	}
+	full := true
+	policy.ExpectedVersion = state.Policy.Version
+	policy.FullEmailAllowed = &full
+	request("PUT", "/v1/admin/mail-processing/policy", policy, "processing_owner", 403, nil)
+	request("PUT", "/v1/admin/mail-processing/policy", policy, "processing_admin", 200, &state)
+	if !state.Policy.FullEmailAllowed || state.RuntimeVersion != runtime.Version || state.Profile.ID != runtime.Active.ID {
+		t.Fatal("scope grant changed runtime", state)
+	}
+	request("GET", base+"/processing-preview", nil, "processing_owner", 200, &preview)
+	if !preview.FullEmailAllowed {
+		t.Fatal("preview omitted scope")
+	}
+	input.PolicyVersion = state.Policy.Version
+	reader.text = strings.Repeat("日本語", 60000) + "synthetic-private-whole-end"
+	client.mode = "related"
+	client.want = reader.text
+	request("POST", base+"/processing-runs", input, "processing_owner", 202, &run)
+	changed := input
+	changed.FullEmail = false
+	request("POST", base+"/processing-runs", changed, "processing_owner", 409, nil)
+	execute()
+	if !reader.fullEmail || client.seen != 2 {
+		t.Fatal("whole body lost between persisted request and both stages", reader.fullEmail, client.seen)
+	}
+	request("GET", base+"/processing-results", nil, "processing_owner", 200, &results)
+	if results.Results[0].State != "succeeded" {
+		t.Fatal(results)
+	}
+	var afterRuns, afterAudits int
+	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_runs),(SELECT count(*) FROM mail_processing_audit)`).Scan(&afterRuns, &afterAudits); err != nil || afterRuns != beforeRuns+1 || afterAudits != beforeAudits+1 {
+		t.Fatal("rejected mode writes persisted", afterRuns, afterAudits, err)
+	}
 	for _, table := range []string{"mail_processing_runs", "mail_processing_items", "mail_processing_audit", "ai_calls", "ai_usage_revisions"} {
 		var dump string
 		if err = pool.QueryRow(ctx, `SELECT COALESCE(json_agg(row_to_json(t))::text,'[]') FROM `+table+` t`).Scan(&dump); err != nil {

@@ -25,6 +25,7 @@ func CurrentPrimaryTerms() Terms {
 }
 
 type StandardPolicyInput struct {
+	FullEmailAllowed   *bool  `json:"full_email_allowed,omitempty" nonnull:"true"`
 	ExpectedVersion    int64  `json:"expected_version"`
 	RuntimeVersion     int64  `json:"runtime_version"`
 	ProfileID          string `json:"profile_id"`
@@ -37,6 +38,7 @@ type StandardPolicyInput struct {
 	SecondaryConfirmed bool   `json:"secondary_confirmed"`
 }
 type StandardProof struct {
+	FullEmailAllowed   bool           `json:"full_email_allowed"`
 	ProfileID          string         `json:"profile_id"`
 	PolicyVersion      int64          `json:"policy_version"`
 	PrimaryMode        string         `json:"primary_mode"`
@@ -87,7 +89,7 @@ func StandardProofCurrent(p Policy) bool {
 	if proof == nil {
 		return true // Existing custom policies have no standard confirmation.
 	}
-	if proof.ProfileID != p.ProfileID || proof.PolicyVersion != p.Version {
+	if proof.ProfileID != p.ProfileID || proof.PolicyVersion != p.Version || proof.FullEmailAllowed != p.FullEmailAllowed {
 		return false
 	}
 	if proof.PrimaryMode == "custom" {

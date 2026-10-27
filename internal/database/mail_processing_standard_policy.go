@@ -141,7 +141,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 		primary = t.Summary
 	}
 	secondary := mailprocessing.SecondaryRetention(selection.Proof)
-	policy := mailprocessing.PolicyInput{ExpectedVersion: in.ExpectedVersion, ProfileID: in.ProfileID, Enabled: in.Enabled, PrimaryRetention: primary, SecondaryRetention: secondary, PrimaryConfirmed: true, SecondaryConfirmed: true}
+	policy := mailprocessing.PolicyInput{FullEmailAllowed: in.FullEmailAllowed, ExpectedVersion: in.ExpectedVersion, ProfileID: in.ProfileID, Enabled: in.Enabled, PrimaryRetention: primary, SecondaryRetention: secondary, PrimaryConfirmed: true, SecondaryConfirmed: true}
 	if !mailprocessing.ValidPolicy(policy) {
 		return empty, mailprocessing.ErrConflict
 	}
@@ -149,6 +149,11 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 		return empty, e
 	}
 	proof := mailprocessing.StandardProof{ProfileID: in.ProfileID, PolicyVersion: in.ExpectedVersion + 1, PrimaryMode: in.PrimaryMode, PrimaryTerms: terms, PrimaryRetention: primary, SecondaryRoute: selection.Proof, SecondaryRetention: secondary, ActorID: actor, ConfirmedAt: now}
+	// Use the written column so disabled legacy saves that preserve scope also
+	// freeze an identical confirmation scope.
+	if e = tx.QueryRow(ctx, `SELECT full_email_allowed FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&proof.FullEmailAllowed); e != nil {
+		return empty, mailprocessing.ErrUnavailable
+	}
 	raw, e := json.Marshal(proof)
 	if e != nil {
 		return empty, mailprocessing.ErrUnavailable

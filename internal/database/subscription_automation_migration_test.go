@@ -46,7 +46,7 @@ func TestSubscriptionAutomationMigrationFourteenPreservesThirteen(t *testing.T) 
 		t.Fatal(err)
 	}
 	down, err := provider.DownTo(ctx, 13)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 14 {
+	if err != nil || len(down) != 2 || down[0].Source.Version != 15 || down[1].Source.Version != 14 {
 		t.Fatal(down, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
@@ -59,7 +59,7 @@ func TestSubscriptionAutomationMigrationFourteenPreservesThirteen(t *testing.T) 
 		t.Fatal("down14 must restore exact v13 audit check")
 	}
 	up, err := provider.Up(ctx)
-	if err != nil || len(up) != 1 || up[0].Source.Version != 14 {
+	if err != nil || len(up) != 2 || up[0].Source.Version != 14 || up[1].Source.Version != 15 {
 		t.Fatal(up, err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
@@ -70,7 +70,7 @@ func TestSubscriptionAutomationMigrationFourteenPreservesThirteen(t *testing.T) 
 		t.Fatal(preserved, err)
 	}
 	var version int
-	if err = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 14 {
+	if err = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 15 {
 		t.Fatal(version, err)
 	}
 }

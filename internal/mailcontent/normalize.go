@@ -17,11 +17,21 @@ import (
 // Normalize decodes one selected MIME body. All buffers are transient and no
 // decoder or server error text is returned to callers.
 func Normalize(raw []byte, mediaType, charset, encoding string, maxBytes int) ([]byte, error) {
+	return normalize(raw, mediaType, charset, encoding, min(maxBytes, MaxTextBytes))
+}
+
+// NormalizeSource preserves the selected body in whole-email mode, within the
+// independent physical decode budget. Legacy callers retain their text limit.
+func NormalizeSource(raw []byte, mediaType, charset, encoding string, source Source) ([]byte, error) {
+	if source.FullEmail {
+		return normalize(raw, mediaType, charset, encoding, MaxWireBytes)
+	}
+	return Normalize(raw, mediaType, charset, encoding, source.MaxTextBytes)
+}
+
+func normalize(raw []byte, mediaType, charset, encoding string, maxBytes int) ([]byte, error) {
 	if maxBytes <= 0 {
 		return nil, contentError("invalid_response")
-	}
-	if maxBytes > MaxTextBytes {
-		maxBytes = MaxTextBytes
 	}
 	if len(raw) > MaxWireBytes {
 		return nil, contentError("input_too_large")

@@ -187,22 +187,26 @@ func nestedContentStructure(levels int) string {
 }
 
 func TestReadTextUsesFixedTLSAndCancellationClosesTransport(t *testing.T) {
-	c := NewClient()
-	closed := make(chan struct{})
-	c.dial = func(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
-		if address != "imap.fastmail.com:993" || config.ServerName != "imap.fastmail.com" || config.InsecureSkipVerify || config.MinVersion < tls.VersionTLS12 {
-			t.Error("unsafe content transport")
+	for _, full := range []bool{false, true} {
+		c := NewClient()
+		closed := make(chan struct{})
+		c.dial = func(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
+			if address != "imap.fastmail.com:993" || config.ServerName != "imap.fastmail.com" || config.InsecureSkipVerify || config.MinVersion < tls.VersionTLS12 {
+				t.Error("unsafe content transport")
+			}
+			client, server := net.Pipe()
+			go func() { defer close(closed); defer server.Close(); io.Copy(io.Discard, server) }()
+			return client, nil
 		}
-		client, server := net.Pipe()
-		go func() { defer close(closed); defer server.Close(); io.Copy(io.Discard, server) }()
-		return client, nil
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	time.AfterFunc(25*time.Millisecond, cancel)
-	got, err := c.ReadText(ctx, "synthetic@example.test", []byte("private-password"), contentSource())
-	waitClosed(t, closed)
-	if got != nil || adapterCode(err) != "cancelled" {
-		t.Fatal("cancelled read succeeded", err)
+		ctx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(25*time.Millisecond, cancel)
+		source := contentSource()
+		source.FullEmail = full
+		got, err := c.ReadText(ctx, "synthetic@example.test", []byte("private-password"), source)
+		waitClosed(t, closed)
+		if got != nil || adapterCode(err) != "cancelled" {
+			t.Fatal("cancelled read succeeded", err)
+		}
 	}
 }
 

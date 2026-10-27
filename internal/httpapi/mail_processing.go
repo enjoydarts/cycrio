@@ -90,6 +90,7 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 		// Keep the transport object flat so strict member inspection also checks
 		// every field from the service's embedded Input.
 		var in struct {
+			FullEmail        bool   `json:"full_email,omitempty" nonnull:"true"`
 			ExpectedVersion  int64  `json:"expected_version"`
 			RuntimeVersion   int64  `json:"runtime_version"`
 			ProfileID        string `json:"profile_id"`
@@ -103,7 +104,7 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 		if err := readAdminJSON(w, r, &in, "expected_version", "runtime_version", "profile_id", "policy_version", "request_id", "max_messages", "confirmed", "expected_result_id", "confirm_unknown"); err != nil {
 			return nil, err
 		}
-		return service.Retry(r.Context(), owner, r.PathValue("id"), r.PathValue("message_id"), mailprocessing.RetryInput{Input: mailprocessing.Input{ExpectedVersion: in.ExpectedVersion, RuntimeVersion: in.RuntimeVersion, ProfileID: in.ProfileID, PolicyVersion: in.PolicyVersion, RequestID: in.RequestID, MaxMessages: in.MaxMessages, Confirmed: in.Confirmed}, ExpectedResultID: in.ExpectedResultID, ConfirmUnknown: in.ConfirmUnknown})
+		return service.Retry(r.Context(), owner, r.PathValue("id"), r.PathValue("message_id"), mailprocessing.RetryInput{Input: mailprocessing.Input{FullEmail: in.FullEmail, ExpectedVersion: in.ExpectedVersion, RuntimeVersion: in.RuntimeVersion, ProfileID: in.ProfileID, PolicyVersion: in.PolicyVersion, RequestID: in.RequestID, MaxMessages: in.MaxMessages, Confirmed: in.Confirmed}, ExpectedResultID: in.ExpectedResultID, ConfirmUnknown: in.ConfirmUnknown})
 	})
 	register("GET /v1/admin/mail-processing/policy", true, 200, func(_ http.ResponseWriter, r *http.Request, actor string) (any, error) {
 		return service.AdminRead(r.Context(), actor)

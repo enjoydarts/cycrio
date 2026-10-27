@@ -43,9 +43,15 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(e)
 	}
 	var profileID string
-	if e = tx.QueryRow(ctx, `SELECT state,config_version,credential_id,runtime_version,profile_id,policy_version,coalesce(lease_id::text,'') FROM mail_processing_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.configVersion, &w.credentialID, &w.runtimeVersion, &profileID, &w.policyVersion, &w.lease); e != nil {
+	var requestDoc []byte
+	if e = tx.QueryRow(ctx, `SELECT state,config_version,credential_id,runtime_version,profile_id,policy_version,coalesce(lease_id::text,''),request_doc FROM mail_processing_runs WHERE id=$1 FOR UPDATE`, id).Scan(&w.state, &w.configVersion, &w.credentialID, &w.runtimeVersion, &profileID, &w.policyVersion, &w.lease, &requestDoc); e != nil {
 		return fail(e)
 	}
+	var request processingRequest
+	if json.Unmarshal(requestDoc, &request) != nil {
+		return fail(mailprocessing.ErrUnavailable)
+	}
+	w.work.FullEmail = request.Input.FullEmail
 	w.work.Run, e = scanProcessingRun(tx.QueryRow(ctx, `SELECT `+processingRunColumns+` FROM mail_processing_runs WHERE id=$1`, id))
 	if e != nil {
 		return fail(e)
@@ -55,7 +61,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(e)
 	}
 	w.work.Profile = p
-	w.valid = w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && state.RuntimeVersion == w.runtimeVersion && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && mailprocessing.StandardProofCurrent(*state.Policy)
+	w.valid = w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && state.RuntimeVersion == w.runtimeVersion && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && (!w.work.FullEmail || state.Policy.FullEmailAllowed) && mailprocessing.StandardProofCurrent(*state.Policy)
 	if w.valid {
 		if e = runtimeProfileReady(ctx, tx, p, true, true); e != nil {
 			if errors.Is(e, airuntime.ErrUnavailable) {

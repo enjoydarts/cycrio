@@ -173,10 +173,12 @@ func readBoundedJSON(w http.ResponseWriter, r *http.Request, target any, maxByte
 	}
 	t := reflect.TypeOf(target).Elem()
 	allowed := map[string]bool{}
+	nonNull := map[string]bool{}
 	for i := 0; i < t.NumField(); i++ {
 		name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ",")
 		if name != "" && name != "-" {
 			allowed[name] = true
+			nonNull[name] = t.Field(i).Tag.Get("nonnull") == "true"
 		}
 	}
 	values := map[string]json.RawMessage{}
@@ -191,6 +193,9 @@ func readBoundedJSON(w http.ResponseWriter, r *http.Request, target any, maxByte
 		}
 		var raw json.RawMessage
 		if d.Decode(&raw) != nil {
+			return modelcatalog.ErrInvalid
+		}
+		if nonNull[key] && bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 			return modelcatalog.ErrInvalid
 		}
 		values[key] = raw

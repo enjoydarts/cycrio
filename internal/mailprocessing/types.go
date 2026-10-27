@@ -20,6 +20,7 @@ var (
 )
 
 type PolicyInput struct {
+	FullEmailAllowed   *bool  `json:"full_email_allowed,omitempty" nonnull:"true"`
 	ExpectedVersion    int64  `json:"expected_version"`
 	ProfileID          string `json:"profile_id"`
 	Enabled            bool   `json:"enabled"`
@@ -29,6 +30,7 @@ type PolicyInput struct {
 	SecondaryConfirmed bool   `json:"secondary_confirmed"`
 }
 type Policy struct {
+	FullEmailAllowed   bool           `json:"full_email_allowed"`
 	StandardProof      *StandardProof `json:"standard_proof,omitempty"`
 	ProfileID          string         `json:"profile_id"`
 	Version            int64          `json:"version"`
@@ -64,23 +66,25 @@ type PolicyState struct {
 	Policy         *Policy             `json:"policy"`
 }
 type Preview struct {
-	AccountID       string       `json:"account_id"`
-	ExpectedVersion int64        `json:"expected_version"`
-	RuntimeVersion  int64        `json:"runtime_version"`
-	ProfileID       *string      `json:"profile_id"`
-	PolicyVersion   int64        `json:"policy_version"`
-	Ready           bool         `json:"ready"`
-	BlockedReason   string       `json:"blocked_reason"`
-	PendingCount    int          `json:"pending_count"`
-	FailedCount     int          `json:"failed_count"`
-	UnknownCount    int          `json:"unknown_count"`
-	Primary         *PublicModel `json:"primary"`
-	Secondary       *PublicModel `json:"secondary"`
-	MaxInputBytes   int          `json:"max_input_bytes"`
-	MaxOutputTokens int          `json:"max_output_tokens"`
-	TimeoutSeconds  int          `json:"timeout_seconds"`
+	FullEmailAllowed bool         `json:"full_email_allowed"`
+	AccountID        string       `json:"account_id"`
+	ExpectedVersion  int64        `json:"expected_version"`
+	RuntimeVersion   int64        `json:"runtime_version"`
+	ProfileID        *string      `json:"profile_id"`
+	PolicyVersion    int64        `json:"policy_version"`
+	Ready            bool         `json:"ready"`
+	BlockedReason    string       `json:"blocked_reason"`
+	PendingCount     int          `json:"pending_count"`
+	FailedCount      int          `json:"failed_count"`
+	UnknownCount     int          `json:"unknown_count"`
+	Primary          *PublicModel `json:"primary"`
+	Secondary        *PublicModel `json:"secondary"`
+	MaxInputBytes    int          `json:"max_input_bytes"`
+	MaxOutputTokens  int          `json:"max_output_tokens"`
+	TimeoutSeconds   int          `json:"timeout_seconds"`
 }
 type Input struct {
+	FullEmail       bool   `json:"full_email,omitempty" nonnull:"true"`
 	ExpectedVersion int64  `json:"expected_version"`
 	RuntimeVersion  int64  `json:"runtime_version"`
 	ProfileID       string `json:"profile_id"`
@@ -123,6 +127,7 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type Work struct {
+	FullEmail  bool                           `json:"-"`
 	Run        Run                            `json:"-"`
 	AttemptID  string                         `json:"-"`
 	OwnerID    string                         `json:"-"`

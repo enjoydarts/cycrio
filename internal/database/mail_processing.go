@@ -92,6 +92,7 @@ func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lo
 		out.Primary = &public.Primary
 		out.Secondary = &public.Secondary
 		out.PolicyVersion = settings.Policy.Version
+		out.FullEmailAllowed = settings.Policy.FullEmailAllowed
 		out.MaxInputBytes = public.MaxInputBytes
 		out.MaxOutputTokens = public.MaxOutputTokens
 		out.TimeoutSeconds = public.TimeoutSeconds
@@ -184,7 +185,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	if e != nil {
 		return mailprocessing.Run{}, e
 	}
-	if !p.Ready || p.ExpectedVersion != in.ExpectedVersion || p.RuntimeVersion != in.RuntimeVersion || p.ProfileID == nil || *p.ProfileID != in.ProfileID || p.PolicyVersion != in.PolicyVersion {
+	if !p.Ready || in.FullEmail && !p.FullEmailAllowed || p.ExpectedVersion != in.ExpectedVersion || p.RuntimeVersion != in.RuntimeVersion || p.ProfileID == nil || *p.ProfileID != in.ProfileID || p.PolicyVersion != in.PolicyVersion {
 		return mailprocessing.Run{}, mailprocessing.ErrConflict
 	}
 	var credential string

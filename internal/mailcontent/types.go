@@ -10,6 +10,7 @@ const (
 
 // Source is a private reference to an already discovered message.
 type Source struct {
+	FullEmail    bool   `json:"-"`
 	Folder       string `json:"-"`
 	UIDValidity  uint32 `json:"-"`
 	UID          uint32 `json:"-"`

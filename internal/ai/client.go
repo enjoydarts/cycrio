@@ -57,7 +57,7 @@ func validKey(k []byte) bool {
 
 func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 	out := Response{Cost: unknownCost("missing_usage")}
-	if !validKey(r.Key) || !identifier.MatchString(r.ModelID) || len(r.Input.Text) == 0 || len(r.Input.Text) > 512<<10 || len(r.Input.Instructions) > 32<<10 || r.MaxOutputTokens < 0 || r.MaxOutputTokens > 32768 {
+	if !validKey(r.Key) || !identifier.MatchString(r.ModelID) || len(r.Input.Text) == 0 || len(r.Input.Text) > 5<<20 || len(r.Input.Instructions) > 32<<10 || r.MaxOutputTokens < 0 || r.MaxOutputTokens > 32768 {
 		return out, &Error{Code: "invalid_request"}
 	}
 	schema := ExtractionSchema()

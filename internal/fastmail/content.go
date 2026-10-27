@@ -19,7 +19,7 @@ var _ mailcontent.Reader = (*Client)(nil)
 
 func (c *Client) ReadText(ctx context.Context, login string, password []byte, source mailcontent.Source) ([]byte, error) {
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
-	if !validName(source.Folder) || source.UIDValidity == 0 || source.UID == 0 || source.MaxTextBytes <= 0 {
+	if !validName(source.Folder) || source.UIDValidity == 0 || source.UID == 0 || (!source.FullEmail && source.MaxTextBytes <= 0) {
 		return nil, invalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
@@ -117,7 +117,7 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 	if ctx.Err() != nil {
 		return fail(ctx.Err())
 	}
-	text, err := mailcontent.Normalize(raw, part.body.MediaType(), partCharset(part.body.Params), part.body.Encoding, source.MaxTextBytes)
+	text, err := mailcontent.NormalizeSource(raw, part.body.MediaType(), partCharset(part.body.Params), part.body.Encoding, source)
 	if err != nil {
 		return nil, err
 	}

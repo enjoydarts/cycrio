@@ -70,12 +70,15 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 		completion.ErrorCode = "configuration_unavailable"
 		return nil
 	}
+	if w.FullEmail {
+		maximum = mailcontent.MaxWireBytes
+	}
 	if s.reader == nil {
 		completion.ErrorCode = "connection_failed"
 		return nil
 	}
 	readCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-	text, e := s.reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{Folder: w.FolderName, UIDValidity: validity, UID: uid, MaxTextBytes: maximum})
+	text, e := s.reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{Folder: w.FolderName, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail})
 	defer clear(text)
 	if e == nil {
 		e = readCtx.Err()
