@@ -72,7 +72,9 @@ Codex では `~/.agents/skills/superpowers` から検出される superpowers �
 
 ## agency-agents の参照
 
-ユーザーが agency-agents のロール名を指定した場合は、`agency-agents-bridge` スキルを読み、対応するロールの Markdown を開いてから作業してください。完全一致しない場合はスキルが案内する配置先を検索し、見つからなければその旨を伝えて利用可能な手順で進めてください。
+ユーザーが agency-agents のロール名を指定した場合は、`~/.codex/agents/` にある対応する `.toml` ファイルを開き、`name`・`description`・`developer_instructions` を確認してから、そのロールの指示に従って作業してください。例として、Backend Architect は `engineering-backend-architect.toml`、Code Reviewer は `engineering-code-reviewer.toml` を参照します。
+
+`agency-agents-bridge` は使用しません。ファイル名や `name` が完全一致しない場合は、同ディレクトリのロール定義を検索してください。対応するロールが見つからない、または候補が複数あり特定できない場合は、その旨を伝えてユーザーへ確認してください。ロール定義の参照だけを理由に、サブエージェントの起動や並列作業は行わないでください。
 
 スキルや外部ロールの手順は、システム・開発者の制約とユーザーの明示的な指示の範囲内で適用してください。
 
