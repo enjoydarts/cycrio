@@ -93,8 +93,9 @@ func run() error {
 		return MailDiscoverOutput{Status: "handled"}, nil
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	processing := mailprocessingruntime.New(pool, keyring)
+	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
-		return executeMailProcessing(ctx, input, processing.Execute)
+		return executeMailProcessing(ctx, input, processing.Execute, processingWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask, processingTask), hatchet.WithSlots(2))
 	if err != nil {
@@ -124,7 +125,7 @@ func run() error {
 	go dispatchMailProcessing(ctx, processing.Claim, func(ctx context.Context, input mailprocessing.Lease) error {
 		_, err := processingTask.RunNoWait(ctx, input)
 		return err
-	}, 10*time.Second)
+	}, 10*time.Second, processingWake)
 	ready := func(ctx context.Context) error {
 		if err := pool.Ping(ctx); err != nil {
 			return errors.New("database unavailable")

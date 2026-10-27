@@ -14,14 +14,23 @@ type MailProcessingOutput struct {
 	Status string `json:"status"`
 }
 
-func executeMailProcessing(ctx context.Context, input mailprocessing.Lease, execute func(context.Context, mailprocessing.Lease) error) (MailProcessingOutput, error) {
+func executeMailProcessing(ctx context.Context, input mailprocessing.Lease, execute func(context.Context, mailprocessing.Lease) error, wake chan<- struct{}) (MailProcessingOutput, error) {
+	// Execute persists the completion before returning. Prompt the dispatcher to
+	// claim newly queued work without delaying every message until the next poll.
+	// Coalesce notifications and never hold a task slot waiting for the dispatcher.
+	defer func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}()
 	if err := execute(ctx, input); err != nil {
 		return MailProcessingOutput{Status: "failed"}, errors.New("mail processing unavailable")
 	}
 	return MailProcessingOutput{Status: "handled"}, nil
 }
 
-func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]mailprocessing.Lease, error), submit func(context.Context, mailprocessing.Lease) error, interval time.Duration) {
+func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]mailprocessing.Lease, error), submit func(context.Context, mailprocessing.Lease) error, interval time.Duration, wake <-chan struct{}) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -42,6 +51,7 @@ func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+		case <-wake:
 		}
 	}
 }
