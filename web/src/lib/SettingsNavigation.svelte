@@ -5,14 +5,21 @@
 </script>
 
 <nav class="settings-navigation" aria-label="設定項目">
-  {#each availableSettings(role) as item}
-    {#if item.id === 'ai-models'}<span class="group-label">管理者設定</span
-      >{/if}
+  <a href="/settings">準備状況</a>
+  {#each availableSettings(role).filter( (item) => ['mail', 'appearance', 'ai'].includes(item.id) ) as item}
     <a
       href={`/settings/${item.id}`}
       aria-current={section === item.id ? 'page' : undefined}>{item.title}</a
     >
   {/each}
+  {#if role === 'platform_admin'}<details>
+      <summary>管理の詳細</summary
+      >{#each availableSettings(role).filter( (item) => ['credentials', 'catalog', 'usage'].includes(item.id) ) as item}<a
+          href={`/settings/${item.id}`}
+          aria-current={section === item.id ? 'page' : undefined}
+          >{item.title}</a
+        >{/each}
+    </details>{/if}
 </nav>
 
 <style>
@@ -38,10 +45,11 @@
     color: var(--color-text);
     font-weight: 600;
   }
-  .group-label {
+  summary {
     color: var(--color-muted);
-    font-size: 12px;
-    padding: 24px 12px 7px;
+    font-size: 13px;
+    padding: 10px 12px;
+    min-height: 44px;
   }
   @media (max-width: 900px) {
     .settings-navigation {
@@ -54,9 +62,6 @@
     }
     a {
       padding: 8px 10px;
-    }
-    .group-label {
-      display: none;
     }
   }
 </style>

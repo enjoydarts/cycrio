@@ -1,5 +1,10 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
 import {
+  parseRouteProof,
+  type RouteProof,
+  safeSource,
+} from './ai-routes-api.ts';
+import {
   modelProviders,
   parsePrice,
   type ModelProvider,
@@ -7,6 +12,7 @@ import {
 } from './catalog-api.ts';
 
 export type PublicProcessingModel = {
+  retention_source_url?: string;
   provider: ModelProvider;
   model_id: string;
   display_name: string;
@@ -29,6 +35,7 @@ export const blockedReasons = [
   'folders_required',
   'runtime_inactive',
   'policy_disabled',
+  'policy_reconfirmation_required',
   'processing_active',
   'configuration_unavailable',
 ] as const;
@@ -138,6 +145,7 @@ export type ProcessingResult = {
   finished_at: string;
 };
 export type ProcessingPolicy = {
+  standard_proof?: StandardProof | null;
   profile_id: string;
   version: number;
   enabled: boolean;
@@ -147,9 +155,51 @@ export type ProcessingPolicy = {
   secondary_confirmed: boolean;
 };
 export type PolicyState = {
+  standard_terms?: {
+    primary: StandardTerms;
+    secondary_route: RouteProof | null;
+    ready: boolean;
+    blocked_reason:
+      | ''
+      | 'runtime_inactive'
+      | 'custom_secondary_required'
+      | 'route_confirmation_required';
+  };
   runtime_version: number;
   profile: PublicProcessingProfile | null;
   policy: ProcessingPolicy | null;
+};
+export type StandardTerms = {
+  id: string;
+  version: string;
+  source_url: string;
+  summary: string;
+  zdr: boolean;
+  training_permitted: boolean;
+  fixed_retention_days: number | null;
+};
+export type StandardProof = {
+  profile_id: string;
+  policy_version: number;
+  primary_mode: 'standard' | 'custom';
+  primary_terms: StandardTerms | null;
+  primary_retention: string;
+  secondary_route: RouteProof;
+  secondary_retention: string;
+  actor_id: string;
+  confirmed_at: string;
+};
+export type StandardPolicyInput = {
+  expected_version: number;
+  runtime_version: number;
+  profile_id: string;
+  enabled: boolean;
+  primary_mode: 'standard' | 'custom';
+  primary_terms_id: string;
+  primary_retention: string;
+  primary_confirmed: boolean;
+  secondary_route_id: string;
+  secondary_confirmed: boolean;
 };
 export type PolicyInput = Omit<ProcessingPolicy, 'version'> & {
   expected_version: number;
@@ -229,11 +279,14 @@ function model(v: unknown, primary: boolean): PublicProcessingModel {
   if (
     provider === 'openrouter'
       ? routing.length > 128 ||
-        !/^[a-z0-9][a-z0-9._-]*(\/[a-z0-9][a-z0-9._-]*)?$/.test(routing)
+        !/^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*){0,3}$/.test(routing)
       : routing !== ''
   )
     return invalid();
   return {
+    ...(m.retention_source_url === undefined
+      ? {}
+      : { retention_source_url: safeSource(m.retention_source_url) }),
     provider,
     model_id: text(m.model_id, 1024),
     display_name: text(m.display_name, 1024),
@@ -404,6 +457,9 @@ export function parsePolicyState(value: unknown): PolicyState {
   const policy = nullable(v.policy, (x) => {
     const p = record(x);
     return {
+      ...(p.standard_proof === undefined
+        ? {}
+        : { standard_proof: nullable(p.standard_proof, parseStandardProof) }),
       profile_id: uuid(p.profile_id),
       version: integer(p.version),
       enabled: bool(p.enabled),
@@ -424,7 +480,56 @@ export function parsePolicyState(value: unknown): PolicyState {
       !validRetention(policy.secondary_retention))
   )
     return invalid();
-  return { runtime_version: integer(v.runtime_version), profile, policy };
+  return {
+    runtime_version: integer(v.runtime_version),
+    profile,
+    policy,
+    ...(v.standard_terms === undefined
+      ? {}
+      : { standard_terms: parseStandardTermsState(v.standard_terms) }),
+  };
+}
+function parseTerms(value: unknown): StandardTerms {
+  const v = record(value);
+  return {
+    id: text(v.id, 200),
+    version: text(v.version, 100),
+    source_url: safeSource(v.source_url),
+    summary: text(v.summary, 2000),
+    zdr: bool(v.zdr),
+    training_permitted: bool(v.training_permitted),
+    fixed_retention_days: nullable(v.fixed_retention_days, integer),
+  };
+}
+function parseStandardProof(value: unknown): StandardProof {
+  const v = record(value);
+  return {
+    profile_id: uuid(v.profile_id),
+    policy_version: integer(v.policy_version),
+    primary_mode: choice(v.primary_mode, ['standard', 'custom']),
+    primary_terms: nullable(v.primary_terms, parseTerms),
+    primary_retention: retention(v.primary_retention),
+    secondary_route: parseRouteProof(v.secondary_route),
+    secondary_retention: retention(v.secondary_retention),
+    actor_id: uuid(v.actor_id),
+    confirmed_at: timestamp(v.confirmed_at),
+  };
+}
+function parseStandardTermsState(
+  value: unknown,
+): NonNullable<PolicyState['standard_terms']> {
+  const v = record(value);
+  return {
+    primary: parseTerms(v.primary),
+    secondary_route: nullable(v.secondary_route, parseRouteProof),
+    ready: bool(v.ready),
+    blocked_reason: choice(v.blocked_reason, [
+      '',
+      'runtime_inactive',
+      'custom_secondary_required',
+      'route_confirmation_required',
+    ]),
+  };
 }
 function processingBody(input: ProcessingInput): ProcessingInput {
   return {
@@ -498,6 +603,47 @@ export function createMailProcessingAPI(
     }
   };
   return {
+    async saveStandardPolicy(
+      input: StandardPolicyInput,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) {
+      let body: StandardPolicyInput;
+      try {
+        body = {
+          expected_version: integer(input.expected_version),
+          runtime_version: integer(input.runtime_version, 1),
+          profile_id: uuid(input.profile_id),
+          enabled: bool(input.enabled),
+          primary_mode: choice(input.primary_mode, ['standard', 'custom']),
+          primary_terms_id: str(input.primary_terms_id),
+          primary_retention: retention(input.primary_retention),
+          primary_confirmed: bool(input.primary_confirmed),
+          secondary_route_id: uuid(input.secondary_route_id),
+          secondary_confirmed: bool(input.secondary_confirmed),
+        };
+        if (
+          !body.primary_confirmed ||
+          !body.secondary_confirmed ||
+          (body.primary_mode === 'standard'
+            ? !body.primary_terms_id.trim() || body.primary_retention !== ''
+            : body.primary_terms_id !== '' ||
+              !validRetention(body.primary_retention))
+        )
+          return invalid();
+      } catch {
+        throw new ApiError('invalid_request');
+      }
+      return parsePolicyState(
+        await request(
+          '/v1/admin/mail-processing/standard-policy',
+          token,
+          signal,
+          'PUT',
+          body,
+        ),
+      );
+    },
     async preview(id: string, token: TokenProvider, signal?: AbortSignal) {
       return parseProcessingPreview(
         await request(accountPath(id, 'preview'), token, signal),

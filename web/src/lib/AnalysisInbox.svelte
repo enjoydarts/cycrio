@@ -115,6 +115,7 @@
     void goto(link({ tab: 'history', offset: 0 }));
   }
   onMount(() => {
+    startOpen = page.url.searchParams.get('start') === 'true';
     controller = createAnalysisController(
       api,
       token,
@@ -309,5 +310,8 @@
       {requests}
       onAccepted={accepted}
       onBusyChange={(value) => (starting = value)}
+      returnTo={page.url.pathname + page.url.search}
+      initialAccount={page.url.searchParams.get('setup_account') ?? ''}
+      initialMaximum={page.url.searchParams.get('setup_max') ?? ''}
     />{/key}</Modal
 >

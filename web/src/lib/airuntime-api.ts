@@ -1,4 +1,5 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
+import { parseRouteProof, type RouteProof } from './ai-routes-api.ts';
 import {
   decimal,
   modelProviders,
@@ -49,6 +50,7 @@ export type ModelRef = {
   price: Price | null;
 };
 export type Profile = {
+  route_proof?: RouteProof | null;
   id: string;
   catalog_settings_id: string;
   primary: ModelRef;
@@ -69,8 +71,22 @@ export type ConfigValues = Pick<
   | 'timeout_seconds'
   | 'openrouter_provider'
 >;
-export type ConfigInput = ConfigValues & { expected_version: number };
+export type ConfigInput = ConfigValues & {
+  expected_version: number;
+  route_id?: string;
+};
+export type TestFailure = {
+  http_status: number;
+  reason:
+    | 'credentials_rejected'
+    | 'payment_required'
+    | 'model_route_unavailable'
+    | 'rate_limited';
+  hint: string;
+};
 export type TestRun = {
+  primary_failure?: TestFailure | null;
+  secondary_failure?: TestFailure | null;
   id: string;
   profile_id: string;
   state: 'queued' | 'leased' | 'running' | 'succeeded' | 'failed' | 'unknown';
@@ -247,6 +263,9 @@ function parseModelRef(value: unknown): ModelRef {
 export function parseProfile(value: unknown): Profile {
   const v = object(value);
   return {
+    ...(v.route_proof === undefined
+      ? {}
+      : { route_proof: nullable(v.route_proof, parseRouteProof) }),
     id: uuid(v.id),
     catalog_settings_id: uuid(v.catalog_settings_id),
     primary: parseModelRef(v.primary),
@@ -263,6 +282,12 @@ export function parseProfile(value: unknown): Profile {
 export function parseTestRun(value: unknown): TestRun {
   const v = object(value);
   return {
+    ...(v.primary_failure === undefined
+      ? {}
+      : { primary_failure: nullable(v.primary_failure, parseTestFailure) }),
+    ...(v.secondary_failure === undefined
+      ? {}
+      : { secondary_failure: nullable(v.secondary_failure, parseTestFailure) }),
     id: uuid(v.id),
     profile_id: uuid(v.profile_id),
     state: choice(v.state, [
@@ -285,6 +310,26 @@ export function parseTestRun(value: unknown): TestRun {
     started_at: nullable(v.started_at, timestamp),
     finished_at: nullable(v.finished_at, timestamp),
   };
+}
+function parseTestFailure(value: unknown): TestFailure {
+  const v = object(value);
+  const reason = choice(v.reason, [
+    'credentials_rejected',
+    'payment_required',
+    'model_route_unavailable',
+    'rate_limited',
+  ]);
+  const status = integer(v.http_status, 100, 599);
+  if (
+    {
+      credentials_rejected: 401,
+      payment_required: 402,
+      model_route_unavailable: 404,
+      rate_limited: 429,
+    }[reason] !== status
+  )
+    return invalid();
+  return { http_status: status, reason, hint: str(v.hint) };
 }
 export function parseRuntimeState(value: unknown): RuntimeState {
   const v = object(value);
@@ -528,6 +573,7 @@ export function createAIRuntimeAPI(
           max_output_tokens,
           timeout_seconds,
           openrouter_provider,
+          ...(input.route_id ? { route_id: input.route_id } : {}),
         }),
       );
     },

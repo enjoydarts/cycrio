@@ -2,6 +2,7 @@ import type { Role } from './api.ts';
 export const settingsSections = [
   { id: 'mail', title: 'メール連携', admin: false },
   { id: 'appearance', title: '表示', admin: false },
+  { id: 'ai', title: 'AI の準備・送信許可', admin: true },
   { id: 'ai-models', title: 'AI モデル', admin: true },
   { id: 'ai-runtime', title: 'AI 実行・接続', admin: true },
   { id: 'mail-policy', title: 'メール解析の送信条件', admin: true },

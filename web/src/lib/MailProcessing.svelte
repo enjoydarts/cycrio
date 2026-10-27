@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { TokenProvider } from './api.ts';
+  import type { TokenProvider, Role } from './api.ts';
   import type { MailAccount } from './mail-api.ts';
   import type {
     MailProcessingAPI,
@@ -20,18 +20,23 @@
   } from './mail-processing-text.ts';
   import MailProcessingModels from './MailProcessingModels.svelte';
   import MailProcessingResults from './MailProcessingResults.svelte';
+  import ProcessingReadiness from './ProcessingReadiness.svelte';
   let {
     account,
     api,
     token,
     onDenied,
     requests = new Map(),
+    role = 'user',
+    returnTo = '/settings/mail',
   }: {
     account: MailAccount;
     api: MailProcessingAPI;
     token: TokenProvider;
     onDenied: () => void;
     requests?: ProcessingRequests;
+    role?: Role;
+    returnTo?: string;
   } = $props();
   let view = $state(emptyProcessingView());
   let controller = $state<ReturnType<typeof createMailProcessingController>>();
@@ -130,9 +135,6 @@
       max_output_tokens={view.preview.max_output_tokens}
       timeout_seconds={view.preview.timeout_seconds}
     />
-    {#if view.preview.blocked_reason}<p class="feedback">
-        {processingBlocked[view.preview.blocked_reason]}
-      </p>{/if}
   {:else}<p class="help">
       現在のモデル・配信先・保持条件を読み込んでから開始できます。
     </p>{/if}
@@ -160,6 +162,16 @@
           controller?.edit({ max_messages: event.currentTarget.value })}
       /></label
     >
+    <ProcessingReadiness
+      reason={view.preview?.blocked_reason ?? ''}
+      {role}
+      {returnTo}
+      account={account.id}
+      maximum={view.form.max_messages}
+      {busy}
+      uncertain={view.uncertain}
+      conflict={view.conflict}
+    />
     <label class="confirm"
       ><input
         id="processing-consent"

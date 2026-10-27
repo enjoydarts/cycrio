@@ -10,8 +10,8 @@ test('ordinary owners see only mail and appearance, administrators retain every 
     availableSettings('user').map((section) => section.id),
     ['mail', 'appearance'],
   );
-  assert.equal(availableSettings('platform_admin').length, 8);
-  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 8);
+  assert.equal(availableSettings('platform_admin').length, 9);
+  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 9);
 });
 test('direct administrator routes deny owners and unknown sections are unavailable', () => {
   for (const section of settingsSections) {

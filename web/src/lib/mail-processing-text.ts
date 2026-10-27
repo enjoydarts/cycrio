@@ -23,6 +23,8 @@ export const processingBlocked: Record<
   folders_required: '対象フォルダーを保存してください。',
   runtime_inactive: '管理者が先に AI 設定を有効化する必要があります。',
   policy_disabled: '管理者によるメール解析の送信許可が必要です。',
+  policy_reconfirmation_required:
+    '送信条件が変わりました。管理者が最新の条件を確認して、送信許可を保存してください。',
   processing_active: 'このアカウントの解析が進行中です。',
   configuration_unavailable:
     '現在の AI 設定を利用できません。管理者に確認してください。',

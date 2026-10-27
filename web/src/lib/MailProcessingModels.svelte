@@ -49,6 +49,11 @@
             → {stage.model.routing_provider}{/if}
         </p>
         <p>保持条件: {stage.model.retention || '未確認・送信不可'}</p>
+        {#if stage.model.retention_source_url}<a
+            href={stage.model.retention_source_url}
+            target="_blank"
+            rel="noopener noreferrer">標準規約を確認</a
+          >{/if}
         <div class="pricing">
           <p>参考料金: {stage.model.price?.currency ?? '不明'}</p>
           {#if stage.model.price && Object.keys(stage.model.price.rates).length}

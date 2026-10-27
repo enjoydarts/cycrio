@@ -57,6 +57,9 @@ function setup(
     savePolicy: async () => {
       throw Error();
     },
+    saveStandardPolicy: async () => {
+      throw Error();
+    },
     ...patch,
   };
   const controller = createMailProcessingController(

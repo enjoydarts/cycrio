@@ -6,6 +6,7 @@
   import type { MailSyncAPI } from './mail-sync-api.ts';
   import type { SyncRequests } from './mail-sync-controller.ts';
   import Modal from './Modal.svelte';
+  import { safeAnalysisReturn } from './setup-readiness.ts';
   import {
     createMailController,
     emptyMailView,
@@ -16,11 +17,13 @@
     token,
     onDenied,
     syncAPI,
+    returnTo = null,
   }: {
     api: MailAPI;
     token: TokenProvider;
     onDenied: () => void;
     syncAPI?: MailSyncAPI;
+    returnTo?: string | null;
   } = $props();
   const syncRequests: SyncRequests = new Map();
   let view = $state(emptyMailView());
@@ -32,6 +35,10 @@
   const busy = $derived(
     view.status === 'saving' || view.status === 'loading' || syncSaving,
   );
+  const returnTarget = $derived(
+    returnTo === null ? null : safeAnalysisReturn(returnTo),
+  );
+  const returnLocked = $derived(busy || view.uncertain || view.form !== null);
   const folders = $derived(
     (account?.folders ?? []).filter((folder) =>
       folder.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
@@ -187,6 +194,13 @@
       送信は「メール解析」で個別に確認して実行します。
     </p>
   </details>
+  {#if returnTarget}<div class="mail-return">
+      {#if returnLocked}<span class="mail-button" aria-disabled="true"
+          >解析へ戻って条件を確認</span
+        >{:else}<a class="mail-button" href={returnTarget}
+          >解析へ戻って条件を確認</a
+        >{/if}
+    </div>{/if}
   <Modal
     open={view.form !== null}
     title={account?.label ?? 'Fastmail を追加'}
@@ -498,6 +512,15 @@
   .mail-guide p {
     margin-top: 0.5rem;
     color: var(--color-muted);
+  }
+  .mail-return {
+    margin-top: 1.5rem;
+  }
+  .mail-return a {
+    text-decoration: none;
+  }
+  .mail-return [aria-disabled='true'] {
+    opacity: 0.55;
   }
   code {
     overflow-wrap: anywhere;

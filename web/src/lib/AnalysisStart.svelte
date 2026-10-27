@@ -14,6 +14,7 @@
     processingErrors,
   } from './mail-processing-text.ts';
   import MailProcessingModels from './MailProcessingModels.svelte';
+  import ProcessingReadiness from './ProcessingReadiness.svelte';
   let {
     accounts,
     active = true,
@@ -21,6 +22,9 @@
     requests,
     onAccepted,
     onBusyChange = () => {},
+    returnTo = '/analysis',
+    initialAccount = '',
+    initialMaximum = '',
   }: {
     accounts: MailAccount[];
     active?: boolean;
@@ -28,6 +32,9 @@
     requests: ProcessingRequests;
     onAccepted: () => void;
     onBusyChange?: (busy: boolean) => void;
+    returnTo?: string;
+    initialAccount?: string;
+    initialMaximum?: string;
   } = $props();
   const session = getAppSession(),
     token = session.token;
@@ -37,6 +44,7 @@
     unknownConfirmed = $state(false),
     reviewing = $state(false),
     selectionTouched = $state(false);
+  let restoredMaximum = $state(false);
   const busy = $derived(
     reviewing || view.status === 'loading' || view.status === 'saving',
   );
@@ -61,8 +69,25 @@
     }
   });
   $effect(() => {
-    if (active && !selectionTouched && !selected && accounts.length === 1)
-      selected = accounts[0].id;
+    if (active && !selectionTouched && !selected) {
+      if (accounts.some((a) => a.id === initialAccount))
+        selected = initialAccount;
+      else if (accounts.length === 1) selected = accounts[0].id;
+    }
+  });
+  $effect(() => {
+    if (
+      active &&
+      controller &&
+      view.status === 'ready' &&
+      view.preview?.account_id === initialAccount &&
+      selected === initialAccount &&
+      !restoredMaximum
+    ) {
+      restoredMaximum = true;
+      if (validProcessingMaximum(initialMaximum))
+        controller.edit({ max_messages: initialMaximum, confirmed: false });
+    }
   });
   onMount(() => {
     controller = createMailProcessingController(
@@ -78,7 +103,12 @@
       true,
     );
     selected =
-      retry?.account_id ?? (accounts.length === 1 ? accounts[0].id : '');
+      retry?.account_id ??
+      (accounts.some((a) => a.id === initialAccount)
+        ? initialAccount
+        : accounts.length === 1
+          ? accounts[0].id
+          : '');
     if (active && selected) {
       controller.setAccount(selected);
       void controller.refresh();
@@ -145,13 +175,6 @@
         max_output_tokens={p.max_output_tokens}
         timeout_seconds={p.timeout_seconds}
       />
-      {#if p.blocked_reason}<div class="notice">
-          <p>{processingBlocked[p.blocked_reason]}</p>
-          <a href="/settings/mail">メール連携を確認</a
-          >{#if session.user?.role === 'platform_admin'}
-            · <a href="/settings/ai-runtime">AI 設定</a> ·
-            <a href="/settings/mail-policy">送信条件</a>{/if}
-        </div>{/if}
     {/if}
     {#if view.status === 'loading'}<p role="status" class="notice">
         現在のモデルと送信条件を確認しています…
@@ -179,6 +202,16 @@
               controller?.edit({ max_messages: e.currentTarget.value })}
           /></label
         >{/if}
+      <ProcessingReadiness
+        reason={view.preview?.blocked_reason ?? ''}
+        role={session.user?.role ?? 'user'}
+        {returnTo}
+        account={selected}
+        maximum={view.form.max_messages}
+        {busy}
+        uncertain={view.uncertain}
+        conflict={view.conflict}
+      />
       <label class="check"
         ><input
           id="analysis-consent"

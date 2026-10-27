@@ -13,6 +13,7 @@
   import { createAPI } from '#lib/api.ts';
   import { createCatalogAPI } from '#lib/catalog-api.ts';
   import { createAIRuntimeAPI } from '#lib/airuntime-api.ts';
+  import { createAIRoutesAPI } from '#lib/ai-routes-api.ts';
   import { createMailAPI } from '#lib/mail-api.ts';
   import { createMailSyncAPI } from '#lib/mail-sync-api.ts';
   import { createMailProcessingAPI } from '#lib/mail-processing-api.ts';
@@ -52,6 +53,7 @@
     api,
     catalogAPI: createCatalogAPI(PUBLIC_API_BASE_URL),
     runtimeAPI: createAIRuntimeAPI(PUBLIC_API_BASE_URL),
+    routesAPI: createAIRoutesAPI(PUBLIC_API_BASE_URL),
     mailAPI: createMailAPI(PUBLIC_API_BASE_URL),
     mailSyncAPI: createMailSyncAPI(PUBLIC_API_BASE_URL),
     mailProcessingAPI: createMailProcessingAPI(PUBLIC_API_BASE_URL),

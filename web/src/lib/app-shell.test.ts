@@ -59,7 +59,7 @@ test('settings navigation renders real routes and withholds administrator names 
     props: { role: 'platform_admin', section: 'usage' },
   }).body;
   assert.match(admin, /href="\/settings\/usage"[^>]*aria-current="page"/);
-  assert.match(admin, /href="\/settings\/mail-policy"/);
+  assert.match(admin, /href="\/settings\/ai"/);
 });
 test('static settings composition includes permission branches and each settings component', async () => {
   const source = await readFile(
@@ -74,9 +74,7 @@ test('static settings composition includes permission branches and each settings
     'Appearance',
     'AdminCredentials',
     'ModelCatalog',
-    'AIModelSettings',
-    'AIRuntime',
-    'MailProcessingPolicy',
+    'AISetup',
     'AIUsage',
   ])
     assert.match(source, new RegExp(`<${name}\\b`));

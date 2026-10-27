@@ -2,6 +2,7 @@ import { getContext, setContext } from 'svelte';
 import type { CurrentUser, TokenProvider, createAPI } from './api.ts';
 import type { createCatalogAPI } from './catalog-api.ts';
 import type { createAIRuntimeAPI } from './airuntime-api.ts';
+import type { AIRoutesAPI } from './ai-routes-api.ts';
 import type { createMailAPI } from './mail-api.ts';
 import type { createMailSyncAPI } from './mail-sync-api.ts';
 import type { createMailProcessingAPI } from './mail-processing-api.ts';
@@ -18,6 +19,7 @@ export type AppSession = {
   api: ReturnType<typeof createAPI>;
   catalogAPI: ReturnType<typeof createCatalogAPI>;
   runtimeAPI: ReturnType<typeof createAIRuntimeAPI>;
+  routesAPI: AIRoutesAPI;
   mailAPI: ReturnType<typeof createMailAPI>;
   mailSyncAPI: ReturnType<typeof createMailSyncAPI>;
   mailProcessingAPI: ReturnType<typeof createMailProcessingAPI>;

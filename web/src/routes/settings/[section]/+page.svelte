@@ -7,10 +7,8 @@
   import Appearance from '#lib/Appearance.svelte';
   import AdminCredentials from '#lib/AdminCredentials.svelte';
   import ModelCatalog from '#lib/ModelCatalog.svelte';
-  import AIModelSettings from '#lib/AIModelSettings.svelte';
-  import AIRuntime from '#lib/AIRuntime.svelte';
-  import MailProcessingPolicy from '#lib/MailProcessingPolicy.svelte';
   import AIUsage from '#lib/AIUsage.svelte';
+  import AISetup from '#lib/AISetup.svelte';
   const session = getAppSession();
   const section = $derived(page.params.section ?? '');
   const access = $derived(
@@ -52,6 +50,7 @@
             syncAPI={session.mailSyncAPI}
             token={session.token}
             onDenied={session.onDenied}
+            returnTo={page.url.searchParams.get('return_to')}
           />
         {:else if section === 'appearance'}
           <Appearance />
@@ -67,24 +66,15 @@
             token={session.token}
             onDenied={session.onDenied}
           />
-        {:else if section === 'ai-models'}
-          <AIModelSettings
-            api={session.catalogAPI}
-            token={session.token}
-            onDenied={session.onDenied}
-          />
-        {:else if section === 'ai-runtime'}
-          <AIRuntime
-            api={session.runtimeAPI}
-            catalog={session.catalogAPI}
-            token={session.token}
-            onDenied={session.onDenied}
-          />
-        {:else if section === 'mail-policy'}
-          <MailProcessingPolicy
-            api={session.mailProcessingAPI}
-            token={session.token}
-            onDenied={session.onDenied}
+        {:else if ['ai', 'ai-models', 'ai-runtime', 'mail-policy'].includes(section)}
+          <AISetup
+            initialStage={section === 'ai-models'
+              ? 'models'
+              : section === 'ai-runtime'
+                ? 'test'
+                : section === 'mail-policy'
+                  ? 'permission'
+                  : undefined}
           />
         {:else if section === 'usage'}
           <AIUsage
