@@ -186,6 +186,10 @@ func TestSubscriptionHTTPErrorsAndQueries(t *testing.T) {
 	if w.Code != 200 || f.analysis.Limit != 20 || !strings.Contains(w.Body.String(), `"runs":[]`) {
 		t.Fatal(w.Code, w.Body.String())
 	}
+	w = credentialRequest(h, "GET", "/v1/analysis/results?review=attention&limit=1&offset=7", "", "Bearer valid", "http://localhost:3100", "")
+	if w.Code != 200 || f.analysis.Review != "attention" || f.analysis.Limit != 1 || f.analysis.Offset != 7 {
+		t.Fatal(w.Code, w.Body.String(), f.analysis)
+	}
 }
 
 func TestApplicationQueriesRejectEmptyEnumsAndAccount(t *testing.T) {

@@ -107,6 +107,7 @@ func run() error {
 	}
 	defer func() { _ = cleanup() }()
 	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
 	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)

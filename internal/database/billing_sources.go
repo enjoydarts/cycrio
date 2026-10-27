@@ -11,7 +11,7 @@ import (
 )
 
 func fillBilling(ctx context.Context, tx pgx.Tx, owner string, out *billing.Entry) error {
-	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index FROM billing_event_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id WHERE s.owner_id=$1 AND s.subscription_id=$2 AND s.entry_id=$3 ORDER BY s.created_at,s.result_id,s.event_index`, owner, out.SubscriptionID, out.ID)
+	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance FROM billing_event_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id WHERE s.owner_id=$1 AND s.subscription_id=$2 AND s.entry_id=$3 ORDER BY s.created_at,s.result_id,s.event_index`, owner, out.SubscriptionID, out.ID)
 	if e != nil {
 		return billingError(e)
 	}
@@ -19,15 +19,12 @@ func fillBilling(ctx context.Context, tx pgx.Tx, owner string, out *billing.Entr
 	for rows.Next() {
 		var s subscriptions.Source
 		var raw []byte
-		if e = rows.Scan(&s.ResultID, &s.EventIndex, &raw); e != nil {
+		if e = rows.Scan(&s.ResultID, &s.EventIndex, &raw, &s.Provenance); e != nil {
 			return billingError(e)
 		}
 		if e = json.Unmarshal(raw, &s.OriginalEvent); e != nil {
 			return billing.ErrUnavailable
 		}
-		// Financial source links currently require explicit owner confirmation,
-		// independently of how the containing contract's source was registered.
-		s.Provenance = "owner_confirmed"
 		out.Sources = append(out.Sources, s)
 	}
 	return billingError(rows.Err())
@@ -85,11 +82,14 @@ func (r *BillingRepository) changeSource(ctx context.Context, owner, contract, i
 		_, e = tx.Exec(ctx, `INSERT INTO billing_event_sources(owner_id,subscription_id,entry_id,result_id,event_index) VALUES($1,$2,$3,$4,$5)`, owner, contract, id, in.SourceResultID, in.SourceEventIndex)
 	} else {
 		_, e = tx.Exec(ctx, `DELETE FROM billing_event_sources WHERE owner_id=$1 AND subscription_id=$2 AND entry_id=$3 AND result_id=$4 AND event_index=$5`, owner, contract, id, in.SourceResultID, in.SourceEventIndex)
+		if e == nil {
+			_, e = tx.Exec(ctx, `INSERT INTO billing_source_detachments(owner_id,subscription_id,entry_id,result_id,event_index) VALUES($1,$2,$3,$4,$5) ON CONFLICT(owner_id,result_id,event_index) DO NOTHING`, owner, contract, id, in.SourceResultID, in.SourceEventIndex)
+		}
 	}
 	if e != nil {
 		return billing.Entry{}, billingError(e)
 	}
-	if _, e = tx.Exec(ctx, `UPDATE billing_events SET version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND subscription_id=$2 AND id=$3`, owner, contract, id); e != nil {
+	if _, e = tx.Exec(ctx, `UPDATE billing_events SET provenance='owner_confirmed',version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND subscription_id=$2 AND id=$3`, owner, contract, id); e != nil {
 		return billing.Entry{}, billingError(e)
 	}
 	return completeBilling(ctx, tx, owner, contract, id, action)

@@ -58,11 +58,11 @@ func (r *BillingRepository) begin(ctx context.Context, owner, contract string) (
 	return tx, nil
 }
 
-const billingColumns = `id,subscription_id,version,kind,to_char(occurred_on,'YYYY-MM-DD'),amount,currency,refund_of_id,state,created_at,updated_at`
+const billingColumns = `id,subscription_id,version,kind,to_char(occurred_on,'YYYY-MM-DD'),amount,currency,refund_of_id,state,created_at,updated_at,provenance`
 
 func scanBilling(row pgx.Row) (billing.Entry, error) {
 	var out billing.Entry
-	e := row.Scan(&out.ID, &out.SubscriptionID, &out.Version, &out.Kind, &out.OccurredOn, &out.Amount, &out.Currency, &out.RefundOfID, &out.State, &out.CreatedAt, &out.UpdatedAt)
+	e := row.Scan(&out.ID, &out.SubscriptionID, &out.Version, &out.Kind, &out.OccurredOn, &out.Amount, &out.Currency, &out.RefundOfID, &out.State, &out.CreatedAt, &out.UpdatedAt, &out.Provenance)
 	out.Sources = []subscriptions.Source{}
 	return out, billingError(e)
 }
@@ -85,6 +85,19 @@ func (r *BillingRepository) Get(ctx context.Context, owner, contract, id string)
 	return getBilling(ctx, tx, owner, contract, id)
 }
 func completeBilling(ctx context.Context, tx pgx.Tx, owner, contract, id, action string) (billing.Entry, error) {
+	out, e := finalizeBilling(ctx, tx, owner, contract, id, action)
+	if e != nil {
+		return billing.Entry{}, e
+	}
+	if e = tx.Commit(ctx); e != nil {
+		return billing.Entry{}, billingError(e)
+	}
+	return out, nil
+}
+
+// finalizeBilling writes the financial snapshot and audit in the caller's transaction.
+// Automatic recording uses a savepoint and must retain retry state on write failure.
+func finalizeBilling(ctx context.Context, tx pgx.Tx, owner, contract, id, action string) (billing.Entry, error) {
 	out, e := getBilling(ctx, tx, owner, contract, id)
 	if e != nil {
 		return out, e
@@ -97,9 +110,6 @@ func completeBilling(ctx context.Context, tx pgx.Tx, owner, contract, id, action
 		return billing.Entry{}, billingError(e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO billing_event_audit(id,owner_id,actor_id,subscription_id,entry_id,version,action) VALUES($1,$2,$2,$3,$4,$5,$6)`, uuid.NewString(), owner, contract, id, out.Version, action); e != nil {
-		return billing.Entry{}, billingError(e)
-	}
-	if e = tx.Commit(ctx); e != nil {
 		return billing.Entry{}, billingError(e)
 	}
 	return out, nil
@@ -185,7 +195,7 @@ func (r *BillingRepository) Update(ctx context.Context, owner, contract, id stri
 	if e = checkBillingDuplicates(ctx, tx, owner, contract, id, in.Values, in.DuplicateConfirmed, in.DuplicateToken); e != nil {
 		return billing.Entry{}, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE billing_events SET version=version+1,kind=$4,occurred_on=$5::text::date,amount=$6,currency=$7,refund_of_id=$8,state=$9,updated_at=clock_timestamp() WHERE owner_id=$1 AND subscription_id=$2 AND id=$3`, owner, contract, id, in.Kind, in.OccurredOn, in.Amount, in.Currency, in.RefundOfID, in.State)
+	_, e = tx.Exec(ctx, `UPDATE billing_events SET provenance='owner_confirmed',version=version+1,kind=$4,occurred_on=$5::text::date,amount=$6,currency=$7,refund_of_id=$8,state=$9,updated_at=clock_timestamp() WHERE owner_id=$1 AND subscription_id=$2 AND id=$3`, owner, contract, id, in.Kind, in.OccurredOn, in.Amount, in.Currency, in.RefundOfID, in.State)
 	if e != nil {
 		return billing.Entry{}, billingError(e)
 	}

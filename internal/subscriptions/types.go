@@ -85,11 +85,18 @@ type Registration struct {
 }
 type AnalysisResult struct {
 	mailprocessing.Result
-	AccountID       string              `json:"account_id"`
-	AccountLabel    string              `json:"account_label"`
-	Registrations   []Registration      `json:"registrations"`
-	AutomationState string              `json:"automation_state"`
-	Automation      []AutomationOutcome `json:"automation"`
+	AccountID         string                     `json:"account_id"`
+	AccountLabel      string                     `json:"account_label"`
+	Registrations     []Registration             `json:"registrations"`
+	AutomationState   string                     `json:"automation_state"`
+	Automation        []AutomationOutcome        `json:"automation"`
+	BillingAutomation []BillingAutomationOutcome `json:"billing_automation"`
+}
+type BillingAutomationOutcome struct {
+	EventIndex int     `json:"event_index"`
+	State      string  `json:"state"`
+	Reason     string  `json:"reason"`
+	EntryID    *string `json:"entry_id"`
 }
 type AutomationOutcome struct {
 	EventIndex     int     `json:"event_index"`

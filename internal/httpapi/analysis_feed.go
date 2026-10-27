@@ -84,6 +84,9 @@ func registerAnalysisFeed(mux *http.ServeMux, service AnalysisFeedService, prote
 				if page.Results[i].Registrations == nil {
 					page.Results[i].Registrations = []subscriptions.Registration{}
 				}
+				if page.Results[i].BillingAutomation == nil {
+					page.Results[i].BillingAutomation = []subscriptions.BillingAutomationOutcome{}
+				}
 			}
 			writeJSON(w, 200, page)
 		}))

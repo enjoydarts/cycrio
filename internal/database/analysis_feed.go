@@ -29,7 +29,11 @@ const analysisLatest = `WITH latest AS (
 )
 `
 const analysisWhere = ` WHERE ($3 IN ('','all') OR r.state=CASE WHEN $3='related' THEN 'succeeded' ELSE $3 END)
- AND ($4 IN ('','all') OR r.state='succeeded' AND jsonb_array_length(r.events)>0 AND
+ AND ($4 IN ('','all') OR $4='attention' AND (
+  r.state IN ('failed','unknown')
+  OR EXISTS(SELECT 1 FROM subscription_automation_events e WHERE e.owner_id=r.owner_id AND e.result_id=r.id AND e.state IN ('needs_review','failed') AND NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=e.owner_id AND s.result_id=e.result_id AND s.event_index=e.event_index))
+  OR EXISTS(SELECT 1 FROM billing_automation_work e WHERE e.owner_id=r.owner_id AND e.result_id=r.id AND e.state IN ('needs_review','failed') AND NOT EXISTS(SELECT 1 FROM billing_event_sources s WHERE s.owner_id=e.owner_id AND s.result_id=e.result_id AND s.event_index=e.event_index) AND NOT EXISTS(SELECT 1 FROM billing_source_detachments d WHERE d.owner_id=e.owner_id AND d.result_id=e.result_id AND d.event_index=e.event_index))
+ ) OR $4 IN ('pending','registered') AND r.state='succeeded' AND jsonb_array_length(r.events)>0 AND
   CASE WHEN $4='pending' THEN r.registered_count<jsonb_array_length(r.events) ELSE r.registered_count=jsonb_array_length(r.events) END)`
 
 func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner string, f subscriptions.AnalysisFilter) (subscriptions.AnalysisPage, error) {
@@ -70,6 +74,7 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 		}
 		result.Registrations = []subscriptions.Registration{}
 		result.Automation = []subscriptions.AutomationOutcome{}
+		result.BillingAutomation = []subscriptions.BillingAutomationOutcome{}
 		out.Results = append(out.Results, result)
 	}
 	e = rows.Err()
@@ -98,8 +103,37 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 		if e = fillAutomation(ctx, tx, owner, &out.Results[i]); e != nil {
 			return out, e
 		}
+		if e = fillBillingAutomation(ctx, tx, owner, &out.Results[i]); e != nil {
+			return out, e
+		}
 	}
 	return out, nil
+}
+
+// Current financial links are authoritative; the processing journal remains
+// immutable when an owner later resolves an event or detaches its source.
+func fillBillingAutomation(ctx context.Context, tx pgx.Tx, owner string, result *subscriptions.AnalysisResult) error {
+	rows, err := tx.Query(ctx, `WITH indices AS (
+ SELECT event_index FROM billing_automation_work WHERE owner_id=$1 AND result_id=$2
+ UNION SELECT event_index FROM billing_event_sources WHERE owner_id=$1 AND result_id=$2
+ UNION SELECT event_index FROM billing_source_detachments WHERE owner_id=$1 AND result_id=$2
+ ) SELECT i.event_index,
+ CASE WHEN s.entry_id IS NOT NULL THEN 'recorded' WHEN d.result_id IS NOT NULL OR w.state='recorded' THEN 'not_applicable' ELSE w.state END,
+ CASE WHEN s.entry_id IS NOT NULL THEN CASE WHEN w.state='recorded' AND w.entry_id=s.entry_id THEN w.reason ELSE 'already_recorded' END WHEN d.result_id IS NOT NULL OR w.state='recorded' THEN 'owner_detached' ELSE w.reason END,
+ s.entry_id
+ FROM indices i LEFT JOIN billing_automation_work w ON w.owner_id=$1 AND w.result_id=$2 AND w.event_index=i.event_index LEFT JOIN billing_event_sources s ON s.owner_id=$1 AND s.result_id=$2 AND s.event_index=i.event_index LEFT JOIN billing_source_detachments d ON d.owner_id=$1 AND d.result_id=$2 AND d.event_index=i.event_index ORDER BY i.event_index`, owner, result.ID)
+	if err != nil {
+		return subscriptionError(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var o subscriptions.BillingAutomationOutcome
+		if err = rows.Scan(&o.EventIndex, &o.State, &o.Reason, &o.EntryID); err != nil {
+			return subscriptionError(err)
+		}
+		result.BillingAutomation = append(result.BillingAutomation, o)
+	}
+	return subscriptionError(rows.Err())
 }
 func fillAutomation(ctx context.Context, tx pgx.Tx, owner string, result *subscriptions.AnalysisResult) error {
 	result.AutomationState = "pending"

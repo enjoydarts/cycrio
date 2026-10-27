@@ -30,6 +30,7 @@ type Values struct {
 	State      string  `json:"state"`
 }
 type Entry struct {
+	Provenance     string `json:"provenance"`
 	ID             string `json:"id"`
 	SubscriptionID string `json:"subscription_id"`
 	Version        int64  `json:"version"`

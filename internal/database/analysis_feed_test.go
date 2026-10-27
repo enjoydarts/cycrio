@@ -122,6 +122,13 @@ func TestAnalysisFeedHasNoLatestHundredTruncation(t *testing.T) {
 		if v.Events == nil || v.Registrations == nil {
 			t.Fatal("null array", v)
 		}
+		if v.BillingAutomation == nil {
+			t.Fatal("billing automation must remain a nonnull array for legacy failed analyses", v)
+		}
+	}
+	attention, e := repo.AnalysisResults(ctx, f.owner, subscriptions.AnalysisFilter{Review: "attention", Limit: 100, Offset: 100})
+	if e != nil || attention.Total != 105 || len(attention.Results) != 5 {
+		t.Fatal("attention must use server pagination over every analysis", attention.Total, len(attention.Results), e)
 	}
 	result := last.Results[0].ID
 	index := 0
