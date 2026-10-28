@@ -339,5 +339,11 @@ func (r *MailProcessingRepository) Cancel(ctx context.Context, owner, account, r
 }
 func stopProcessing(ctx context.Context, tx pgx.Tx, id, state, code string) error {
 	_, e := tx.Exec(ctx, `SELECT stop_mail_processing($1,$2,$3)`, id, state, code)
+	if e == nil && code == "lease_expired" {
+		// A worker can disappear after BeginCall and never run FinishCall. Keep
+		// its charge uncertain, close the calling marker atomically with the run,
+		// and allow a later usage revision without reviving the expired work.
+		_, e = tx.Exec(ctx, `UPDATE ai_calls c SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() FROM mail_processing_items i WHERE i.run_id=$1 AND c.operation_id=i.id AND c.scope='user' AND c.consuming_user_id=i.owner_id AND c.status='calling'`, id)
+	}
 	return processingError(e)
 }

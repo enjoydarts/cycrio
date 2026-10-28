@@ -17,10 +17,13 @@
   import { processingErrors } from './mail-processing-text.ts';
   import Modal from './Modal.svelte';
   import SubscriptionForm from './SubscriptionForm.svelte';
+  import GettingStarted from './GettingStarted.svelte';
+  import { createMailAutomationAPI } from './mail-automation-api.ts';
   import './daily.css';
   const session = getAppSession(),
     token = session.token,
-    api = createSubscriptionsAPI(PUBLIC_API_BASE_URL);
+    api = createSubscriptionsAPI(PUBLIC_API_BASE_URL),
+    automationAPI = createMailAutomationAPI(PUBLIC_API_BASE_URL);
   let controller: ReturnType<typeof createSubscriptionList> | undefined;
   let pendingController:
     ReturnType<typeof createAnalysisController> | undefined;
@@ -37,7 +40,8 @@
     adding = $state(false),
     saving = $state(false),
     formKey = $state(0),
-    search = $state('');
+    search = $state(''),
+    guideAccount = $state('');
   const filter = $derived.by(() => {
     const p = page.url.searchParams;
     return {
@@ -55,6 +59,16 @@
   function link(patch: Partial<SubscriptionFilter>) {
     const f = { ...filter, ...patch };
     return `/subscriptions?${new URLSearchParams({ q: f.q, status: f.status, sort: f.sort, offset: String(f.offset) })}`;
+  }
+  function refresh() {
+    void controller?.load(filter);
+    void pendingController?.load({
+      account_id: '',
+      state: 'all',
+      review: 'attention',
+      limit: 1,
+      offset: 0,
+    });
   }
   onMount(() => {
     pendingController = createAnalysisController(
@@ -100,6 +114,9 @@
   </header>
   <div class="actions">
     <a class="button" href="/subscriptions/summary">支払・返金明細の月次集計</a>
+    <button type="button" disabled={view.status === 'loading'} onclick={refresh}
+      >一覧を更新</button
+    >
   </div>
   {#if pending.page && pending.page.total > 0}<aside class="notice">
       <strong>対応が必要な解析結果 {pending.page.total} 件（メール単位）</strong
@@ -108,52 +125,55 @@
         <a href="/analysis?tab=attention">要対応の結果を見る →</a>
       </div>
     </aside>{/if}
-  <form
-    class="toolbar"
-    onsubmit={(e) => {
-      e.preventDefault();
-      void goto(link({ q: search, offset: 0 }));
-    }}
-  >
-    <label class="search"
-      >サービス・プランを検索<input type="search" bind:value={search} /></label
+  {#if view.page?.total !== 0 || filter.q || filter.status !== 'all'}<form
+      class="toolbar"
+      onsubmit={(e) => {
+        e.preventDefault();
+        void goto(link({ q: search, offset: 0 }));
+      }}
     >
-    <div class="filters">
-      <label
-        >状態<select
-          value={filter.status}
-          onchange={(e) =>
-            goto(
-              link({
-                q: search,
-                status: e.currentTarget.value as SubscriptionFilter['status'],
-                offset: 0,
-              }),
-            )}
-          ><option value="all">すべて</option><option value="active"
-            >利用中</option
-          ><option value="ended">終了済み</option><option value="unknown"
-            >状態不明</option
-          ></select
-        ></label
-      ><label
-        >並び順<select
-          value={filter.sort}
-          onchange={(e) =>
-            goto(
-              link({
-                q: search,
-                sort: e.currentTarget.value as SubscriptionFilter['sort'],
-                offset: 0,
-              }),
-            )}
-          ><option value="next_billing">次回請求日</option><option
-            value="service">サービス名</option
-          ><option value="updated">更新順</option></select
-        ></label
-      ><button type="submit">検索</button>
-    </div>
-  </form>
+      <label class="search"
+        >サービス・プランを検索<input
+          type="search"
+          bind:value={search}
+        /></label
+      >
+      <div class="filters">
+        <label
+          >状態<select
+            value={filter.status}
+            onchange={(e) =>
+              goto(
+                link({
+                  q: search,
+                  status: e.currentTarget.value as SubscriptionFilter['status'],
+                  offset: 0,
+                }),
+              )}
+            ><option value="all">すべて</option><option value="active"
+              >利用中</option
+            ><option value="ended">終了済み</option><option value="unknown"
+              >状態不明</option
+            ></select
+          ></label
+        ><label
+          >並び順<select
+            value={filter.sort}
+            onchange={(e) =>
+              goto(
+                link({
+                  q: search,
+                  sort: e.currentTarget.value as SubscriptionFilter['sort'],
+                  offset: 0,
+                }),
+              )}
+            ><option value="next_billing">次回請求日</option><option
+              value="service">サービス名</option
+            ><option value="updated">更新順</option></select
+          ></label
+        ><button type="submit">検索</button>
+      </div>
+    </form>{/if}
   {#if view.status === 'loading'}<p role="status" class="notice">
       サブスクを読み込んでいます…
     </p>{:else if view.error}<div class="notice" role="alert">
@@ -198,19 +218,30 @@
             >{/each}</tbody
         >
       </table>
-    {:else}<div class="empty">
-        <h2>
-          {filter.q || filter.status !== 'all'
-            ? '条件に一致するサブスクはありません'
-            : 'サブスクはまだありません'}
-        </h2>
-        <p>契約を追加するか、メールを連携して解析結果から登録できます。</p>
-        <div class="actions">
-          <a href="/settings/mail">メールを連携する</a><a href="/analysis"
-            >メール解析を開く</a
-          >
-        </div>
-      </div>{/if}
+    {:else if filter.q || filter.status !== 'all'}<div class="empty">
+        <h2>条件に一致するサブスクはありません</h2>
+        <p>
+          検索条件を変更するか、条件を解除してすべてのサブスクを確認してください。
+        </p>
+        <a class="button" href="/subscriptions">条件を解除する</a>
+      </div>
+    {:else if view.page.total > 0}<div class="empty">
+        <h2>このページにサブスクはありません</h2>
+        <a class="button" href={link({ offset: 0 })}>最初のページへ戻る</a>
+      </div>
+    {:else}<GettingStarted
+        api={{
+          mail: session.mailAPI,
+          processing: session.mailProcessingAPI,
+          automation: automationAPI,
+        }}
+        {token}
+        admin={session.user?.role === 'platform_admin'}
+        onDenied={session.onDenied}
+        onUpdated={refresh}
+        initialAccount={guideAccount}
+        onAccountChange={(id) => (guideAccount = id)}
+      />{/if}
     <div class="pager">
       <span
         >全 {view.page.total} 件{#if view.page.total}

@@ -23,6 +23,7 @@ type processingFixture struct {
 	repo                                 *MailProcessingRepository
 	runtime                              *AIRuntimeRepository
 	keys                                 *secretstore.Keyring
+	keyringPath                          string
 	admin, owner, other, account, folder string
 	in                                   mailprocessing.Input
 }
@@ -68,6 +69,7 @@ func processingSetupOwned(t *testing.T, adminOwnsMail bool) processingFixture {
 		}
 	}
 	path := filepath.Join(t.TempDir(), "keys.json")
+	f.keyringPath = path
 	if e = secretstore.Initialize(path); e != nil {
 		t.Fatal(e)
 	}

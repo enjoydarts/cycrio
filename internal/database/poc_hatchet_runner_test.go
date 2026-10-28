@@ -62,13 +62,10 @@ func runHatchetEvaluation(t *testing.T, directory, historyDSN string) {
 	started := time.Now().UTC()
 	f := processingSetup(t)
 	f.add(t, 10)
-	body, secret := []byte("CYCRIO_HATCHET_BODY_"+uuid.NewString()), []byte("CYCRIO_HATCHET_KEY_"+uuid.NewString())
+	probes := hatchetEvaluationProbes(t, directory)
+	body, secret := probes[0].Value, probes[1].Value
 	defer clear(body)
 	defer clear(secret)
-	probes := []evaluation.Probe{{ID: "body", Value: body}, {ID: "credential", Value: secret}}
-	if err := evaluation.WriteProbes(filepath.Join(directory, "probes.json"), probes); err != nil {
-		t.Fatal("write synthetic probes")
-	}
 	inference := &hatchetSyntheticInference{client: pocInference{body: body, secret: secret}}
 	service := mailprocessing.NewService(f.repo, f.keys, pocReader{body: body, secret: secret}, inference, func(context.Context, string) ([]byte, error) { return bytes.Clone(secret), nil })
 	client, err := hatchet.NewClient(hatchet.WithClientLogLevel("warn"))

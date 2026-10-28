@@ -42,5 +42,5 @@ test('subscription list links to the server counted attention messages across al
   assert.match(source, /limit:\s*1/);
   assert.match(source, /pending\.page\.total/);
   assert.match(source, /メール単位/);
-  assert.match(source, /href="\/analysis"/);
+  assert.match(source, /href="\/analysis\?tab=attention"/);
 });
