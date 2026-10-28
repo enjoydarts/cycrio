@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/enjoydarts/cycrio/internal/billing"
+	"github.com/jackc/pgx/v5"
 )
 
 func (r *BillingRepository) Summary(ctx context.Context, owner, month string, contract *string) (billing.Summary, error) {
@@ -12,8 +13,6 @@ func (r *BillingRepository) Summary(ctx context.Context, owner, month string, co
 	if e != nil || contract != nil && !billing.ValidID(*contract) {
 		return out, billing.ErrInvalid
 	}
-	out.StartDate = start
-	out.EndDate = end
 	id := ""
 	if contract != nil {
 		id = *contract
@@ -23,8 +22,15 @@ func (r *BillingRepository) Summary(ctx context.Context, owner, month string, co
 		return out, e
 	}
 	defer tx.Rollback(ctx)
+	return billingSummaryInTransaction(ctx, tx, owner, month, contract, start, end)
+}
+
+// Reuse the same population and decimal calculation when a larger owner view
+// needs its billing totals in the same transaction snapshot.
+func billingSummaryInTransaction(ctx context.Context, tx pgx.Tx, owner, month string, contract *string, start, end string) (billing.Summary, error) {
+	out := billing.Summary{Month: month, Timezone: "Asia/Tokyo", SubscriptionID: contract, StartDate: start, EndDate: end, Currencies: []billing.CurrencySummary{}}
 	const where = ` WHERE owner_id=$1 AND ($2::uuid IS NULL OR subscription_id=$2) AND occurred_on >= $3::text::date AND occurred_on < $4::text::date`
-	if e = tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='invoice' AND state='active'),count(*) FILTER(WHERE state='voided') FROM billing_events`+where, owner, contract, start, end).Scan(&out.InvoiceCount, &out.VoidedCount); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE kind='invoice' AND state='active'),count(*) FILTER(WHERE state='voided') FROM billing_events`+where, owner, contract, start, end).Scan(&out.InvoiceCount, &out.VoidedCount); e != nil {
 		return out, billingError(e)
 	}
 	rows, e := tx.Query(ctx, `SELECT currency,coalesce(sum(amount::numeric) FILTER(WHERE kind='payment'),0)::text,coalesce(sum(amount::numeric) FILTER(WHERE kind='refund'),0)::text,count(*) FILTER(WHERE kind='payment'),count(*) FILTER(WHERE kind='refund') FROM billing_events`+where+` AND state='active' AND kind IN ('payment','refund') GROUP BY currency ORDER BY currency`, owner, contract, start, end)

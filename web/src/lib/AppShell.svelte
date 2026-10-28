@@ -14,6 +14,7 @@
     children: Snippet;
   } = $props();
   const navigation = [
+    { href: '/', title: 'ホーム', icon: 'M3 10l9-7 9 7v11H3z M9 21v-8h6v8' },
     {
       href: '/subscriptions',
       title: 'サブスク',
@@ -37,14 +38,16 @@
       ? '設定'
       : pathname.startsWith('/analysis')
         ? 'メール解析'
-        : 'サブスク',
+        : pathname === '/'
+          ? 'ホーム'
+          : 'サブスク',
   );
 </script>
 
 <a class="skip-link" href="#app-main">本文に移動</a>
 <div class="application">
   <aside class="sidebar">
-    <a class="brand" href="/subscriptions" aria-label="Cycrio ホーム"
+    <a class="brand" href="/" aria-label="Cycrio ホーム"
       ><img
         src="/brand/cycrio-mark-128.png"
         width="32"
@@ -125,7 +128,7 @@
     <header class="topbar">
       <span class="breadcrumb">{current}</span><a
         class="mobile-brand brand"
-        href="/subscriptions"
+        href="/"
         ><img
           src="/brand/cycrio-mark-128.png"
           width="26"
@@ -305,7 +308,7 @@
       display: contents;
     }
     nav {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 0;
       min-height: 65px;
     }

@@ -1,15 +1,11 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { goto } from '$app/navigation';
-  onMount(() => {
-    void goto('/subscriptions', { replaceState: true });
-  });
+  import Overview from '#lib/Overview.svelte';
 </script>
 
 <svelte:head
-  ><title>Cycrio</title><meta
+  ><title>ホーム — Cycrio</title><meta name="robots" content="noindex" /><meta
     name="description"
     content="メールとつながるサブスクリプション管理サービス"
   /></svelte:head
 >
-<p role="status">サブスクを開いています…</p>
+<Overview />

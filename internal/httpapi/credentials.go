@@ -20,6 +20,7 @@ type CredentialService interface {
 }
 
 type handlerOptions struct {
+	overview        OverviewService
 	integrations    IntegrationService
 	credentials     CredentialService
 	catalog         ModelCatalogService
