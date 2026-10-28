@@ -38,6 +38,8 @@ jobs:
         run: make smoke
       - name: Authentication and credential integration tests
         run: make test-integration
+      - name: Synthetic database and key recovery exercise
+        run: make test-recovery
       - name: Synthetic mail processing evaluation
         run: make test-evaluation-smoke
       - name: Synthetic Hatchet history and log evaluation

@@ -72,3 +72,8 @@ test-evaluation:
 .PHONY: test-evaluation-hatchet
 test-evaluation-hatchet:
 	sh deploy/local/evaluate-hatchet.sh
+
+.PHONY: test-recovery
+test-recovery:
+	sh deploy/local/recover-test.sh
+	sh deploy/local/recover-cleanup-test.sh

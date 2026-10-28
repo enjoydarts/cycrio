@@ -340,6 +340,18 @@ DBコンテナにも[initプロセス](https://docs.docker.com/reference/compose
 
 環境変数はポートなど起動に必要なものへ絞ります。トークン・モデル・運用設定は可能な限り管理者専用画面で扱い、秘密値は暗号化保存する方針です。今回のHatchetローカルトークンは自動生成した専用volume、将来の管理画面が必要とするDB接続・復号鍵などは基盤設定として管理します。AI APIキーを`.env`やCIへ追加しないでください。
 
+## DB・暗号鍵の復元訓練
+
+```sh
+make test-recovery
+```
+
+通常の開発環境を起動した後に実行します。専用profileの一時PostgreSQLへ合成データを作成し、[pg_dump](https://www.postgresql.org/docs/18/app-pgdump.html)のcustom形式で退避、[pg_restore](https://www.postgresql.org/docs/18/app-pgrestore.html)で別の空DBへ復元します。鍵をDB dumpとは別ファイルへ退避し、元の鍵ファイルを除去してから読み戻します。既存のアプリDB・暗号鍵・volumeは使用せず、外部AI・メール・認証サービスも呼びません。
+
+全テーブルの件数・内容hash、migration再適用、AI資格情報・接続資格情報・メール参照の復号、誤った鍵/鍵なしの拒否、無効化済みキーの非復活、管理者を含む所有者分離、通常実行ロールのDDL禁止を確認します。空DBと一行欠けたDBを検出する陽性対照も含みます。一時DBはポートや永続volumeを持たず、成否とも今回起動したコンテナだけを削除します。通常の`make up`では起動しません。
+
+結果はGit対象外の`.local/recovery/run.XXXXXXXX/report.json`、合成dumpは`db/`、合成鍵は`keys/`、詳細ログは同じrunディレクトリへ保存します。ファイルは`0600`、runディレクトリは`0700`です。これらは合成訓練用であり、実データのバックアップではありません。実運用にはDBと鍵の別保管、オフホスト保管、Hatchet等の復旧、削除台帳の再適用、保持期限・RPO/RTOの検証が別途必要です。
+
 ## 本番向け構成
 
 `compose.production.yaml`は開発用とは独立したAPI・Workerのみの構成です。Goは非rootユーザーで実行し、読み取り専用ファイルシステム・secretファイル・TLSを使用します。PostgreSQLとHatchet Liteを本番用定義から起動せず、専用DB・最小権限ロールとHatchet Cloudを接続先とします。
