@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token configure-auth init-keyring grant-admin allow-user revoke-admin disable-user test-integration
+.PHONY: up down logs ps restart check fmt smoke build-production preview-static db-shell hatchet-token configure-auth init-keyring grant-admin allow-user revoke-admin disable-user test-integration test-evaluation-smoke test-evaluation
 
 up:
 	$(COMPOSE) up -d --build --wait --wait-timeout 600
@@ -62,3 +62,9 @@ grant-admin allow-user revoke-admin disable-user:
 
 test-integration:
 	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration ./internal/database ./internal/httpapi
+
+test-evaluation-smoke:
+	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration,evaluation ./internal/database -run '^TestPoCEvaluation(Smoke|PrivacyPositiveControl|Cancellation)$$' -count=1 -timeout=2m -v
+
+test-evaluation:
+	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration,evaluation ./internal/database -run '^TestPoCEvaluation' -count=1 -timeout=10m -v -args -evaluation-report-dir=/app/.local/evaluation
