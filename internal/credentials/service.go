@@ -60,7 +60,7 @@ func NewService(repository Repository, keyring *secretstore.Keyring) *Service {
 }
 func validProvider(provider string) bool {
 	switch provider {
-	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_webhook", "resend_webhook":
+	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_webhook", "resend_webhook", "gmail_oauth", "outlook_oauth":
 		return true
 	}
 	return false

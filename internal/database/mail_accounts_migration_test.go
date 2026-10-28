@@ -30,9 +30,7 @@ func TestMailMigrationDownUp(t *testing.T) {
 		t.Fatal(err)
 	}
 	result, err := provider.DownTo(ctx, 4)
-	if err != nil || len(result) == 0 || result[len(result)-1].Source.Version != 5 {
-		t.Fatal("down", result, err)
-	}
+	assertMigrationRange(t, result, err, latestMigrationVersion, 5)
 	var exists bool
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('mail_accounts') IS NOT NULL`).Scan(&exists); err != nil || exists {
 		t.Fatal("mail tables retained", exists, err)
@@ -50,11 +48,10 @@ func TestMailMigrationDownUp(t *testing.T) {
 	if _, err := pool.Exec(ctx, `UPDATE users SET state='disabled' WHERE id=$1`, userID); err != nil {
 		t.Fatal("user lifecycle broken after mail migration down", err)
 	}
-	if _, err := provider.Up(ctx); err != nil {
-		t.Fatal("up", err)
-	}
+	up, err := provider.Up(ctx)
+	assertMigrationRange(t, up, err, 5, latestMigrationVersion)
 	var version int64
-	if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version < 5 {
+	if err := pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != latestMigrationVersion {
 		t.Fatal("version", version, err)
 	}
 	if err := pool.QueryRow(ctx, `SELECT to_regclass('mail_account_credentials') IS NOT NULL`).Scan(&exists); err != nil || !exists {

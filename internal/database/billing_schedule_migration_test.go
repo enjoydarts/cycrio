@@ -63,9 +63,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := provider.DownTo(ctx, 9)
-	if e != nil || len(down) != 9 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 || down[3].Source.Version != 15 || down[4].Source.Version != 14 || down[5].Source.Version != 13 || down[6].Source.Version != 12 || down[7].Source.Version != 11 || down[8].Source.Version != 10 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 10)
 	var version int
 	if e = f.runtime.pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 9 {
 		t.Fatal(version, e)
@@ -74,9 +72,7 @@ func TestBillingScheduleMigrationTenPreservesNine(t *testing.T) {
 		t.Fatal("v9 changed on down", e)
 	}
 	up, e := provider.Up(ctx)
-	if e != nil || len(up) != 9 || up[0].Source.Version != 10 || up[1].Source.Version != 11 || up[2].Source.Version != 12 || up[3].Source.Version != 13 || up[4].Source.Version != 14 || up[5].Source.Version != 15 || up[6].Source.Version != 16 || up[7].Source.Version != 17 || up[8].Source.Version != 18 {
-		t.Fatal(up, e)
-	}
+	assertMigrationRange(t, up, e, 10, latestMigrationVersion)
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&after); e != nil || before != after {
 		t.Fatal("v9 changed on up", e)
 	}

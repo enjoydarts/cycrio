@@ -21,6 +21,41 @@ export function validSecret(secret: string): boolean {
   return /^[\x21-\x7e]{8,4096}$/.test(secret);
 }
 
+export function serializeOAuthCredential(
+  provider: 'gmail_oauth' | 'outlook_oauth',
+  fields: { ClientID: string; ClientSecret: string; RedirectURI: string },
+): string {
+  const { ClientID, ClientSecret, RedirectURI } = fields;
+  const fail = (): never => {
+    throw new ApiError('invalid_request');
+  };
+  if (!/^[\x21-\x7e]+$/.test(ClientID) || !/^[\x21-\x7e]+$/.test(ClientSecret))
+    return fail();
+  let uri: URL;
+  try {
+    uri = new URL(RedirectURI);
+  } catch {
+    return fail();
+  }
+  const name = provider === 'gmail_oauth' ? 'gmail' : 'outlook';
+  if (
+    (uri.protocol !== 'https:' &&
+      !(
+        uri.protocol === 'http:' &&
+        ['localhost', '127.0.0.1'].includes(uri.hostname)
+      )) ||
+    uri.username ||
+    uri.password ||
+    RedirectURI.includes('?') ||
+    RedirectURI.includes('#') ||
+    uri.pathname !== `/v1/mail/oauth/callback/${name}`
+  )
+    return fail();
+  const serialized = JSON.stringify({ ClientID, ClientSecret, RedirectURI });
+  if (!validSecret(serialized)) return fail();
+  return serialized;
+}
+
 export function createCredentialsController(
   api: ReturnType<typeof createAPI>,
   token: TokenProvider,

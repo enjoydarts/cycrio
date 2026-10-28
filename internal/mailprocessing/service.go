@@ -13,10 +13,20 @@ type Service struct {
 	reader  mailcontent.Reader
 	client  InferenceClient
 	resolve CredentialResolver
+	factory mailcontent.ReaderFactory
 }
 
-func NewService(r Repository, k *secretstore.Keyring, reader mailcontent.Reader, client InferenceClient, resolve CredentialResolver) *Service {
-	return &Service{r, k, reader, client, resolve}
+type Option func(*Service)
+
+func WithReaderFactory(factory mailcontent.ReaderFactory) Option {
+	return func(s *Service) { s.factory = factory }
+}
+func NewService(r Repository, k *secretstore.Keyring, reader mailcontent.Reader, client InferenceClient, resolve CredentialResolver, options ...Option) *Service {
+	s := &Service{repo: r, keys: k, reader: reader, client: client, resolve: resolve}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 func safe(e error) error {
 	if e == nil {

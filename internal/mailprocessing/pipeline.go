@@ -47,20 +47,34 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 		completion.ErrorCode = "credentials_unavailable"
 		return nil
 	}
-	raw, e := s.keys.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
+	api := mailsync.APIProvider(w.Credential.Provider)
+	var raw []byte
+	if !api {
+		raw, e = s.keys.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
+	}
 	defer clear(raw)
 	var credential struct{ Login, Password []byte }
-	decoded := json.Unmarshal(raw, &credential)
+	var decoded error
+	if !api {
+		decoded = json.Unmarshal(raw, &credential)
+	}
 	defer clear(credential.Login)
 	defer clear(credential.Password)
-	if e != nil || decoded != nil || len(credential.Login) == 0 || len(credential.Password) == 0 {
+	if e != nil || decoded != nil || !api && (len(credential.Login) == 0 || len(credential.Password) == 0) {
 		completion.ErrorCode = "credentials_unavailable"
 		return nil
 	}
 	aad := mailsync.MessageAAD(mailsync.Work{OwnerID: w.OwnerID, Run: mailsync.Run{AccountID: w.Run.AccountID}, FolderID: w.FolderID}, w.MessageID)
 	sourceBytes, e := s.keys.Open(w.Envelope, aad)
 	defer clear(sourceBytes)
-	validity, uid, valid := decodeSourceReference(sourceBytes)
+	var validity, uid uint32
+	var remoteID string
+	var valid bool
+	if api {
+		remoteID, valid = decodeRemoteSourceReference(sourceBytes, w.Credential.Provider)
+	} else {
+		validity, uid, valid = decodeSourceReference(sourceBytes)
+	}
 	if e != nil || !valid {
 		completion.ErrorCode = "source_missing"
 		return nil
@@ -73,12 +87,22 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 	if w.FullEmail {
 		maximum = mailcontent.MaxWireBytes
 	}
-	if s.reader == nil {
+	reader := s.reader
+	if s.factory != nil {
+		reader, e = s.factory(ctx, w.Credential)
+	} else if api {
+		reader = nil
+	}
+	if e != nil {
+		completion.ErrorCode = SourceErrorCode(e)
+		return nil
+	}
+	if reader == nil {
 		completion.ErrorCode = "connection_failed"
 		return nil
 	}
 	readCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-	text, e := s.reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{Folder: w.FolderName, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail, StrictGeneration: w.Automatic})
+	text, e := reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{RemoteID: remoteID, Folder: w.FolderName, AllowedFolders: w.ReaderFolders, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail, StrictGeneration: w.Automatic})
 	defer clear(text)
 	if e == nil {
 		e = readCtx.Err()
@@ -131,6 +155,36 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 	completion.State = "succeeded"
 	completion.Events = second.Extraction.Events
 	return nil
+}
+
+func decodeRemoteSourceReference(raw []byte, provider string) (string, bool) {
+	d := json.NewDecoder(bytes.NewReader(raw))
+	opening, err := d.Token()
+	if err != nil || opening != json.Delim('{') {
+		return "", false
+	}
+	values := map[string]string{}
+	for d.More() {
+		token, err := d.Token()
+		name, ok := token.(string)
+		if err != nil || !ok || name != "Provider" && name != "RemoteID" {
+			return "", false
+		}
+		if _, seen := values[name]; seen {
+			return "", false
+		}
+		value, err := d.Token()
+		text, ok := value.(string)
+		if err != nil || !ok {
+			return "", false
+		}
+		values[name] = text
+	}
+	closing, err := d.Token()
+	if err != nil || closing != json.Delim('}') || len(values) != 2 || d.Decode(new(any)) != io.EOF || values["Provider"] != provider || !mailsync.ValidRemoteID(values["RemoteID"]) {
+		return "", false
+	}
+	return values["RemoteID"], true
 }
 
 // Authenticated references still require the exact format written by mailsync.

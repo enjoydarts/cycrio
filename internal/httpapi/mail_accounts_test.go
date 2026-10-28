@@ -42,6 +42,7 @@ type mailFixture struct {
 	owner, account, probe string
 	err                   error
 	folders               mailaccounts.FolderInput
+	saved                 mailaccounts.SaveInput
 }
 
 func (f *mailFixture) seen(owner, id string) { f.calls++; f.owner = owner; f.account = id }
@@ -49,8 +50,9 @@ func (f *mailFixture) List(_ context.Context, owner string) ([]mailaccounts.Acco
 	f.seen(owner, "")
 	return nil, f.err
 }
-func (f *mailFixture) Save(_ context.Context, owner, id string, _ mailaccounts.SaveInput) (mailaccounts.Account, error) {
+func (f *mailFixture) Save(_ context.Context, owner, id string, input mailaccounts.SaveInput) (mailaccounts.Account, error) {
 	f.seen(owner, id)
+	f.saved = input
 	return mailaccounts.Account{ID: id}, f.err
 }
 func (f *mailFixture) Disconnect(_ context.Context, owner, id string, _ int64) (mailaccounts.Account, error) {
@@ -145,8 +147,8 @@ func TestMailHTTPRejectsUntrustedConfigurationAndMalformedWrites(t *testing.T) {
 	h := mailHandler(f, &role, &denied)
 	for _, body := range []string{
 		`{"expected_version":0,"label":"x","login":"x@example.com","app_password":"synthetic","owner_id":"another"}`,
-		`{"expected_version":0,"label":"x","login":"x@example.com","app_password":"synthetic","host":"localhost"}`,
-		`{"expected_version":0,"label":"x","login":"x@example.com","app_password":"synthetic","provider":"gmail"}`,
+		`{"expected_version":0,"label":"x","login":"x@example.com","app_password":"synthetic","endpoint_host":"localhost"}`,
+		`{"expected_version":0,"label":"x","login":"x@example.com","app_password":"synthetic","provider_key":"gmail"}`,
 		`{"expected_version":0,"expected_version":1,"label":"x","login":"x@example.com","app_password":"synthetic"}`,
 		`{"Expected_Version":0,"label":"x","login":"x@example.com","app_password":"synthetic"}`,
 		`{"expected_version":null,"label":"x","login":"x@example.com","app_password":"synthetic"}`,
@@ -192,5 +194,23 @@ func TestMailHTTPErrorsAreFixedAndHideUpstreamContent(t *testing.T) {
 		if w.Code != entry.status || !strings.Contains(w.Body.String(), entry.code) || strings.Contains(w.Body.String(), "synthetic-private") {
 			t.Fatal(w.Code, w.Body.String())
 		}
+	}
+}
+
+func TestMailHTTPAcceptsExplicitFastmailAndCustomIMAPFields(t *testing.T) {
+	for _, provider := range []string{"fastmail", "imap"} {
+		t.Run(provider, func(t *testing.T) {
+			f := &mailFixture{}
+			role, denied := "user", false
+			body := `{"provider":"` + provider + `","expected_version":0,"label":"個人","login":"synthetic@example.com","app_password":"synthetic"`
+			if provider == "imap" {
+				body += `,"host":"imap.example.com","port":993`
+			}
+			body += `}`
+			w := credentialRequest(mailHandler(f, &role, &denied), "PUT", "/v1/mail/accounts/account", body, "Bearer valid", "http://localhost:3100", "application/json")
+			if w.Code != 200 || f.saved.Provider != provider || provider == "imap" && (f.saved.Host != "imap.example.com" || f.saved.Port != 993) {
+				t.Fatalf("provider fields lost status=%d provider=%s host=%s port=%d", w.Code, f.saved.Provider, f.saved.Host, f.saved.Port)
+			}
+		})
 	}
 }

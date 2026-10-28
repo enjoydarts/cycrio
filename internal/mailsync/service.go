@@ -16,9 +16,21 @@ type Service struct {
 	repository Repository
 	keyring    *secretstore.Keyring
 	scanner    Scanner
+	factory    ScannerFactory
 }
 
-func NewService(r Repository, k *secretstore.Keyring, s Scanner) *Service { return &Service{r, k, s} }
+type Option func(*Service)
+
+func WithScannerFactory(factory ScannerFactory) Option {
+	return func(s *Service) { s.factory = factory }
+}
+func NewService(r Repository, k *secretstore.Keyring, scanner Scanner, options ...Option) *Service {
+	s := &Service{repository: r, keyring: k, scanner: scanner}
+	for _, option := range options {
+		option(s)
+	}
+	return s
+}
 func safe(err error) error {
 	if err == nil {
 		return nil
@@ -67,6 +79,13 @@ func MessageAAD(w Work, id string) []byte {
 	b, _ := json.Marshal(struct{ Owner, Account, Folder, ID, Purpose string }{w.OwnerID, w.Run.AccountID, w.FolderID, id, "mail-source/v1"})
 	return b
 }
+
+// CursorAAD permits copying progress between runs and lanes of one folder,
+// while rejecting substitution from another owner, account or folder.
+func CursorAAD(w Work) []byte {
+	b, _ := json.Marshal(struct{ Owner, Account, Folder, Purpose string }{w.OwnerID, w.Run.AccountID, w.FolderID, "mail-cursor/v1"})
+	return b
+}
 func ErrorCode(err error) string {
 	var a mailaccounts.AdapterError
 	var p *mailaccounts.AdapterError
@@ -102,27 +121,56 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	code := ""
 	var page Page
 	var refs []MessageRef
-	raw, e := s.keyring.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
+	api := APIProvider(w.Credential.Provider)
+	w.Page.Provider = w.Credential.Provider
+	var raw []byte
+	if s.keyring == nil {
+		e = secretstore.ErrUnavailable
+	} else if !api {
+		raw, e = s.keyring.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
+	}
 	defer clear(raw)
 	var p struct {
 		Login    []byte `json:"login"`
 		Password []byte `json:"password"`
 	}
-	decodeErr := json.Unmarshal(raw, &p)
+	var decodeErr error
+	if !api {
+		decodeErr = json.Unmarshal(raw, &p)
+	}
 	defer clear(p.Login)
 	defer clear(p.Password)
-	if e != nil || decodeErr != nil || len(p.Login) == 0 || len(p.Password) == 0 {
+	if e == nil && api && (w.Page.CursorEnvelope.KeyID != "" || len(w.Page.CursorEnvelope.Ciphertext) != 0) {
+		var cursor []byte
+		cursor, e = s.keyring.Open(w.Page.CursorEnvelope, CursorAAD(w))
+		if e == nil && (len(cursor) == 0 || len(cursor) > MaxCursorBytes) {
+			e = ErrInvalid
+		}
+		w.Page.Cursor = string(cursor)
+		clear(cursor)
+	}
+	if e != nil || decodeErr != nil || !api && (len(p.Login) == 0 || len(p.Password) == 0) {
 		code = "credentials_unavailable"
 	} else {
 		callctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		if s.scanner == nil {
+		scanner := s.scanner
+		if s.factory != nil {
+			scanner, e = s.factory(callctx, w.Credential)
+		} else if api {
+			scanner = nil
+		}
+		if e != nil {
+			code = ErrorCode(e)
+		} else if scanner == nil {
 			code = "connection_failed"
 		} else {
-			page, e = s.scanner.Discover(callctx, string(p.Login), p.Password, w.Page)
+			page, e = scanner.Discover(callctx, string(p.Login), p.Password, w.Page)
 			if e != nil {
 				code = ErrorCode(e)
 			} else if callctx.Err() != nil {
 				code = ErrorCode(callctx.Err())
+			} else if api && page.Cursor == "" {
+				code = "invalid_response"
 			} else if w.Page.Mode != "" && w.Page.Mode != "manual" && w.Page.UIDValidity != 0 && page.UIDValidity != w.Page.UIDValidity {
 				code = "uid_validity_changed"
 			} else if !ValidPage(w.Page, page) {
@@ -132,6 +180,32 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		cancel()
 	}
 	if code == "" {
+		if api {
+			for _, remoteID := range page.RemoteIDs {
+				tuple, _ := json.Marshal(struct{ Provider, RemoteID string }{w.Credential.Provider, remoteID})
+				scoped, _ := json.Marshal(struct{ Owner, Account, Provider, RemoteID string }{w.OwnerID, w.Run.AccountID, w.Credential.Provider, remoteID})
+				digest := sha256.Sum256(scoped)
+				clear(scoped)
+				fingerprint := hex.EncodeToString(digest[:])
+				ref := MessageRef{ID: uuid.NewString(), Fingerprint: fingerprint, RemoteFingerprint: fingerprint}
+				ref.Envelope, e = s.keyring.Seal(tuple, MessageAAD(w, ref.ID))
+				clear(tuple)
+				if e != nil {
+					code = "credentials_unavailable"
+					break
+				}
+				refs = append(refs, ref)
+			}
+			if code == "" {
+				cursor := []byte(page.Cursor)
+				page.CursorEnvelope, e = s.keyring.Seal(cursor, CursorAAD(w))
+				clear(cursor)
+				if e != nil {
+					code = "credentials_unavailable"
+				}
+			}
+			page.Cursor = ""
+		}
 		for _, uid := range page.UIDs {
 			tuple, _ := json.Marshal(struct{ UIDValidity, UID uint32 }{page.UIDValidity, uid})
 			scoped, _ := json.Marshal(struct {

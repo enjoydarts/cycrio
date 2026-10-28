@@ -9,6 +9,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/fastmail"
+	"github.com/enjoydarts/cycrio/internal/mailconnectionruntime"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -28,5 +29,5 @@ func New(pool *pgxpool.Pool, keys *secretstore.Keyring) *mailprocessing.Service 
 		}
 		return key, nil
 	}
-	return mailprocessing.NewService(database.NewMailProcessingRepository(pool), keys, fastmail.NewClient(), ai.NewClient(nil), resolve)
+	return mailprocessing.NewService(database.NewMailProcessingRepository(pool), keys, fastmail.NewClient(), ai.NewClient(nil), resolve, mailprocessing.WithReaderFactory(mailconnectionruntime.New(pool, keys).Reader))
 }

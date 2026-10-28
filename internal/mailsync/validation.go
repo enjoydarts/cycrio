@@ -1,10 +1,22 @@
 package mailsync
 
 import (
+	"bytes"
 	"github.com/google/uuid"
 	"math"
+	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
+
+const MaxCursorBytes = 128 << 10
+
+func APIProvider(provider string) bool { return provider == "gmail" || provider == "outlook" }
+
+func ValidRemoteID(id string) bool {
+	return id != "" && len(id) <= 2048 && utf8.ValidString(id) && !strings.ContainsAny(id, "/\\") && !strings.ContainsFunc(id, unicode.IsControl)
+}
 
 func ValidID(s string) bool {
 	v, e := uuid.Parse(s)
@@ -20,6 +32,30 @@ func ValidInput(in Input) bool {
 
 // ValidPage checks a complete adapter result before any durable state advances.
 func ValidPage(req PageRequest, p Page) bool {
+	if APIProvider(req.Provider) {
+		if req.Mode != "" && req.Mode != "manual" && req.Mode != "bootstrap" && req.Mode != "historical" && req.Mode != "incremental" {
+			return false
+		}
+		if req.UIDValidity != 0 || req.AfterUID != 0 || req.UpperUID != 0 {
+			return false
+		}
+		cursor := p.Cursor != "" || p.CursorEnvelope.KeyID != "" && len(p.CursorEnvelope.Ciphertext) > 0
+		unchanged := p.Cursor != "" && req.Cursor == p.Cursor || p.CursorEnvelope.KeyID != "" && req.CursorEnvelope.KeyID == p.CursorEnvelope.KeyID && bytes.Equal(req.CursorEnvelope.Ciphertext, p.CursorEnvelope.Ciphertext)
+		if req.Limit < 1 || req.Limit > 100 || len(p.RemoteIDs) > req.Limit || !p.Initialized || !cursor || len(p.Cursor) > MaxCursorBytes || len(p.CursorEnvelope.Ciphertext) > MaxCursorBytes+128 || !p.Done && unchanged || p.UIDValidity != 0 || p.AfterUID != 0 || p.UpperUID != 0 || len(p.UIDs) != 0 || req.Mode == "bootstrap" && len(p.RemoteIDs) != 0 {
+			return false
+		}
+		seen := map[string]bool{}
+		for _, id := range p.RemoteIDs {
+			if !ValidRemoteID(id) || seen[id] {
+				return false
+			}
+			seen[id] = true
+		}
+		return true
+	}
+	if len(p.RemoteIDs) != 0 || p.Cursor != "" || p.CursorEnvelope.KeyID != "" {
+		return false
+	}
 	if req.Mode != "" && req.Mode != "manual" {
 		if !p.Initialized || req.UIDValidity != 0 && req.UIDValidity != p.UIDValidity {
 			return false

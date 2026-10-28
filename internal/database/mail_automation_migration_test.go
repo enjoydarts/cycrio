@@ -35,7 +35,7 @@ func automationMigrationProvider(t *testing.T, pool *pgxpool.Pool) *goose.Provid
 func allAutomationLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename<>'goose_db_version' ORDER BY tablename`)
+	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename<>'goose_db_version' ORDER BY tablename`)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -54,11 +54,11 @@ func allAutomationLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]str
 	out := map[string]string{}
 	for _, name := range tables {
 		var raw string
-		drop := []string{}
+		drop := mailConnectionMigrationColumns(name)
 		if name == "billing_events" || name == "billing_event_sources" {
-			drop = []string{"provenance"}
+			drop = append(drop, "provenance")
 		}
-		if e = pool.QueryRow(ctx, `SELECT coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text FROM(SELECT to_jsonb(t)-$1::text[]-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook'))x`, drop).Scan(&raw); e != nil {
+		if e = pool.QueryRow(ctx, `SELECT coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text FROM(SELECT to_jsonb(t)-$1::text[]-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth'))x`, drop).Scan(&raw); e != nil {
 			t.Fatal(e)
 		}
 		out[name] = raw
@@ -81,21 +81,17 @@ func TestMailAutomationMigrationSixteenPreservesEveryFifteenRecord(t *testing.T)
 	}
 	p := automationMigrationProvider(t, f.runtime.pool)
 	down, e := p.DownTo(ctx, 15)
-	if e != nil || len(down) != 3 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 16)
 	if !reflect.DeepEqual(before, allAutomationLegacyRecords(t, f.runtime.pool)) {
 		t.Fatal("down16 changed v15 data")
 	}
 	up, e := p.Up(ctx)
-	if e != nil || len(up) != 3 || up[0].Source.Version != 16 || up[1].Source.Version != 17 || up[2].Source.Version != 18 {
-		t.Fatal(up, e)
-	}
+	assertMigrationRange(t, up, e, 16, latestMigrationVersion)
 	if !reflect.DeepEqual(before, allAutomationLegacyRecords(t, f.runtime.pool)) {
 		t.Fatal("up16 changed v15 data")
 	}
 	var version, count int
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM mail_automations)`).Scan(&version, &count); e != nil || version != 18 || count != 0 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM mail_automations)`).Scan(&version, &count); e != nil || version != latestMigrationVersion || count != 0 {
 		t.Fatal(version, count, e)
 	}
 }
@@ -104,7 +100,7 @@ func TestMailAutomationMigrationDownRefusesNewConsentProgressAndMembership(t *te
 	ctx := context.Background()
 	automaticBootstrap(t, f, r, in, 1)
 	automaticDiscover(t, f, r, syncRefs(1), 1)
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(x ORDER BY id) FROM mail_automations x),(SELECT jsonb_agg(x ORDER BY automation_id,generation) FROM mail_automation_scopes x),(SELECT jsonb_agg(x ORDER BY automation_id,generation,lane,window_index,folder_id) FROM mail_automation_progress x),(SELECT jsonb_agg(x ORDER BY message_id) FROM mail_automation_messages x),(SELECT jsonb_agg(x ORDER BY id) FROM mail_automation_audit x),(SELECT jsonb_agg(x ORDER BY request_id) FROM mail_automation_requests x))`
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(x ORDER BY id) FROM mail_automations x),(SELECT jsonb_agg(x ORDER BY automation_id,generation) FROM mail_automation_scopes x),(SELECT jsonb_agg(to_jsonb(x)-'cursor_key_id'-'cursor_ciphertext' ORDER BY automation_id,generation,lane,window_index,folder_id) FROM mail_automation_progress x),(SELECT jsonb_agg(x ORDER BY message_id) FROM mail_automation_messages x),(SELECT jsonb_agg(x ORDER BY id) FROM mail_automation_audit x),(SELECT jsonb_agg(x ORDER BY request_id) FROM mail_automation_requests x))`
 	var before, after string
 	if e := f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); e != nil {
 		t.Fatal(e)

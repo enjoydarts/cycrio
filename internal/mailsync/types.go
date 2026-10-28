@@ -51,6 +51,9 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type PageRequest struct {
+	CursorEnvelope secretstore.Envelope `json:"-"`
+	Provider       string               `json:"-"`
+	Cursor         string               `json:"-"`
 	// Mode is private worker input; the manual API never accepts it.
 	Mode        string `json:"-"`
 	Initialized bool   `json:"-"`
@@ -63,12 +66,15 @@ type PageRequest struct {
 	Limit       int    `json:"-"`
 }
 type Page struct {
-	Initialized bool     `json:"-"`
-	UIDValidity uint32   `json:"-"`
-	AfterUID    uint32   `json:"-"`
-	UpperUID    uint32   `json:"-"`
-	Done        bool     `json:"-"`
-	UIDs        []uint32 `json:"-"`
+	CursorEnvelope secretstore.Envelope `json:"-"`
+	RemoteIDs      []string             `json:"-"`
+	Cursor         string               `json:"-"`
+	Initialized    bool                 `json:"-"`
+	UIDValidity    uint32               `json:"-"`
+	AfterUID       uint32               `json:"-"`
+	UpperUID       uint32               `json:"-"`
+	Done           bool                 `json:"-"`
+	UIDs           []uint32             `json:"-"`
 }
 type Work struct {
 	Run        Run                            `json:"-"`
@@ -78,13 +84,15 @@ type Work struct {
 	Page       PageRequest                    `json:"-"`
 }
 type MessageRef struct {
-	ID          string               `json:"-"`
-	Fingerprint string               `json:"-"`
-	Envelope    secretstore.Envelope `json:"-"`
+	RemoteFingerprint string               `json:"-"`
+	ID                string               `json:"-"`
+	Fingerprint       string               `json:"-"`
+	Envelope          secretstore.Envelope `json:"-"`
 }
 type Scanner interface {
 	Discover(context.Context, string, []byte, PageRequest) (Page, error)
 }
+type ScannerFactory func(context.Context, mailaccounts.CredentialVersion) (Scanner, error)
 type Repository interface {
 	Request(context.Context, string, string, Input) (Run, error)
 	List(context.Context, string, string) ([]Run, error)

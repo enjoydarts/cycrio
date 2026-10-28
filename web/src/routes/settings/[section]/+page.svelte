@@ -52,11 +52,13 @@
           token={session.token}
           onDenied={session.onDenied}
           returnTo={page.url.searchParams.get('return_to')}
+          oauthResult={page.url.searchParams.get('oauth')}
         />
       {:else if section === 'appearance'}
         <Appearance />
       {:else if section === 'credentials'}
         <AdminCredentials
+          apiBase={PUBLIC_API_BASE_URL}
           api={session.api}
           token={session.token}
           onDenied={session.onDenied}

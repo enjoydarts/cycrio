@@ -19,6 +19,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailoauth"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -38,6 +39,7 @@ type recoveryTable struct {
 type recoveryManifest struct {
 	Tables                                                      map[string]recoveryTable `json:"tables"`
 	Admin, Owner, Account, Subscription, ActiveKey, DisabledKey string
+	OAuthAccount, OAuthFolder                                   string
 	KeySHA256                                                   string `json:"key_sha256"`
 }
 
@@ -138,6 +140,7 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA cycrio GRANT USAGE,SELECT ON SEQUENCES TO cyc
 		"migration_idempotent": true, "decryption_verified": true, "missing_and_wrong_key_rejected": true,
 		"disabled_key_stays_disabled": true, "owner_boundary_verified": true,
 		"runtime_ddl_rejected": true, "partial_loss_detected": true,
+		"oauth_token_and_cursor_verified": true,
 	})
 }
 
@@ -212,12 +215,13 @@ func seedRecovery(t *testing.T, ctx context.Context, pool *pgxpool.Pool, dir str
 			t.Fatal(err)
 		}
 	}
+	oauthAccount, oauthFolder := seedRecoveryOAuth(t, ctx, pool, keys, admin.ID, owner.ID)
 	keyBytes, err := os.ReadFile(keyPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	hash := sha256.Sum256(keyBytes)
-	manifest := recoveryManifest{Tables: recoverySnapshot(t, ctx, pool), Admin: admin.ID, Owner: owner.ID, Account: account, Subscription: subscription, ActiveKey: active, DisabledKey: disabled, KeySHA256: hex.EncodeToString(hash[:])}
+	manifest := recoveryManifest{Tables: recoverySnapshot(t, ctx, pool), Admin: admin.ID, Owner: owner.ID, Account: account, Subscription: subscription, ActiveKey: active, DisabledKey: disabled, KeySHA256: hex.EncodeToString(hash[:]), OAuthAccount: oauthAccount, OAuthFolder: oauthFolder}
 	writeRecoveryJSON(t, filepath.Join(dir, "manifest.json"), manifest)
 }
 
@@ -275,8 +279,56 @@ func verifyRecoveryKeys(t *testing.T, ctx context.Context, pool *pgxpool.Pool, d
 	if plain, err := keys.Open(envelope, aad); err != nil || string(plain) != `{"UIDValidity":7,"UID":1}` {
 		t.Fatal("restored mail reference cannot decrypt")
 	}
+	verifyRecoveryOAuth(t, ctx, pool, keys, m)
 	if _, err := os.Stat(filepath.Join(dir, "source-keyring.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("missing original key was regenerated")
+	}
+}
+
+func seedRecoveryOAuth(t *testing.T, ctx context.Context, pool *pgxpool.Pool, keys *secretstore.Keyring, admin, owner string) (string, string) {
+	t.Helper()
+	config, _ := json.Marshal(mailoauth.Config{ClientID: "synthetic-client", ClientSecret: "synthetic-client-secret", RedirectURI: "http://localhost:8090/v1/mail/oauth/callback/gmail"})
+	if _, err := credentials.NewService(NewCredentialRepository(pool), keys).Put(ctx, admin, "gmail_oauth", 0, string(config)); err != nil {
+		t.Fatal(err)
+	}
+	repo := NewMailOAuthRepository(pool, keys)
+	client, err := repo.ActiveClient(ctx, "gmail")
+	if err != nil {
+		t.Fatal(err)
+	}
+	account, folder := uuid.NewString(), uuid.NewString()
+	if err := repo.SaveConnection(ctx, mailoauth.Pending{OwnerID: owner, AccountID: account, Provider: "gmail", Label: "Synthetic Gmail", ClientID: client}, mailoauth.Token{AccessToken: "synthetic-access", RefreshToken: "synthetic-refresh", Expiry: time.Now().UTC().Add(time.Hour)}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO mail_account_folders(id,account_id,name,delimiter,selectable,available,selected,display_name) VALUES($1,$2,'INBOX','',true,true,true,'Synthetic Inbox')`, folder, account); err != nil {
+		t.Fatal(err)
+	}
+	env, err := keys.Seal([]byte("synthetic-api-checkpoint"), mailsync.CursorAAD(mailsync.Work{OwnerID: owner, Run: mailsync.Run{AccountID: account}, FolderID: folder}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(ctx, `INSERT INTO mail_sync_cursors(owner_id,account_id,folder_id,since,before,uid_validity,after_uid,cursor_key_id,cursor_ciphertext) VALUES($1,$2,$3,'2026-10-01','2026-11-01',0,0,$4,$5)`, owner, account, folder, env.KeyID, env.Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	return account, folder
+}
+func verifyRecoveryOAuth(t *testing.T, ctx context.Context, pool *pgxpool.Pool, keys *secretstore.Keyring, m recoveryManifest) {
+	t.Helper()
+	var v mailaccounts.CredentialVersion
+	if err := pool.QueryRow(ctx, `SELECT id,owner_id,account_id,version FROM mail_account_credentials WHERE account_id=$1 AND state='active'`, m.OAuthAccount).Scan(&v.ID, &v.OwnerID, &v.AccountID, &v.Version); err != nil {
+		t.Fatal(err)
+	}
+	secret, err := NewMailOAuthRepository(pool, keys).WithConnection(ctx, v, func(s mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error) { return s, nil })
+	if err != nil || secret.Provider != "gmail" || string(secret.AccessToken) != "synthetic-access" || string(secret.Password) != "synthetic-refresh" {
+		t.Fatal("restored OAuth token cannot decrypt")
+	}
+	var env secretstore.Envelope
+	if err := pool.QueryRow(ctx, `SELECT cursor_key_id,cursor_ciphertext FROM mail_sync_cursors WHERE account_id=$1 AND folder_id=$2`, m.OAuthAccount, m.OAuthFolder).Scan(&env.KeyID, &env.Ciphertext); err != nil {
+		t.Fatal(err)
+	}
+	aad := mailsync.CursorAAD(mailsync.Work{OwnerID: m.Owner, Run: mailsync.Run{AccountID: m.OAuthAccount}, FolderID: m.OAuthFolder})
+	if plain, err := keys.Open(env, aad); err != nil || string(plain) != "synthetic-api-checkpoint" {
+		t.Fatal("restored API cursor cannot decrypt")
 	}
 }
 

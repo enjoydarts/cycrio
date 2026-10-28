@@ -8,16 +8,19 @@
   import {
     createCredentialsController,
     type CredentialsState,
+    serializeOAuthCredential,
   } from './credentials';
 
   let {
     api,
     token,
     onDenied,
+    apiBase = '',
   }: {
     api: ReturnType<typeof createAPI>;
     token: TokenProvider;
     onDenied: () => void;
+    apiBase?: string;
   } = $props();
   let view = $state<CredentialsState>({
     status: 'idle',
@@ -39,6 +42,14 @@
       label: 'Resend Webhook',
       purpose: '配信イベント署名の検証',
     },
+    gmail_oauth: {
+      label: 'Gmail / Google Workspace',
+      purpose: 'メール読み取り用 OAuth アプリ',
+    },
+    outlook_oauth: {
+      label: 'Outlook.com / Hotmail',
+      purpose: '個人アカウントのメール読み取り用 OAuth アプリ',
+    },
   };
   const statuses = {
     not_configured: '未登録',
@@ -56,7 +67,7 @@
     dependency_unavailable:
       '読み込みまたは保存に失敗しました。保存状態を再読み込みして確認してください。',
     invalid_request:
-      'API キーは空白・制御文字を含まない半角英数字・記号の 8〜4096 文字で入力してください。',
+      'API キーまたは OAuth アプリの入力条件とコールバック URI を確認してください。',
     conflict:
       '別の操作により更新されました。最新の保存状態を読み込みました。内容を確認して、もう一度入力・操作してください。',
     not_found: '対象が見つかりません。保存状態を再読み込みしてください。',
@@ -99,8 +110,21 @@
   ) {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
-    const input = form.elements.namedItem('secret') as HTMLInputElement;
-    const secret = input.value;
+    const field = (name: string) =>
+      (form.elements.namedItem(name) as HTMLInputElement).value;
+    let secret = '';
+    try {
+      secret =
+        provider === 'gmail_oauth' || provider === 'outlook_oauth'
+          ? serializeOAuthCredential(provider, {
+              ClientID: field('client_id'),
+              ClientSecret: field('client_secret'),
+              RedirectURI: field('redirect_uri'),
+            })
+          : field('secret');
+    } catch {
+      /* The controller publishes the same safe validation error. */
+    }
     form.reset();
     confirmation = null;
     if (!busy) void controller?.put(provider, secret, version);
@@ -131,9 +155,9 @@
   aria-labelledby="credentials-heading"
   aria-busy={busy}
 >
-  <h3 id="credentials-heading">API キー管理</h3>
+  <h3 id="credentials-heading">API キー・メール連携アプリ管理</h3>
   <p class="intro">
-    保存した API キーは再表示できません。接続テストは <a
+    保存した API キー・Client Secret は再表示できません。AI の接続テストは <a
       href="/settings/ai-runtime">AI 実行・接続</a
     > で行えます。
   </p>
@@ -190,26 +214,76 @@
             submit(event, credential.provider, credential.version)}
           novalidate
         >
-          <label for={`secret-${credential.provider}`}
-            >{provider.label} の API キー</label
-          >
-          <input
-            id={`secret-${credential.provider}`}
-            name="secret"
-            type="password"
-            autocomplete="off"
-            spellcheck="false"
-            autocapitalize="off"
-            minlength="8"
-            maxlength="4096"
-            required
-            disabled={busy}
-            aria-describedby="secret-help"
-          />
+          {#if credential.provider === 'gmail_oauth' || credential.provider === 'outlook_oauth'}
+            {@const mailProvider =
+              credential.provider === 'gmail_oauth' ? 'gmail' : 'outlook'}
+            <p class="help">
+              {mailProvider === 'gmail'
+                ? 'Gmail の読み取り専用権限 gmail.readonly を利用します。個人・Workspace に対応します。Workspace では組織管理者の許可が必要な場合があります。'
+                : 'Microsoft Graph の Mail.Read と offline_access を利用します。個人の Outlook.com / Hotmail 向けアプリを登録してください。'}
+            </p>
+            <label for={`client-id-${credential.provider}`}>Client ID</label>
+            <input
+              id={`client-id-${credential.provider}`}
+              name="client_id"
+              type="text"
+              autocomplete="off"
+              spellcheck="false"
+              required
+              disabled={busy}
+            />
+            <label for={`client-secret-${credential.provider}`}
+              >Client Secret</label
+            >
+            <input
+              id={`client-secret-${credential.provider}`}
+              name="client_secret"
+              type="password"
+              autocomplete="new-password"
+              spellcheck="false"
+              required
+              disabled={busy}
+            />
+            <label for={`redirect-uri-${credential.provider}`}
+              >Redirect URI</label
+            >
+            <input
+              id={`redirect-uri-${credential.provider}`}
+              name="redirect_uri"
+              type="url"
+              value={`${apiBase.replace(/\/$/, '')}/v1/mail/oauth/callback/${mailProvider}`}
+              autocomplete="off"
+              spellcheck="false"
+              required
+              disabled={busy}
+            />
+            <p class="help">
+              API の公開 URL を使い、認可サービスにも同じ URI
+              を登録してください。HTTPS（ローカル開発は localhost / 127.0.0.1 の
+              HTTP）に対応します。更新時はすべての項目を再入力します。
+            </p>
+          {:else}
+            <label for={`secret-${credential.provider}`}
+              >{provider.label} の API キー</label
+            >
+            <input
+              id={`secret-${credential.provider}`}
+              name="secret"
+              type="password"
+              autocomplete="off"
+              spellcheck="false"
+              autocapitalize="off"
+              minlength="8"
+              maxlength="4096"
+              required
+              disabled={busy}
+              aria-describedby="secret-help"
+            />
+          {/if}
           <button class="primary" type="submit" disabled={busy}
             >{credential.state === 'configured'
-              ? 'キーを更新する'
-              : 'キーを登録する'}</button
+              ? '設定を更新する'
+              : '設定を登録する'}</button
           >
         </form>
         {#if credential.state === 'configured'}

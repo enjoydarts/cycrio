@@ -55,7 +55,7 @@ func registerMailAccounts(mux *http.ServeMux, service MailAccountService, protec
 	})
 	register("PUT /v1/mail/accounts/{id}", 200, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var input mailaccounts.SaveInput
-		if err := readAdminJSON(w, r, &input, "expected_version", "label", "login", "app_password"); err != nil {
+		if err := readBoundedJSON(w, r, &input, 16<<10, "expected_version", "label", "login", "app_password"); err != nil {
 			return nil, err
 		}
 		return service.Save(r.Context(), owner, r.PathValue("id"), input)

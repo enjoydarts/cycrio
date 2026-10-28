@@ -10,13 +10,18 @@ import (
 )
 
 type Service struct {
-	repository Repository
-	keyring    *secretstore.Keyring
-	checker    Checker
+	repository     Repository
+	keyring        *secretstore.Keyring
+	checker        Checker
+	checkerFactory CheckerFactory
 }
 
-func NewService(repo Repository, keyring *secretstore.Keyring, checker Checker) *Service {
-	return &Service{repo, keyring, checker}
+func NewService(repo Repository, keyring *secretstore.Keyring, checker Checker, options ...Option) *Service {
+	s := &Service{repository: repo, keyring: keyring, checker: checker}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 func safeError(err error) error {
 	if err == nil {
@@ -63,8 +68,12 @@ func (s *Service) Save(ctx context.Context, owner, id string, in SaveInput) (Acc
 	}
 	// Use the new configuration revision as the credential revision. Folder edits
 	// and disconnects may leave gaps; a credential revision is never reused.
-	v := CredentialVersion{ID: uuid.NewString(), OwnerID: owner, AccountID: id, Version: in.ExpectedVersion + 1}
-	p := plaintext{[]byte(in.Login), []byte(in.AppPassword)}
+	provider := in.Provider
+	if provider == "" {
+		provider = "fastmail"
+	}
+	v := CredentialVersion{ID: uuid.NewString(), OwnerID: owner, AccountID: id, Version: in.ExpectedVersion + 1, Provider: provider, Host: in.Host, Port: in.Port}
+	p := ConnectionSecret{Login: []byte(in.Login), Password: []byte(in.AppPassword), Provider: provider, Host: in.Host, Port: in.Port}
 	defer clear(p.Login)
 	defer clear(p.Password)
 	plain, err := json.Marshal(p)
@@ -162,10 +171,16 @@ func (s *Service) Run(ctx context.Context, lease Lease) error {
 		code = "credentials_unavailable"
 	} else {
 		runctx, cancel := context.WithTimeout(ctx, 45*time.Second)
-		if s.checker == nil {
+		checker := s.checker
+		if s.checkerFactory != nil {
+			checker, err = s.checkerFactory(runctx, work.Credential)
+		}
+		if err != nil {
+			code = errorCode(err)
+		} else if checker == nil {
 			code = "connection_failed"
 		} else {
-			folders, err = s.checker.Check(runctx, string(p.Login), p.Password)
+			folders, err = checker.Check(runctx, string(p.Login), p.Password)
 			if err != nil {
 				code = errorCode(err)
 			} else if runctx.Err() != nil {

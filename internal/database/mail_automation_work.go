@@ -163,7 +163,7 @@ func ensureAutomaticWindows(ctx context.Context, tx pgx.Tx, owner, account, id s
 		return processingError(e)
 	}
 	if count == 0 {
-		if _, e := tx.Exec(ctx, `INSERT INTO mail_automation_progress(owner_id,account_id,automation_id,generation,lane,window_index,folder_id,uid_validity,after_uid,upper_uid,initialized,done)SELECT owner_id,account_id,automation_id,generation,'incremental',0,folder_id,uid_validity,upper_uid,upper_uid,true,true FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap'`, id, generation); e != nil {
+		if _, e := tx.Exec(ctx, `INSERT INTO mail_automation_progress(owner_id,account_id,automation_id,generation,lane,window_index,folder_id,uid_validity,after_uid,upper_uid,initialized,done,cursor_key_id,cursor_ciphertext)SELECT owner_id,account_id,automation_id,generation,'incremental',0,folder_id,uid_validity,upper_uid,upper_uid,true,true,cursor_key_id,cursor_ciphertext FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap'`, id, generation); e != nil {
 			return processingError(e)
 		}
 	}
@@ -195,7 +195,7 @@ func ensureAutomaticWindows(ctx context.Context, tx pgx.Tx, owner, account, id s
 		windowEnd = end
 	}
 	before := windowEnd.Format(time.DateOnly)
-	_, e = tx.Exec(ctx, `INSERT INTO mail_automation_progress(owner_id,account_id,automation_id,generation,lane,window_index,folder_id,since,before,uid_validity,after_uid,upper_uid,initialized,done)SELECT owner_id,account_id,automation_id,generation,'historical',$3,folder_id,$4::date,$5::date,uid_validity,0,upper_uid,true,false FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap'`, id, generation, index, start, before)
+	_, e = tx.Exec(ctx, `INSERT INTO mail_automation_progress(owner_id,account_id,automation_id,generation,lane,window_index,folder_id,since,before,uid_validity,after_uid,upper_uid,initialized,done)SELECT owner_id,account_id,automation_id,generation,'historical',$3,folder_id,$4::date,$5::date,uid_validity,0,upper_uid,uid_validity>0,false FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap'`, id, generation, index, start, before)
 	return processingError(e)
 }
 
@@ -209,7 +209,7 @@ func createAutomaticSync(ctx context.Context, tx pgx.Tx, owner, account, id stri
 	if e != nil {
 		return processingError(e)
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO mail_sync_run_folders(owner_id,account_id,run_id,folder_id,uid_validity,after_uid,upper_uid,initialized,done)SELECT owner_id,account_id,$1,folder_id,uid_validity,after_uid,upper_uid,initialized,done FROM mail_automation_progress WHERE automation_id=$2 AND generation=$3 AND lane=$4 AND window_index=$5`, run, id, generation, lane, window); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO mail_sync_run_folders(owner_id,account_id,run_id,folder_id,uid_validity,after_uid,upper_uid,initialized,done,cursor_key_id,cursor_ciphertext)SELECT owner_id,account_id,$1,folder_id,uid_validity,after_uid,upper_uid,initialized,done,cursor_key_id,cursor_ciphertext FROM mail_automation_progress WHERE automation_id=$2 AND generation=$3 AND lane=$4 AND window_index=$5`, run, id, generation, lane, window); e != nil {
 		return processingError(e)
 	}
 	if lane != "bootstrap" {
@@ -239,7 +239,7 @@ func createAutomaticProcessing(ctx context.Context, tx pgx.Tx, owner, account, i
 	if lastLane == preferred {
 		preferred = "historical"
 	}
-	rows, e := tx.Query(ctx, `SELECT m.id,member.lane,(SELECT i.id::text FROM mail_processing_items i WHERE i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) FROM mail_automation_messages member JOIN mail_discovered_messages m ON m.owner_id=member.owner_id AND m.account_id=member.account_id AND m.id=member.message_id JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE member.automation_id=$1 AND member.generation=$2 AND f.selected AND f.available AND f.selectable AND (`+processingPending+` OR `+automaticSizeRecovery+`) ORDER BY (member.lane=$3) DESC,member.discovered_at,m.id LIMIT 100`, id, generation, preferred)
+	rows, e := tx.Query(ctx, `SELECT m.id,member.lane,(SELECT i.id::text FROM mail_processing_items i WHERE i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) FROM mail_automation_messages member JOIN mail_discovered_messages m ON m.owner_id=member.owner_id AND m.account_id=member.account_id AND m.id=member.message_id LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE member.automation_id=$1 AND member.generation=$2 AND `+processingSourceSelected+` AND (`+processingPending+` OR `+automaticSizeRecovery+`) ORDER BY (member.lane=$3) DESC,member.discovered_at,m.id LIMIT 100`, id, generation, preferred)
 	if e != nil {
 		return processingError(e)
 	}

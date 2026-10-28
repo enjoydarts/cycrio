@@ -4,6 +4,7 @@ import { createAPI } from './api.ts';
 import {
   createCredentialsController,
   validSecret,
+  serializeOAuthCredential,
   type CredentialsState,
 } from './credentials.ts';
 
@@ -15,6 +16,8 @@ const rows = [
   'resend',
   'clerk_webhook',
   'resend_webhook',
+  'gmail_oauth',
+  'outlook_oauth',
 ].map((provider) => ({
   provider,
   state: 'not_configured',
@@ -66,11 +69,35 @@ test('secret validation accepts only 8..4096 visible ASCII characters', () => {
     assert.equal(validSecret(value), false);
 });
 
+test('OAuth app credentials serialize separate fields and reject unsafe callback URIs', () => {
+  const fields = {
+    ClientID: 'client-id',
+    ClientSecret: 'client-secret',
+    RedirectURI: 'http://localhost:8090/v1/mail/oauth/callback/gmail',
+  };
+  assert.equal(
+    serializeOAuthCredential('gmail_oauth', fields),
+    JSON.stringify(fields),
+  );
+  for (const uri of [
+    'http://api.example.com/v1/mail/oauth/callback/gmail',
+    'https://api.example.com/wrong',
+    'https://api.example.com/v1/mail/oauth/callback/gmail?x=1',
+    'https://user@api.example.com/v1/mail/oauth/callback/gmail',
+  ])
+    assert.throws(() =>
+      serializeOAuthCredential('gmail_oauth', { ...fields, RedirectURI: uri }),
+    );
+  assert.throws(() =>
+    serializeOAuthCredential('gmail_oauth', { ...fields, ClientSecret: '' }),
+  );
+});
+
 test('load publishes metadata and audit only, without storing secret inputs', async () => {
   const f = fixture();
   await f.controller.load();
   assert.equal(f.controller.state.status, 'ready');
-  assert.equal(f.controller.state.credentials.length, 7);
+  assert.equal(f.controller.state.credentials.length, 9);
   assert.deepEqual(f.controller.state.events, []);
   await f.controller.put('openai', 'invalid', 0);
   assert.equal(f.controller.state.error, 'invalid_request');
@@ -130,7 +157,7 @@ test('conflict reloads current metadata and requires a new explicit submit', asy
   await f.controller.load();
   await f.controller.put('openai', 'private-secret', 0);
   assert.equal(f.controller.state.error, 'conflict');
-  assert.equal(f.controller.state.credentials.length, 7);
+  assert.equal(f.controller.state.credentials.length, 9);
   assert.equal(f.calls.filter((call) => call.startsWith('PUT')).length, 1);
   assert.equal(f.calls.length, 5);
 });

@@ -278,22 +278,19 @@ func TestBillingMigrationNineDownUpPreservesContracts(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 8)
-	if e != nil || len(down) != 10 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 || down[3].Source.Version != 15 || down[4].Source.Version != 14 || down[5].Source.Version != 13 || down[6].Source.Version != 12 || down[7].Source.Version != 11 || down[8].Source.Version != 10 || down[9].Source.Version != 9 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 9)
 	var preservedV8 string
 	if e = f.runtime.pool.QueryRow(ctx, `SELECT service FROM subscriptions WHERE owner_id=$1 AND id=$2`, f.owner, s.ID).Scan(&preservedV8); e != nil || preservedV8 != s.Service {
 		t.Fatal("v8 data", e)
 	}
-	if _, e = p.Up(ctx); e != nil {
-		t.Fatal(e)
-	}
+	up, e := p.Up(ctx)
+	assertMigrationRange(t, up, e, 9, latestMigrationVersion)
 	preserved, e := NewSubscriptionRepository(f.runtime.pool).Create(ctx, f.owner, in)
 	if e != nil || preserved.ID != s.ID || preserved.Version != s.Version || len(preserved.Sources) != 1 || preserved.Sources[0].OriginalEvent.Service != "Original service" {
 		t.Fatal("v8 request/source preserved", preserved, e)
 	}
 	var version, audits int
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM subscription_audit)`).Scan(&version, &audits); e != nil || version != 18 || audits != 1 {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT (SELECT max(version_id) FROM goose_db_version WHERE is_applied),(SELECT count(*) FROM subscription_audit)`).Scan(&version, &audits); e != nil || version != latestMigrationVersion || audits != 1 {
 		t.Fatal(version, audits, e)
 	}
 	if _, e = NewBillingRepository(f.runtime.pool).Create(ctx, f.owner, s.ID, billingInput("invoice", "0", "2024-01-01")); e != nil {

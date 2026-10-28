@@ -16,6 +16,9 @@ var (
 )
 
 type SaveInput struct {
+	Provider        string `json:"provider,omitempty"`
+	Host            string `json:"host,omitempty"`
+	Port            int    `json:"port,omitempty"`
 	ExpectedVersion int64  `json:"expected_version"`
 	Label           string `json:"label"`
 	Login           string `json:"login"`
@@ -32,6 +35,8 @@ type FolderInput struct {
 type Account struct {
 	ID                string     `json:"id"`
 	Provider          string     `json:"provider"`
+	Host              string     `json:"host,omitempty"`
+	Port              int        `json:"port,omitempty"`
 	Label             string     `json:"label"`
 	State             string     `json:"state"`
 	Version           int64      `json:"version"`
@@ -44,12 +49,13 @@ type Account struct {
 	Folders           []Folder   `json:"folders"`
 }
 type Folder struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Delimiter  string `json:"delimiter"`
-	Selectable bool   `json:"selectable"`
-	Available  bool   `json:"available"`
-	Selected   bool   `json:"selected"`
+	DisplayName string `json:"display_name,omitempty"`
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Delimiter   string `json:"delimiter"`
+	Selectable  bool   `json:"selectable"`
+	Available   bool   `json:"available"`
+	Selected    bool   `json:"selected"`
 }
 type Probe struct {
 	ID         string     `json:"id"`
@@ -67,6 +73,7 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type RemoteFolder struct {
+	DisplayName     string
 	Name, Delimiter string
 	Selectable      bool
 }
@@ -80,6 +87,9 @@ type AdapterError struct{ Code string }
 func (e AdapterError) Error() string { return "mail connection check failed" }
 
 type CredentialVersion struct {
+	Provider  string               `json:"-"`
+	Host      string               `json:"-"`
+	Port      int                  `json:"-"`
 	ID        string               `json:"-"`
 	OwnerID   string               `json:"-"`
 	AccountID string               `json:"-"`

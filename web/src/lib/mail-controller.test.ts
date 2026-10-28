@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApiError } from './api.ts';
-import { createMailController } from './mail-controller.ts';
+import {
+  createMailController,
+  mailFolderLabel,
+  filterMailFolders,
+} from './mail-controller.ts';
 import type { MailAPI } from './mail-api.ts';
 import { account, probe, ids } from './mail-test-fixtures.ts';
 function setup(overrides: Partial<MailAPI> = {}) {
@@ -24,6 +28,169 @@ function setup(overrides: Partial<MailAPI> = {}) {
   );
   return { controller, api, denied: () => denied };
 }
+
+test('folder display and search use Japanese labels while fallback names remain searchable', () => {
+  const folders = [
+    {
+      id: ids.folder,
+      name: 'Label_123456',
+      display_name: '請求メール',
+      delimiter: '',
+      selectable: true,
+      available: true,
+      selected: false,
+    },
+    {
+      id: ids.other,
+      name: 'INBOX',
+      display_name: '',
+      delimiter: '/',
+      selectable: true,
+      available: true,
+      selected: false,
+    },
+  ];
+  assert.equal(mailFolderLabel(folders[0]), '請求メール');
+  assert.equal(mailFolderLabel(folders[1]), 'INBOX');
+  assert.deepEqual(
+    filterMailFolders(folders, '請求').map((folder) => folder.id),
+    [ids.folder],
+  );
+  assert.deepEqual(
+    filterMailFolders(folders, 'inbox').map((folder) => folder.id),
+    [ids.other],
+  );
+  assert.deepEqual(filterMailFolders(folders, 'Label_123456'), []);
+  assert.equal(folders[0].name, 'Label_123456');
+});
+
+test('IMAP drafts retain endpoint and input on save failure and cannot change existing providers', async () => {
+  let sent: unknown;
+  const { controller: c } = setup({
+    list: async () => [
+      account({ provider: 'imap', host: 'imap.example.com', port: 143 }),
+    ],
+    save: async (_id, input) => {
+      sent = input;
+      throw new ApiError('dependency_unavailable');
+    },
+  });
+  await c.refresh();
+  c.select(ids.account);
+  c.edit({
+    provider: 'gmail',
+    login: 'owner@example.com',
+    app_password: 'password',
+  });
+  assert.equal(c.state().form?.provider, 'imap');
+  await c.save();
+  assert.equal(c.state().form?.host, 'imap.example.com');
+  assert.equal(c.state().form?.app_password, 'password');
+  assert.equal((sent as { port: number }).port, 143);
+});
+
+test('generic IMAP accepts server login names and passwords without Fastmail email restrictions', async () => {
+  let sent: unknown;
+  const { controller: c } = setup({
+    list: async () => [
+      account({ provider: 'imap', host: 'imap.example.com', port: 993 }),
+    ],
+    save: async (_id, input) => {
+      sent = input;
+      return account({ provider: 'imap' });
+    },
+  });
+  await c.refresh();
+  c.select(ids.account);
+  c.edit({ login: 'mail-user', app_password: 'abc 123' });
+  await c.save();
+  assert.equal((sent as { login: string } | undefined)?.login, 'mail-user');
+  assert.equal(
+    (sent as { app_password: string } | undefined)?.app_password,
+    'abc 123',
+  );
+});
+
+test('OAuth readiness blocks start, start errors retain label and a successful retry navigates once', async () => {
+  const navigation: string[] = [];
+  let starts = 0,
+    ready = false,
+    fail = true;
+  const { api } = setup({
+    oauthProviders: async () => [
+      { provider: 'gmail', ready },
+      { provider: 'outlook', ready: false },
+    ],
+    startOAuth: async () => {
+      starts++;
+      if (fail) throw new ApiError('dependency_unavailable');
+      return 'https://accounts.google.com/o/oauth2/v2/auth?state=one';
+    },
+  });
+  const c = createMailController(
+    api,
+    async () => 's',
+    () => {},
+    () => {},
+    () => ids.request,
+    (url) => navigation.push(url),
+  );
+  await c.refresh();
+  c.newAccount();
+  c.edit({ provider: 'gmail', label: 'OAuth draft' });
+  await c.connectOAuth();
+  assert.equal(starts, 0);
+  ready = true;
+  await c.refresh();
+  await c.connectOAuth();
+  assert.equal(c.state().form?.label, 'OAuth draft');
+  assert.equal(c.state().error, 'dependency_unavailable');
+  fail = false;
+  await c.connectOAuth();
+  assert.deepEqual(navigation, [
+    'https://accounts.google.com/o/oauth2/v2/auth?state=one',
+  ]);
+  assert.equal(starts, 2);
+});
+
+test('OAuth navigation observes readiness, rejects password save and ignores disposed late responses', async () => {
+  let finish!: (url: string) => void;
+  let saves = 0;
+  const navigation: string[] = [];
+  const { api } = setup({
+    oauthProviders: async () => [
+      { provider: 'gmail', ready: true },
+      { provider: 'outlook', ready: false },
+    ],
+    startOAuth: async () =>
+      await new Promise((resolve) => {
+        finish = resolve;
+      }),
+    save: async () => {
+      saves++;
+      return account();
+    },
+  });
+  const c = createMailController(
+    api,
+    async () => 's',
+    () => {},
+    () => {},
+    () => ids.request,
+    (url) => navigation.push(url),
+  );
+  await c.refresh();
+  c.newAccount();
+  c.edit({ provider: 'gmail', label: 'Google' });
+  await c.save();
+  assert.equal(saves, 0);
+  const running = c.connectOAuth();
+  assert.equal(c.state().status, 'saving');
+  c.dispose();
+  finish('https://accounts.google.com/o/oauth2/v2/auth');
+  await running;
+  assert.deepEqual(navigation, []);
+});
 test('closing connection details clears credentials, selection and confirmation; late reads cannot restore them', async () => {
   const { controller: c } = setup();
   await c.refresh();

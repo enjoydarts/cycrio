@@ -15,7 +15,7 @@ import (
 func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
+	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,12 +33,12 @@ func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	}
 	out := map[string]string{}
 	for _, name := range names {
-		drop := []string{}
+		drop := mailConnectionMigrationColumns(name)
 		if name == "billing_events" || name == "billing_event_sources" {
-			drop = []string{"provenance"}
+			drop = append(drop, "provenance")
 		}
 		var raw string
-		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook'))x`, drop).Scan(&raw); err != nil {
+		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth'))x`, drop).Scan(&raw); err != nil {
 			t.Fatal(err)
 		}
 		out[name] = raw
@@ -63,9 +63,7 @@ func TestBillingAutomationMigrationSeventeenPreservesEverySixteenRecord(t *testi
 	}
 	provider := automationMigrationProvider(t, f.runtime.pool)
 	down, err := provider.DownTo(ctx, 16)
-	if err != nil || len(down) != 2 || down[0].Source.Version != 18 || down[1].Source.Version != 17 {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 17)
 	if !reflect.DeepEqual(before, billingLegacyRecords(t, f.runtime.pool)) {
 		t.Fatal("down17 changed legacy records")
 	}
@@ -73,9 +71,7 @@ func TestBillingAutomationMigrationSeventeenPreservesEverySixteenRecord(t *testi
 		t.Fatal("exact v16 audit restrictions must be restored")
 	}
 	up, err := provider.Up(ctx)
-	if err != nil || len(up) != 2 || up[0].Source.Version != 17 || up[1].Source.Version != 18 {
-		t.Fatal(up, err)
-	}
+	assertMigrationRange(t, up, err, 17, latestMigrationVersion)
 	if !reflect.DeepEqual(before, billingLegacyRecords(t, f.runtime.pool)) {
 		t.Fatal("up17 changed legacy records")
 	}

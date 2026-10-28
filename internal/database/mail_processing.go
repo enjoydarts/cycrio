@@ -75,6 +75,12 @@ func (r *MailProcessingRepository) beginAccount(ctx context.Context, owner, acco
 // snapshots alone do not consume it; failed and unknown attempts always do.
 const processingPending = `NOT EXISTS(SELECT 1 FROM mail_processing_items i WHERE i.message_id=m.id AND i.state<>'cancelled')`
 
+// API identities can belong to multiple labels. Eligibility follows a folder
+// in which this specific message was discovered, while retaining its original
+// immutable source folder for decryption. An unrelated selected folder never
+// grants access to a remote reference.
+const processingSourceSelected = `((m.remote_fingerprint IS NULL AND coalesce(f.selected AND f.available AND f.selectable,false)) OR (m.remote_fingerprint IS NOT NULL AND EXISTS(SELECT 1 FROM mail_message_folder_memberships source_membership JOIN mail_account_folders selected_folder ON selected_folder.id=source_membership.folder_id AND selected_folder.account_id=source_membership.account_id WHERE source_membership.owner_id=m.owner_id AND source_membership.account_id=m.account_id AND source_membership.message_id=m.id AND selected_folder.selected AND selected_folder.available AND selected_folder.selectable)))`
+
 func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lock bool) (mailprocessing.Preview, error) {
 	out := mailprocessing.Preview{AccountID: account}
 	var state string
@@ -97,7 +103,7 @@ func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lo
 		out.MaxOutputTokens = public.MaxOutputTokens
 		out.TimeoutSeconds = public.TimeoutSeconds
 	}
-	if e = tx.QueryRow(ctx, `SELECT count(*) FROM mail_discovered_messages m JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND f.selected AND f.available AND f.selectable AND `+processingPending, owner, account).Scan(&out.PendingCount); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT count(*) FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND `+processingSourceSelected+` AND `+processingPending, owner, account).Scan(&out.PendingCount); e != nil {
 		return out, mailprocessing.ErrUnavailable
 	}
 	if e = tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE state='failed'),count(*) FILTER(WHERE state='unknown') FROM (SELECT DISTINCT ON(message_id) message_id,state FROM mail_processing_items WHERE owner_id=$1 AND account_id=$2 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC) latest`, owner, account).Scan(&out.FailedCount, &out.UnknownCount); e != nil {
@@ -206,7 +212,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
 		}
 		var selected bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_discovered_messages m JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.id=$1 AND m.owner_id=$2 AND m.account_id=$3 AND f.selected AND f.available AND f.selectable)`, request.MessageID, owner, account).Scan(&selected); e != nil {
+		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.id=$1 AND m.owner_id=$2 AND m.account_id=$3 AND `+processingSourceSelected+`)`, request.MessageID, owner, account).Scan(&selected); e != nil {
 			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
 		}
 		if !selected {
@@ -214,7 +220,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		}
 		ids = append(ids, request.MessageID)
 	} else {
-		rows, e := tx.Query(ctx, `SELECT m.id FROM mail_discovered_messages m JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND f.selected AND f.available AND f.selectable AND `+processingPending+` ORDER BY m.created_at,m.id LIMIT $3`, owner, account, in.MaxMessages)
+		rows, e := tx.Query(ctx, `SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND `+processingSourceSelected+` AND `+processingPending+` ORDER BY m.created_at,m.id LIMIT $3`, owner, account, in.MaxMessages)
 		if e != nil {
 			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
 		}

@@ -29,6 +29,15 @@ func cleanText(s string, max int) bool {
 }
 func validSave(owner, id string, in SaveInput) (string, bool) {
 	label := strings.TrimSpace(in.Label)
+	if in.Provider == "imap" {
+		if !validOwned(owner, id, in.ExpectedVersion) || label == "" || !cleanText(label, 320) || utf8.RuneCountInString(label) > 80 || in.Login == "" || !cleanText(in.Login, 254) || in.AppPassword == "" || !cleanText(in.AppPassword, 1024) || !ValidIMAPHost(in.Host) || (in.Port != 143 && in.Port != 993) {
+			return "", false
+		}
+		return label, true
+	}
+	if (in.Provider != "" && in.Provider != "fastmail") || in.Host != "" || in.Port != 0 {
+		return "", false
+	}
 	if !validOwned(owner, id, in.ExpectedVersion) || label == "" || !cleanText(label, 320) || utf8.RuneCountInString(label) > 80 || !cleanText(in.Login, 254) || len(in.AppPassword) < 8 || len(in.AppPassword) > 1024 {
 		return "", false
 	}
@@ -49,7 +58,7 @@ func validFolders(items []RemoteFolder) bool {
 	}
 	seen := map[string]bool{}
 	for _, f := range items {
-		if f.Name == "" || !cleanText(f.Name, 1024) || seen[f.Name] || !cleanText(f.Delimiter, 4) || utf8.RuneCountInString(f.Delimiter) > 1 {
+		if f.Name == "" || !cleanText(f.Name, 1024) || !cleanText(f.DisplayName, 1024) || seen[f.Name] || !cleanText(f.Delimiter, 4) || utf8.RuneCountInString(f.Delimiter) > 1 {
 			return false
 		}
 		seen[f.Name] = true

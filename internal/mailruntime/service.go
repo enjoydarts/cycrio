@@ -5,6 +5,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/fastmail"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailconnectionruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -12,5 +13,5 @@ import (
 // Constructing the service performs no IMAP operations. Only an explicit probe
 // claimed and run by the Worker may contact Fastmail.
 func New(pool *pgxpool.Pool, keyring *secretstore.Keyring) *mailaccounts.Service {
-	return mailaccounts.NewService(database.NewMailAccountRepository(pool), keyring, fastmail.NewClient())
+	return mailaccounts.NewService(database.NewMailAccountRepository(pool), keyring, fastmail.NewClient(), mailaccounts.WithCheckerFactory(mailconnectionruntime.New(pool, keyring).Checker))
 }

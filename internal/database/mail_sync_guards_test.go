@@ -145,18 +145,15 @@ func TestMailSyncMigrationDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	result, e := p.DownTo(ctx, 5)
-	if e != nil || len(result) == 0 || result[len(result)-1].Source.Version != 6 {
-		t.Fatal(result, e)
-	}
+	assertMigrationRange(t, result, e, latestMigrationVersion, 6)
 	var ok bool
 	if e = pool.QueryRow(ctx, `SELECT to_regclass('mail_sync_runs') IS NULL AND to_regclass('mail_accounts') IS NOT NULL AND to_regprocedure('cancel_changed_mail_sync()') IS NULL`).Scan(&ok); e != nil || !ok {
 		t.Fatal(ok, e)
 	}
-	if _, e = p.Up(ctx); e != nil {
-		t.Fatal(e)
-	}
+	up, e := p.Up(ctx)
+	assertMigrationRange(t, up, e, 6, latestMigrationVersion)
 	var version int64
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 18 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != latestMigrationVersion {
 		t.Fatal(version, e)
 	}
 }

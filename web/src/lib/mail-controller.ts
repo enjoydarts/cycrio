@@ -3,9 +3,22 @@ import type {
   MailAPI,
   MailAccount,
   MailProbe,
+  MailFolder,
   ProbeInput,
+  OAuthAvailability,
 } from './mail-api.ts';
+export const mailFolderLabel = (folder: MailFolder) =>
+  folder.display_name || folder.name;
+export const filterMailFolders = (folders: MailFolder[], query: string) =>
+  folders.filter((folder) =>
+    mailFolderLabel(folder)
+      .toLocaleLowerCase()
+      .includes(query.toLocaleLowerCase()),
+  );
 export type MailForm = {
+  provider: MailAccount['provider'];
+  host: string;
+  port: number;
   id: string;
   baseline: number;
   label: string;
@@ -16,6 +29,7 @@ export type MailForm = {
   folder_ids: string[];
 };
 export type MailView = {
+  oauthProviders: OAuthAvailability[];
   status:
     'idle' | 'loading' | 'ready' | 'saving' | 'error' | 'denied' | 'disposed';
   accounts: MailAccount[];
@@ -27,6 +41,7 @@ export type MailView = {
   disconnectConfirmation: { id: string; version: number } | null;
 };
 export const emptyMailView = (): MailView => ({
+  oauthProviders: [],
   status: 'idle',
   accounts: [],
   selected: null,
@@ -39,6 +54,9 @@ export const emptyMailView = (): MailView => ({
 export const probePending = (probe: MailProbe | null | undefined) =>
   !!probe && ['queued', 'leased', 'running'].includes(probe.state);
 const draft = (account: MailAccount): MailForm => ({
+  provider: account.provider,
+  host: account.host ?? '',
+  port: account.port ?? 993,
   id: account.id,
   baseline: account.version,
   label: account.label,
@@ -56,6 +74,7 @@ export function createMailController(
   changed: (view: MailView) => void,
   onDenied: () => void,
   randomUUID: () => string = () => crypto.randomUUID(),
+  navigate: (url: string) => void = (url) => window.location.assign(url),
 ) {
   let view = emptyMailView(),
     generation = 0,
@@ -104,6 +123,9 @@ export function createMailController(
     publish({ status: 'loading', error: null });
     try {
       const accounts = await api.list(token, signal);
+      const oauthProviders = api.oauthProviders
+        ? await api.oauthProviders(token, signal)
+        : [];
       if (!current(seq)) return;
       const account = accounts.find((a) => a.id === view.selected);
       if (view.selected && !account && view.form?.baseline !== 0) {
@@ -130,6 +152,7 @@ export function createMailController(
       publish({
         status: 'ready',
         accounts,
+        oauthProviders,
         form:
           account && !view.form?.credentialsDirty && !view.form?.foldersDirty
             ? draft(account)
@@ -209,6 +232,9 @@ export function createMailController(
         selected: id,
         form: {
           id,
+          provider: 'fastmail',
+          host: '',
+          port: 993,
           baseline: 0,
           label: '',
           login: '',
@@ -223,10 +249,22 @@ export function createMailController(
         disconnectConfirmation: null,
       });
     },
-    edit(patch: Partial<Pick<MailForm, 'label' | 'login' | 'app_password'>>) {
+    edit(
+      patch: Partial<
+        Pick<
+          MailForm,
+          'label' | 'login' | 'app_password' | 'provider' | 'host' | 'port'
+        >
+      >,
+    ) {
       if (!allowed() || mutating || !view.form) return;
       publish({
-        form: { ...view.form, ...patch, credentialsDirty: true },
+        form: {
+          ...view.form,
+          ...patch,
+          ...(selected() ? { provider: selected()!.provider } : {}),
+          credentialsDirty: true,
+        },
         success: null,
       });
     },
@@ -261,14 +299,31 @@ export function createMailController(
     async save() {
       const form = view.form;
       if (!allowed() || !form || mutating || view.uncertain) return;
+      if (form.provider === 'gmail' || form.provider === 'outlook') {
+        publish({ status: 'error', error: 'invalid_request' });
+        return;
+      }
+      const provider = form.provider;
       const label = form.label.trim(),
         login = form.login.trim();
       if (
         !label ||
         [...label].length > 80 ||
-        login.length > 254 ||
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login) ||
-        !/^[\x21-\x7e]{8,1024}$/.test(form.app_password)
+        (provider === 'imap'
+          ? !login ||
+            new TextEncoder().encode(login).length > 254 ||
+            /\p{Cc}/u.test(login) ||
+            !form.app_password ||
+            new TextEncoder().encode(form.app_password).length > 1024 ||
+            /\p{Cc}/u.test(form.app_password)
+          : login.length > 254 ||
+            !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(login) ||
+            !/^[\x21-\x7e]{8,1024}$/.test(form.app_password)) ||
+        (form.provider === 'imap' &&
+          (!/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/i.test(
+            form.host.trim(),
+          ) ||
+            ![993, 143].includes(form.port)))
       ) {
         publish({ status: 'error', error: 'invalid_request' });
         return;
@@ -282,12 +337,56 @@ export function createMailController(
               label,
               login,
               app_password: form.app_password,
+              provider,
+              ...(form.provider === 'imap'
+                ? { host: form.host.trim(), port: form.port }
+                : {}),
             },
             token,
             signal,
           ),
         '接続情報を保存しました。続けて接続確認を実行してください。',
       );
+    },
+    async connectOAuth() {
+      const form = view.form;
+      if (!allowed() || mutating || !form || view.uncertain || !api.startOAuth)
+        return;
+      const provider = form.provider;
+      if (
+        (provider !== 'gmail' && provider !== 'outlook') ||
+        !view.oauthProviders.some(
+          (row) => row.provider === provider && row.ready,
+        ) ||
+        !form.label.trim() ||
+        [...form.label.trim()].length > 80
+      ) {
+        publish({ status: 'error', error: 'invalid_request' });
+        return;
+      }
+      mutating = true;
+      const { seq, signal } = begin();
+      publish({ status: 'saving', error: null, success: null });
+      try {
+        const url = await api.startOAuth(
+          form.id,
+          {
+            provider,
+            label: form.label.trim(),
+            expected_version: form.baseline,
+          },
+          token,
+          signal,
+        );
+        if (current(seq)) {
+          navigate(url);
+          publish({ status: 'ready' });
+        }
+      } catch (error) {
+        failed(error, seq);
+      } finally {
+        mutating = false;
+      }
     },
     async requestProbe() {
       const account = selected();

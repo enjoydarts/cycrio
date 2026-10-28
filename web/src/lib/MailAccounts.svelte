@@ -11,6 +11,8 @@
     createMailController,
     emptyMailView,
     probePending,
+    mailFolderLabel,
+    filterMailFolders,
   } from './mail-controller.ts';
   let {
     api,
@@ -18,12 +20,14 @@
     onDenied,
     syncAPI,
     returnTo = null,
+    oauthResult = null,
   }: {
     api: MailAPI;
     token: TokenProvider;
     onDenied: () => void;
     syncAPI?: MailSyncAPI;
     returnTo?: string | null;
+    oauthResult?: string | null;
   } = $props();
   const syncRequests: SyncRequests = new Map();
   let view = $state(emptyMailView());
@@ -32,6 +36,20 @@
   let syncSaving = $state(false);
   let controller: ReturnType<typeof createMailController> | undefined;
   const account = $derived(view.accounts.find((a) => a.id === view.selected));
+  const providerNames: Record<MailAccount['provider'], string> = {
+    fastmail: 'Fastmail',
+    imap: 'IMAP',
+    gmail: 'Gmail / Google Workspace',
+    outlook: 'Outlook.com / Hotmail',
+  };
+  const oauth = $derived(
+    view.form?.provider === 'gmail' || view.form?.provider === 'outlook',
+  );
+  const oauthReady = $derived(
+    view.oauthProviders.some(
+      (row) => row.provider === view.form?.provider && row.ready,
+    ),
+  );
   const busy = $derived(
     view.status === 'saving' || view.status === 'loading' || syncSaving,
   );
@@ -43,11 +61,7 @@
       : safeAnalysisReturn(returnTo),
   );
   const returnLocked = $derived(busy || view.uncertain || view.form !== null);
-  const folders = $derived(
-    (account?.folders ?? []).filter((folder) =>
-      folder.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()),
-    ),
-  );
+  const folders = $derived(filterMailFolders(account?.folders ?? [], query));
   const states: Record<MailAccount['state'], string> = {
     unverified: '接続未確認',
     ready: '接続確認済み',
@@ -59,8 +73,7 @@
     access_denied: '利用許可を確認してください。',
     dependency_unavailable:
       'サービスに接続できませんでした。時間をおいて再試行してください。',
-    invalid_request:
-      '表示名、メールアドレス、アプリパスワードの入力条件を確認してください。',
+    invalid_request: '表示名、接続先、認証情報の入力条件を確認してください。',
     conflict:
       '別の操作で設定が更新されました。最新の状態に更新して内容を確認し、必要なら入力を破棄してからやり直してください。',
     not_found: '対象の接続情報が見つかりません。最新の状態に更新してください。',
@@ -68,9 +81,9 @@
   const reasons: Record<ProbeError, string> = {
     '': '',
     authentication_failed:
-      '認証に失敗しました。専用のアプリパスワードを確認してください。',
+      '認証に失敗しました。接続情報の更新または再認証を行ってください。',
     tls_failed: '安全な TLS 接続を確立できませんでした。',
-    connection_failed: 'Fastmail に接続できませんでした。',
+    connection_failed: 'メールサービスに接続できませんでした。',
     timeout: '接続確認が時間切れになりました。',
     response_too_large: 'サーバーの応答が大きすぎました。',
     folder_limit: 'フォルダー数が取得上限を超えました。',
@@ -158,6 +171,14 @@
       onclick={() => controller?.refresh()}>更新</button
     >
   </div>
+  {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
+      メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
+    </p>{:else if oauthResult === 'failed'}<p
+      class="mail-feedback"
+      role="alert"
+    >
+      メールの認証が完了しませんでした。接続設定からもう一度お試しください。
+    </p>{/if}
   {#if !view.form}{@render feedback()}{/if}
   <section class="mail-list" aria-label="メールアカウント一覧">
     {#if view.status === 'loading' && !view.accounts.length}<p role="status">
@@ -170,7 +191,7 @@
           <div class="mail-account-row">
             <div class="mail-account-name">
               <strong>{row.label}</strong><span
-                >Fastmail · 対象 {row.folders.filter(
+                >{providerNames[row.provider]} · 対象 {row.folders.filter(
                   (folder) => folder.selected,
                 ).length} フォルダー</span
               >
@@ -192,9 +213,13 @@
   <details class="mail-guide">
     <summary>連携について</summary>
     <p>
-      Fastmail 専用のアプリパスワードで <code>imap.fastmail.com:993</code
-      >（TLS）に接続します。Google
-      ログインとは別の設定です。保存だけでは同期しません。本文取得・AI
+      Gmail / Google Workspace と Outlook.com / Hotmail
+      は各サービスの認証画面で、メールの読み取りを許可します。Google Workspace
+      は組織の管理者による許可が必要な場合があります。アプリの Google
+      ログインとは別の認可です。 Fastmail は専用のアプリパスワードで <code
+        >imap.fastmail.com:993</code
+      >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
+      143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
       送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
     </p>
   </details>
@@ -207,7 +232,7 @@
     </div>{/if}
   <Modal
     open={view.form !== null}
-    title={account?.label ?? 'Fastmail を追加'}
+    title={account?.label ?? 'メールを追加'}
     {busy}
     onclose={() => {
       controller?.close();
@@ -218,7 +243,11 @@
       {@render feedback()}
       {#if view.form}
         <div class="mail-section-heading">
-          <h3>{account ? 'Fastmail の接続設定' : '接続情報'}</h3>
+          <h3>
+            {account
+              ? `${providerNames[account.provider]} の接続設定`
+              : '接続情報'}
+          </h3>
           {#if account}<span class="mail-badge">{states[account.state]}</span
             >{/if}
         </div>
@@ -226,16 +255,38 @@
           <form
             onsubmit={(event) => {
               event.preventDefault();
-              void controller?.save();
+              if (oauth) void controller?.connectOAuth();
+              else void controller?.save();
             }}
             autocomplete="off"
           >
             <p class="mail-help">
-              {account
-                ? '接続情報を更新する場合は、メールアドレスと新しいアプリパスワードを再入力してください。保存すると以前の接続確認とフォルダー選択をリセットします。'
-                : '本人が所有する Fastmail のメールアドレスと、メール利用を許可した専用のアプリパスワードを入力してください。'}
+              {oauth
+                ? 'メールの読み取りを許可します。メールの送信・削除は行いません。認証情報はサービスの認証画面で入力します。'
+                : account
+                  ? '接続情報を更新する場合は、メールアドレスと新しいアプリパスワードを再入力してください。保存すると以前の接続確認とフォルダー選択をリセットします。'
+                  : view.form.provider === 'imap'
+                    ? '本人が所有するメールアカウントのログイン名と、メールサーバーのパスワードを入力してください。'
+                    : '本人が所有するメールアドレスと、メール利用を許可したアプリパスワードを入力してください。'}
             </p>
             <div class="mail-fields">
+              <label for="mail-provider"
+                >メールサービス<select
+                  id="mail-provider"
+                  value={view.form.provider}
+                  disabled={busy || !!account}
+                  onchange={(event) =>
+                    controller?.edit({
+                      provider: event.currentTarget
+                        .value as MailAccount['provider'],
+                    })}
+                >
+                  {#each Object.entries(providerNames) as [value, label]}<option
+                      {value}>{label}</option
+                    >{/each}
+                </select><span>登録後は同じメールサービスで再接続します。</span
+                ></label
+              >
               <label for="mail-label"
                 >表示名<input
                   id="mail-label"
@@ -247,49 +298,105 @@
                     controller?.edit({ label: event.currentTarget.value })}
                 /><span>1〜80 文字。前後の空白は除きます。</span></label
               >
-              <label for="mail-login"
-                >Fastmail のメールアドレス<input
-                  id="mail-login"
-                  name="fastmail-login"
-                  type="email"
-                  maxlength="254"
-                  required
-                  autocomplete="off"
-                  spellcheck="false"
-                  autocapitalize="none"
-                  value={view.form.login}
-                  disabled={busy || view.uncertain}
-                  oninput={(event) =>
-                    controller?.edit({ login: event.currentTarget.value })}
-                /><span>ログインに使用する完全なメールアドレス。</span></label
-              >
-              <label for="mail-password"
-                >専用のアプリパスワード<input
-                  id="mail-password"
-                  name="fastmail-app-password"
-                  type="password"
-                  minlength="8"
-                  maxlength="1024"
-                  required
-                  autocomplete="new-password"
-                  spellcheck="false"
-                  value={view.form.app_password}
-                  disabled={busy || view.uncertain}
-                  oninput={(event) =>
-                    controller?.edit({
-                      app_password: event.currentTarget.value,
-                    })}
-                /><span
-                  >空白を含まない半角英数・記号 8〜1024
-                  文字。保存後の再表示はできません。</span
-                ></label
-              >
+              {#if !oauth}
+                {#if view.form.provider === 'imap'}
+                  <label for="mail-host"
+                    >IMAP サーバー<input
+                      id="mail-host"
+                      type="text"
+                      required
+                      autocomplete="off"
+                      spellcheck="false"
+                      value={view.form.host}
+                      disabled={busy || view.uncertain}
+                      oninput={(event) =>
+                        controller?.edit({ host: event.currentTarget.value })}
+                    /><span
+                      >例:
+                      imap.example.com。公開されたサーバー名を入力してください。</span
+                    ></label
+                  >
+                  <label for="mail-port"
+                    >暗号化接続<select
+                      id="mail-port"
+                      value={view.form.port}
+                      disabled={busy || view.uncertain}
+                      onchange={(event) =>
+                        controller?.edit({
+                          port: Number(event.currentTarget.value),
+                        })}
+                      ><option value={993}>993 — TLS</option><option value={143}
+                        >143 — STARTTLS</option
+                      ></select
+                    ><span>STARTTLS が利用できない場合は接続しません。</span
+                    ></label
+                  >
+                {/if}
+                <label for="mail-login"
+                  >{view.form.provider === 'imap'
+                    ? 'ログイン名'
+                    : 'メールアドレス'}<input
+                    id="mail-login"
+                    name="fastmail-login"
+                    type={view.form.provider === 'imap' ? 'text' : 'email'}
+                    maxlength="254"
+                    required
+                    autocomplete="off"
+                    spellcheck="false"
+                    autocapitalize="none"
+                    value={view.form.login}
+                    disabled={busy || view.uncertain}
+                    oninput={(event) =>
+                      controller?.edit({ login: event.currentTarget.value })}
+                  /><span
+                    >{view.form.provider === 'imap'
+                      ? 'メールサーバーに登録したログイン名。'
+                      : 'ログインに使用する完全なメールアドレス。'}</span
+                  ></label
+                >
+                <label for="mail-password"
+                  >{view.form.provider === 'imap'
+                    ? 'パスワード'
+                    : '専用のアプリパスワード'}<input
+                    id="mail-password"
+                    name="fastmail-app-password"
+                    type="password"
+                    minlength={view.form.provider === 'imap' ? 1 : 8}
+                    maxlength="1024"
+                    required
+                    autocomplete="new-password"
+                    spellcheck="false"
+                    value={view.form.app_password}
+                    disabled={busy || view.uncertain}
+                    oninput={(event) =>
+                      controller?.edit({
+                        app_password: event.currentTarget.value,
+                      })}
+                  /><span
+                    >{view.form.provider === 'imap'
+                      ? 'サーバーが指定するパスワード。保存後の再表示はできません。'
+                      : '空白を含まない半角英数・記号 8〜1024 文字。保存後の再表示はできません。'}</span
+                  ></label
+                >
+              {/if}
             </div>
+            {#if oauth}
+              {#if !oauthReady}<p class="mail-help" role="status">
+                  管理者によるメール連携アプリの準備待ちです。準備が完了すると接続できます。
+                </p>{:else}<p class="mail-help">
+                  {view.form.provider === 'gmail'
+                    ? '個人 Gmail と Google Workspace に対応しています。Workspace の組織設定により、管理者の許可が必要な場合があります。'
+                    : '個人の Outlook.com / Hotmail アカウントに対応しています。'}
+                </p>{/if}
+            {/if}
             <div class="mail-actions">
               <button
                 type="submit"
                 class="mail-button mail-primary"
-                disabled={busy || view.uncertain}>接続情報を保存</button
+                disabled={busy || view.uncertain || (oauth && !oauthReady)}
+                >{oauth
+                  ? `${providerNames[view.form.provider]} で認証する`
+                  : '接続情報を保存'}</button
               ><button
                 id="mail-discard"
                 type="button"
@@ -382,7 +489,7 @@
                         event.currentTarget.checked,
                       )}
                   /><span
-                    ><strong>{folder.name}</strong><small
+                    ><strong>{mailFolderLabel(folder)}</strong><small
                       >{!folder.available
                         ? '取得不能 · 現在の一覧にありません'
                         : !folder.selectable
@@ -617,7 +724,8 @@
     line-height: 1.7;
     font-weight: 400;
   }
-  input:not([type='checkbox']) {
+  input:not([type='checkbox']),
+  select {
     width: 100%;
     min-width: 0;
     border: 1px solid var(--color-border);

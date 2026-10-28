@@ -27,6 +27,7 @@ type handlerOptions struct {
 	runtime         AIRuntimeService
 	routes          AIRoutesService
 	mail            MailAccountService
+	mailOAuth       MailOAuthService
 	mailSync        MailSyncService
 	mailProcessing  MailProcessingService
 	mailAutomation  MailAutomationService

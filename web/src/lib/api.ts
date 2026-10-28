@@ -13,6 +13,8 @@ export const credentialProviders = [
   'resend',
   'clerk_webhook',
   'resend_webhook',
+  'gmail_oauth',
+  'outlook_oauth',
 ] as const;
 export type CredentialProvider = (typeof credentialProviders)[number];
 export type CredentialSummary = {

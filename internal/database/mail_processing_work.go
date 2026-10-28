@@ -7,6 +7,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
+	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -41,7 +42,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 	if e = tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`, w.work.OwnerID).Scan(&w.userState); e != nil {
 		return fail(e)
 	}
-	if e = tx.QueryRow(ctx, `SELECT state,version,credential_version FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.work.Run.AccountID, w.work.OwnerID).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT state,version,credential_version,provider,host,port FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.work.Run.AccountID, w.work.OwnerID).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion, &w.work.Credential.Provider, &w.work.Credential.Host, &w.work.Credential.Port); e != nil {
 		return fail(e)
 	}
 	if e = lockAutomation(ctx, tx, w.work.OwnerID, w.work.Run.AccountID); e != nil {
@@ -98,7 +99,34 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 	}
 	if w.work.FolderID != "" {
 		var available bool
-		e = tx.QueryRow(ctx, `SELECT name,selected AND available AND selectable FROM mail_account_folders WHERE id=$1 AND account_id=$2 FOR SHARE`, w.work.FolderID, w.work.Run.AccountID).Scan(&w.work.FolderName, &available)
+		if mailsync.APIProvider(w.work.Credential.Provider) {
+			// Keep the original folder as the source envelope's AAD. Readers
+			// receive every currently eligible discovered membership so removing
+			// one label does not hide a message that retains another selected label.
+			rows, err := tx.Query(ctx, `SELECT f.name FROM mail_message_folder_memberships member JOIN mail_account_folders f ON f.id=member.folder_id AND f.account_id=member.account_id WHERE member.owner_id=$1 AND member.account_id=$2 AND member.message_id=$3 AND f.selected AND f.available AND f.selectable ORDER BY f.id FOR SHARE OF f`, w.work.OwnerID, w.work.Run.AccountID, w.work.MessageID)
+			if err != nil {
+				return fail(err)
+			}
+			for rows.Next() {
+				var name string
+				if err := rows.Scan(&name); err != nil {
+					rows.Close()
+					return fail(err)
+				}
+				w.work.ReaderFolders = append(w.work.ReaderFolders, name)
+			}
+			err = rows.Err()
+			rows.Close()
+			if err != nil {
+				return fail(err)
+			}
+			available = len(w.work.ReaderFolders) > 0
+			if available {
+				w.work.FolderName = w.work.ReaderFolders[0]
+			}
+		} else {
+			e = tx.QueryRow(ctx, `SELECT name,selected AND available AND selectable FROM mail_account_folders WHERE id=$1 AND account_id=$2 FOR SHARE`, w.work.FolderID, w.work.Run.AccountID).Scan(&w.work.FolderName, &available)
+		}
 		if errors.Is(e, pgx.ErrNoRows) {
 			w.valid = false
 		} else if e != nil {

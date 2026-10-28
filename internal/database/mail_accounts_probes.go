@@ -179,7 +179,7 @@ func (r *MailAccountRepository) Start(ctx context.Context, l mailaccounts.Lease)
 		return mailaccounts.Work{}, mailaccounts.ErrNotFound
 	}
 	var v mailaccounts.CredentialVersion
-	err = tx.QueryRow(ctx, `SELECT id,owner_id,account_id,version,key_id,ciphertext FROM mail_account_credentials WHERE id=$1 AND owner_id=$2 AND account_id=$3 AND version=$4 AND state='active'`, w.credential, w.owner, w.account, w.credentialVersion).Scan(&v.ID, &v.OwnerID, &v.AccountID, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext)
+	err = tx.QueryRow(ctx, `SELECT id,owner_id,account_id,version,key_id,ciphertext,(SELECT provider FROM mail_accounts a WHERE a.id=mail_account_credentials.account_id) FROM mail_account_credentials WHERE id=$1 AND owner_id=$2 AND account_id=$3 AND version=$4 AND state='active'`, w.credential, w.owner, w.account, w.credentialVersion).Scan(&v.ID, &v.OwnerID, &v.AccountID, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext, &v.Provider)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return mailaccounts.Work{}, mailaccounts.ErrUnavailable
 	}

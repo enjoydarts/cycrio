@@ -137,6 +137,8 @@ const summaries = [
   'resend',
   'clerk_webhook',
   'resend_webhook',
+  'gmail_oauth',
+  'outlook_oauth',
 ].map((provider) => ({
   provider,
   state: 'not_configured',

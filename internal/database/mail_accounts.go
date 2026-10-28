@@ -33,11 +33,11 @@ func (r *MailAccountRepository) beginOwned(ctx context.Context, owner string) (p
 	return tx, nil
 }
 
-const mailAccountColumns = `id,provider,label,state,version,credential_version,checked_at,last_error,created_at,updated_at`
+const mailAccountColumns = `id,provider,label,state,version,credential_version,checked_at,last_error,created_at,updated_at,host,port`
 
 func scanMailAccount(row pgx.Row) (mailaccounts.Account, error) {
 	var a mailaccounts.Account
-	err := row.Scan(&a.ID, &a.Provider, &a.Label, &a.State, &a.Version, &a.CredentialVersion, &a.CheckedAt, &a.LastError, &a.CreatedAt, &a.UpdatedAt)
+	err := row.Scan(&a.ID, &a.Provider, &a.Label, &a.State, &a.Version, &a.CredentialVersion, &a.CheckedAt, &a.LastError, &a.CreatedAt, &a.UpdatedAt, &a.Host, &a.Port)
 	a.Folders = []mailaccounts.Folder{}
 	if errors.Is(err, pgx.ErrNoRows) {
 		return a, mailaccounts.ErrNotFound
@@ -55,13 +55,13 @@ func lockMailAccount(ctx context.Context, tx pgx.Tx, owner, id string, expected 
 	return a, err
 }
 func fillMailAccount(ctx context.Context, tx pgx.Tx, a *mailaccounts.Account) error {
-	rows, err := tx.Query(ctx, `SELECT id,name,delimiter,selectable,available,selected FROM mail_account_folders WHERE account_id=$1 ORDER BY name,id`, a.ID)
+	rows, err := tx.Query(ctx, `SELECT id,name,delimiter,selectable,available,selected,display_name FROM mail_account_folders WHERE account_id=$1 ORDER BY display_name,name,id`, a.ID)
 	if err != nil {
 		return mailaccounts.ErrUnavailable
 	}
 	for rows.Next() {
 		var f mailaccounts.Folder
-		if rows.Scan(&f.ID, &f.Name, &f.Delimiter, &f.Selectable, &f.Available, &f.Selected) != nil {
+		if rows.Scan(&f.ID, &f.Name, &f.Delimiter, &f.Selectable, &f.Available, &f.Selected, &f.DisplayName) != nil {
 			rows.Close()
 			return mailaccounts.ErrUnavailable
 		}
@@ -142,6 +142,13 @@ func cancelMailProbes(ctx context.Context, tx pgx.Tx, id string) error {
 	return err
 }
 func (r *MailAccountRepository) Save(ctx context.Context, owner, id string, expected int64, label string, v mailaccounts.CredentialVersion) (mailaccounts.Account, error) {
+	return r.save(ctx, owner, id, expected, label, v, nil)
+}
+func (r *MailAccountRepository) save(ctx context.Context, owner, id string, expected int64, label string, v mailaccounts.CredentialVersion, guard func(context.Context, pgx.Tx) error) (mailaccounts.Account, error) {
+	provider := v.Provider
+	if provider == "" {
+		provider = "fastmail"
+	}
 	if expected < 0 || v.Version != expected+1 || v.OwnerID != owner || v.AccountID != id || v.Envelope.KeyID == "" || len(v.Envelope.Ciphertext) == 0 {
 		return mailaccounts.Account{}, mailaccounts.ErrInvalid
 	}
@@ -150,7 +157,12 @@ func (r *MailAccountRepository) Save(ctx context.Context, owner, id string, expe
 		return mailaccounts.Account{}, err
 	}
 	defer tx.Rollback(ctx)
-	_, err = lockMailAccount(ctx, tx, owner, id, expected)
+	if guard != nil {
+		if e := guard(ctx, tx); e != nil {
+			return mailaccounts.Account{}, e
+		}
+	}
+	existing, err := lockMailAccount(ctx, tx, owner, id, expected)
 	if errors.Is(err, mailaccounts.ErrNotFound) {
 		var exists bool
 		if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_accounts WHERE id=$1)`, id).Scan(&exists) != nil {
@@ -169,15 +181,18 @@ func (r *MailAccountRepository) Save(ctx context.Context, owner, id string, expe
 		if count >= 10 {
 			return mailaccounts.Account{}, mailaccounts.ErrConflict
 		}
-		_, err = tx.Exec(ctx, `INSERT INTO mail_accounts(id,owner_id,label,state,version,credential_version) VALUES($1,$2,$3,'unverified',1,$4)`, id, owner, label, v.Version)
+		_, err = tx.Exec(ctx, `INSERT INTO mail_accounts(id,owner_id,label,state,version,credential_version,provider,host,port) VALUES($1,$2,$3,'unverified',1,$4,$5,$6,$7)`, id, owner, label, v.Version, provider, v.Host, v.Port)
 	} else if err == nil {
+		if existing.Provider != provider {
+			return mailaccounts.Account{}, mailaccounts.ErrConflict
+		}
 		if cancelMailProbes(ctx, tx, id) != nil {
 			return mailaccounts.Account{}, mailaccounts.ErrUnavailable
 		}
 		if _, err := tx.Exec(ctx, `DELETE FROM mail_account_folders WHERE account_id=$1`, id); err != nil {
 			return mailaccounts.Account{}, mailaccounts.ErrUnavailable
 		}
-		_, err = tx.Exec(ctx, `UPDATE mail_accounts SET label=$2,state='unverified',version=version+1,credential_version=$3,checked_at=NULL,last_error='',updated_at=now() WHERE id=$1`, id, label, v.Version)
+		_, err = tx.Exec(ctx, `UPDATE mail_accounts SET label=$2,state='unverified',version=version+1,credential_version=$3,checked_at=NULL,last_error='',updated_at=now(),host=$4,port=$5 WHERE id=$1`, id, label, v.Version, v.Host, v.Port)
 	}
 	if err != nil {
 		if errors.Is(err, mailaccounts.ErrConflict) {

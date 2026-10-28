@@ -79,6 +79,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerAIRuntime(mux, settings.runtime, protect)
 	registerAIRoutes(mux, settings.routes, protect)
 	registerMailAccounts(mux, settings.mail, protect)
+	registerMailOAuth(mux, settings.mailOAuth, protect, config)
 	registerMailSync(mux, settings.mailSync, protect)
 	registerMailProcessing(mux, settings.mailProcessing, protect)
 	registerMailAutomation(mux, settings.mailAutomation, protect)
@@ -102,6 +103,13 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 					return
 				}
 				w.Header().Set("Access-Control-Allow-Origin", origin)
+				probe := r.Clone(r.Context())
+				if r.Method == http.MethodOptions {
+					probe.Method = r.Header.Get("Access-Control-Request-Method")
+				}
+				if _, pattern := mux.Handler(probe); pattern == "POST /v1/mail/accounts/{id}/oauth" {
+					w.Header().Set("Access-Control-Allow-Credentials", "true")
+				}
 			}
 			if r.Method == http.MethodOptions {
 				probe := r.Clone(r.Context())

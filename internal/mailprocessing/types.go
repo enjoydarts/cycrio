@@ -127,17 +127,18 @@ type Lease struct {
 	LeaseID string `json:"lease_id"`
 }
 type Work struct {
-	Automatic  bool                           `json:"-"`
-	FullEmail  bool                           `json:"-"`
-	Run        Run                            `json:"-"`
-	AttemptID  string                         `json:"-"`
-	OwnerID    string                         `json:"-"`
-	Profile    airuntime.Profile              `json:"-"`
-	Credential mailaccounts.CredentialVersion `json:"-"`
-	FolderID   string                         `json:"-"`
-	MessageID  string                         `json:"-"`
-	Envelope   secretstore.Envelope           `json:"-"`
-	FolderName string                         `json:"-"`
+	ReaderFolders []string                       `json:"-"`
+	Automatic     bool                           `json:"-"`
+	FullEmail     bool                           `json:"-"`
+	Run           Run                            `json:"-"`
+	AttemptID     string                         `json:"-"`
+	OwnerID       string                         `json:"-"`
+	Profile       airuntime.Profile              `json:"-"`
+	Credential    mailaccounts.CredentialVersion `json:"-"`
+	FolderID      string                         `json:"-"`
+	MessageID     string                         `json:"-"`
+	Envelope      secretstore.Envelope           `json:"-"`
+	FolderName    string                         `json:"-"`
 }
 type Completion struct {
 	State          string

@@ -49,7 +49,7 @@ func replaceMailFolders(ctx context.Context, tx pgx.Tx, id string, items []maila
 		return mailaccounts.ErrUnavailable
 	}
 	for _, f := range items {
-		if _, err := tx.Exec(ctx, `INSERT INTO mail_account_folders(id,account_id,name,delimiter,selectable,available) VALUES($1,$2,$3,$4,$5,true) ON CONFLICT(account_id,name) DO UPDATE SET delimiter=excluded.delimiter,selectable=excluded.selectable,available=true,selected=mail_account_folders.selected AND excluded.selectable`, uuid.NewString(), id, f.Name, f.Delimiter, f.Selectable); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO mail_account_folders(id,account_id,name,delimiter,selectable,available,display_name) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(account_id,name) DO UPDATE SET delimiter=excluded.delimiter,selectable=excluded.selectable,available=true,selected=mail_account_folders.selected AND excluded.selectable,display_name=excluded.display_name`, uuid.NewString(), id, f.Name, f.Delimiter, f.Selectable, f.DisplayName); err != nil {
 			return mailaccounts.ErrUnavailable
 		}
 	}

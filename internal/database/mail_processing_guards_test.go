@@ -340,18 +340,15 @@ func TestMailProcessingMigrationSevenDownUp(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 6)
-	if e != nil || len(down) != 12 || down[0].Source.Version != 18 || down[1].Source.Version != 17 || down[2].Source.Version != 16 || down[3].Source.Version != 15 || down[4].Source.Version != 14 || down[5].Source.Version != 13 || down[6].Source.Version != 12 || down[7].Source.Version != 11 || down[8].Source.Version != 10 || down[9].Source.Version != 9 || down[10].Source.Version != 8 || down[11].Source.Version != 7 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 7)
 	var exists bool
 	if e = pool.QueryRow(ctx, `SELECT to_regclass('mail_processing_runs') IS NULL AND to_regclass('mail_discovered_messages') IS NOT NULL AND to_regprocedure('stop_mail_processing(uuid,text,text)') IS NULL`).Scan(&exists); e != nil || !exists {
 		t.Fatal("migration down", exists, e)
 	}
-	if _, e = p.Up(ctx); e != nil {
-		t.Fatal(e)
-	}
+	up, e := p.Up(ctx)
+	assertMigrationRange(t, up, e, 7, latestMigrationVersion)
 	var version int
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 18 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != latestMigrationVersion {
 		t.Fatal(version, e)
 	}
 }

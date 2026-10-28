@@ -6,7 +6,7 @@ Cycrio（サイクリオ）は、日本語の請求・更新メールからサ�
 
 ## 開発状況
 
-Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、APIキーの暗号化保存、DBモデルカタログ・価格履歴、AI実行設定・接続テスト・有効化、使用ユーザー別の月次原価、本人のFastmail接続管理、初回の過去メール取り込みと新着の自動解析、サブスクと請求履歴の自動登録・手動訂正、通貨別の月次集計、支払履歴の完全一致による周期候補の比較、確認した周期・基準日からの次回予定計算を実装しています。サービス名の意味を推測した契約の統合や、支払日のずれを許容する周期推定は行いません。
+Docker Composeによる開発環境に、Clerkログイン、利用許可・管理者権限、APIキーの暗号化保存、DBモデルカタログ・価格履歴、AI実行設定・接続テスト・有効化、使用ユーザー別の月次原価、本人のメール接続管理（Fastmail・汎用IMAP・Gmail / Google Workspace・個人Outlook）、初回の過去メール取り込みと新着の自動解析、サブスクと請求履歴の自動登録・手動訂正、通貨別の月次集計、支払履歴の完全一致による周期候補の比較、確認した周期・基準日からの次回予定計算を実装しています。サービス名の意味を推測した契約の統合や、支払日のずれを許容する周期推定は行いません。メールプロバイダーの実装と合成データによる検証は、実アカウントでの受入確認とは区別します。外部OAuth設定・実メールサーバーでの接続、更新トークンの継続利用等は、利用する環境で別途確認してください。
 
 個人利用MVPから始め、将来の商用SaaS化を見据えて所有者分離・管理者権限・AI原価管理を設計します。一般ユーザー向けの公開開始は別途判断します。
 
@@ -139,19 +139,49 @@ Clerkは次の手順で開発用アカウントへ接続します。起動・通
 
 候補を選ぶと計算条件への入力だけを行います。日付の計算と確認保存は別操作です。保存前に履歴が変わった場合は候補を確認し直し、手動編集した周期や次回日を自動更新しません。保存時の根拠は履歴の後の訂正と分けて保持します。通常の確認でメール取得・AI呼び出しは発生しません。
 
-## 自分のFastmail連携
+## 自分のメール連携
 
 利用許可済みのユーザーは、「設定」→「メール連携」（`/settings/mail`）から、自分の接続を設定できます。接続一覧から追加・詳細へ進みます。管理者も自分の接続だけを扱います。ClerkのGoogleログインと、メール取得用の資格情報は別です。
 
-1. 「Fastmail を追加」を選び、表示名・Fastmailの完全なログインメールアドレス・メール利用を許可した専用アプリパスワードを入力して保存します。通常のFastmailパスワードは使いません。
-2. 「接続を確認する」を押します。Workerが固定の`imap.fastmail.com:993`へ暗黙TLSで接続し、認証とフォルダー一覧取得だけを行います。保存だけでは接続しません。
-3. 対象フォルダーを選んで「フォルダー選択を保存」を押します。名前で絞り込んでも表示外の選択は保持します。選択不可（NoSelect）や取得不能のフォルダーは選べません。選択なしでも保存できます。
+| メールサービス | 接続方式・対象 |
+|---|---|
+| Fastmail | 固定の `imap.fastmail.com:993`（暗黙TLS）。IMAP対応プランと専用アプリパスワードが必要 |
+| IMAP | 本人指定の公開メールサーバー。993（暗黙TLS）または143（必須STARTTLS） |
+| Gmail / Google Workspace | Gmail APIと本人のOAuth同意。個人GmailとWorkspaceに対応 |
+| Outlook.com / Hotmail | Microsoft Graphと本人のOAuth同意。個人Microsoftアカウントのみ。Microsoft 365の職場・学校アカウントは対象外 |
+
+### 管理者によるOAuthアプリの準備
+
+Gmail・Outlookを利用する前に、管理者が「設定」→「APIキー」（`/settings/credentials`）の各メール連携アプリへ **Client ID・Client Secret・Redirect URI** を登録します。一般ユーザーにアプリの秘密値を入力させません。設定が未登録・無効の場合、本人の接続画面は「管理者によるメール連携アプリの準備待ち」を表示します。
+
+Googleの準備:
+
+1. Cycrio用のGoogle CloudプロジェクトでGmail APIを有効にし、Google Auth Platformの同意画面・対象ユーザー・データアクセスを設定します。個人Gmailや組織外の利用者も対象にする場合はExternalを選びます。Internalはそのプロジェクトの組織内に対象が限られます。[Gmail APIの有効化](https://developers.google.com/workspace/gmail/api/quickstart/go#enable_the_api)、[対象ユーザーの設定](https://support.google.com/cloud/answer/15549945?hl=en)
+2. 読み取り専用の `https://www.googleapis.com/auth/gmail.readonly` を設定し、アプリの種類が **Web application** のOAuthクライアントを作成します。ローカル開発の承認済みリダイレクトURIは `http://localhost:8090/v1/mail/oauth/callback/gmail` です。CycrioのGmail連携アプリにも、そのクライアントのClient ID・Client Secretと同じURIを登録します。[Gmailのスコープ](https://developers.google.com/workspace/gmail/api/auth/scopes)、[Web OAuthクライアントの作成](https://developers.google.com/identity/protocols/oauth2/web-server#create-authorization-credentials)
+3. External / Testingでは、公式仕様上、登録したテストユーザー（最大100人）に利用が限られ、Gmail権限の同意とrefresh tokenは7日で期限を迎えます。まず本人をテストユーザーに登録して確認し、長期運用・公開へ進む前にAudienceと公開状態を見直してください。ClerkのGoogleログインはGmail読み取りの同意を代替しません。[テスト公開の制限](https://support.google.com/cloud/answer/15549945?hl=en)
+
+`gmail.readonly` はGoogleのRestricted scopeです。公開範囲やサーバーでのデータ取扱いにより、OAuth検証やセキュリティ評価が必要になる場合があります。個人利用・組織内利用等の例外が適用されるかも提供形態に依存します。公開審査、本文のAI送信を含む利用条件、運用継続条件の確認は、コードの実装とは別のセットアップ課題です。Workspaceでは組織管理者のAPIアクセス制御により拒否される場合があるため、対象のOAuthクライアントとGmail権限について組織側の許可を確認してください。[Restricted scopeの検証](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification)、[Workspaceのアプリアクセス制御](https://knowledge.workspace.google.com/admin/apps/control-which-third-party-and-internal-apps-access-google-workspace-data)
+
+Microsoftの準備:
+
+1. Microsoft Entraのアプリ登録で、対象アカウントを **Personal Microsoft accounts only（個人Microsoftアカウントのみ）** にします。Cycrioの認可・トークン取得は `consumers` エンドポイントを使い、Outlook.com / Hotmail向けです。職場・学校のMicrosoft 365用登録としては利用しません。[アプリ登録と対象アカウント](https://learn.microsoft.com/en-us/entra/identity-platform/quickstart-register-app)、[認可フローとエンドポイント](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow)
+2. Microsoft Graphの委任されたアクセス許可 **Mail.Read** と **offline_access** を設定します。Application権限ではなく、本人が同意する委任権限を使います。[Mail.Read](https://learn.microsoft.com/en-us/graph/permissions-reference#mailread)、[offline_accessとrefresh token](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow#successful-response-1)
+3. プラットフォームは **Web** とし、ローカル開発のリダイレクトURI `http://localhost:8090/v1/mail/oauth/callback/outlook` を登録します。Client Secretを作成し、その**値**とApplication (client) ID・同じURIをCycrioのOutlook連携アプリへ登録します。Secret IDをClient Secretの代わりに入力しないでください。[リダイレクトURIの登録](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-redirect-uri)、[Client Secretの作成](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials)
+
+両サービスのRedirect URIはWeb画面の `http://localhost:3100` ではなく、API側のoriginと固定パスを使います。本番ではAPIのHTTPS公開originへ置き換え、認可サービス側とCycrio側を一致させてください。localhost / 127.0.0.1でのローカルHTTPを除きHTTPSを使い、userinfo・query・fragmentは付けません。秘密値は暗号化保存し、保存後に平文再表示しません。更新時は3項目を再入力します。アプリの登録だけでは本人のメールアクセスやAI送信は始まりません。
+
+### 本人による接続・対象の選択
+
+1. 「メールを接続」でメールサービスと表示名を選びます。Fastmailは完全なログインメールアドレスと専用アプリパスワード（通常のFastmailパスワードは使いません）、IMAPは公開サーバー名・ポート・ログイン名・パスワードを入力して保存します。IMAPは信頼された証明書とホスト名の検証を行い、自己署名証明書、localhost、プライベートIP等の内部接続先には対応しません。143でSTARTTLSを確立できない場合も接続を拒否します。
+2. Gmail / WorkspaceまたはOutlookは「認証する」で公式の認可画面に進み、本人の対象アカウントでメール読み取りを許可します。認可後はメール連携画面へ戻ります。アプリのClient SecretやメールパスワードをCycrioのOAuth接続フォームへ入力する必要はありません。
+3. 保存・認可後に「接続を確認する」を押します。Workerが認証とラベル／フォルダー一覧の取得だけを行います。接続先は選択したプロバイダーに固定され、再接続も同じサービスで行います。
+4. 対象ラベル／フォルダーを選んで「フォルダー選択を保存」を押します。名前で絞り込んでも表示外の選択は保持します。選択不可（NoSelect）や取得不能の項目は選べません。選択なしでも保存できます。本文取得とAIへの送信は、後述の「メール解析」で対象期間と送信条件を確認し、別途同意してから開始します。
 
 この段階では、フォルダーを保存してもメール同期・本文取得・既読化・AI送信を開始しません。接続確認は明示操作でだけ実行します。受付結果が不明な場合の「同じ接続確認を再送する」は同じ要求IDを使い、重複作成を防ぎます。
 
-ログイン名とアプリパスワードは所有者・接続・資格情報版を束縛してDBに暗号化保存し、保存後は再表示しません。接続情報を更新すると以前の確認結果と選択をリセットします。連携解除は確認後に行い、過去の資格情報と進行中の要求も無効化します。再接続には新しい値を入力してください。古い画面からの更新は競合として拒否し、通常の再読み込みでは編集中入力を保持します。
+ログイン名・パスワード・OAuthトークンは所有者・接続・資格情報版を束縛してDBに暗号化保存し、保存後は再表示しません。接続情報を更新すると以前の確認結果と選択をリセットします。連携解除は確認後に行い、Cycrio内の過去の資格情報と進行中の要求も無効化します。Google / Microsoft側の同意を自動で取り消すrevoke処理は行っていません。サービス側の同意も解除する場合は、本人のGoogle / Microsoftアカウント設定で別途取り消してください。再接続には新しい接続情報の入力またはOAuth認可が必要です。古い画面からの更新は競合として拒否し、通常の再読み込みでは編集中入力を保持します。
 
-接続は本人ごとに最大10件。確認処理には30秒・応答1MiB・1000フォルダーの上限があります。認証拒否・TLS失敗・時間切れ等は固定の理由で表示し、生のサーバー応答を保存・表示しません。実アカウントでの確認にはIMAP対応プランと専用アプリパスワードが必要です。[Fastmail公式設定](https://www.fastmail.help/hc/en-us/articles/1500000278342-Server-names-and-ports)
+接続は本人ごとに最大10件。確認処理には時間・応答サイズ・1000フォルダーの上限があり、IMAPの確認は30秒・応答1MiBに制限します。認証拒否・TLS失敗・時間切れ等は固定の理由で表示し、生のサーバー応答を保存・表示しません。実アカウントの受入確認では、本人による認可、接続確認、ラベル／フォルダー選択、ID同期、同意後の解析、必要な再認証までを対象環境で確認してください。合成API・DB・ブラウザー検証だけでは、外部サービスの設定や実メールの動作確認済みとは扱いません。[Fastmail公式設定](https://www.fastmail.help/hc/en-us/articles/1500000278342-Server-names-and-ports)
 
 ### メールIDの手動同期
 

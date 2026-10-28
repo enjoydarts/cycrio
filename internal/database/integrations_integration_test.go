@@ -46,9 +46,8 @@ func TestIntegrationMigrationEighteenPreservesEverySeventeenTable(t *testing.T) 
 		t.Fatal(e)
 	}
 	provider := automationMigrationProvider(t, pool)
-	if _, e = provider.DownTo(ctx, 17); e != nil {
-		t.Fatal(e)
-	}
+	down, e := provider.DownTo(ctx, 17)
+	assertMigrationRange(t, down, e, latestMigrationVersion, 18)
 	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename<>'goose_db_version' ORDER BY tablename`)
 	if e != nil {
 		t.Fatal(e)
@@ -69,7 +68,7 @@ func TestIntegrationMigrationEighteenPreservesEverySeventeenTable(t *testing.T) 
 		out := map[string]string{}
 		for _, name := range tables {
 			var hash string
-			if e = pool.QueryRow(ctx, `SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]')::text) FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook')`).Scan(&hash); e != nil {
+			if e = pool.QueryRow(ctx, `SELECT md5(coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text) FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth')) x`, mailConnectionMigrationColumns(name)).Scan(&hash); e != nil {
 				t.Fatal(e)
 			}
 			out[name] = hash
@@ -81,9 +80,7 @@ func TestIntegrationMigrationEighteenPreservesEverySeventeenTable(t *testing.T) 
 		t.Fatal("old tables missing", len(before))
 	}
 	applied, e := provider.Up(ctx)
-	if e != nil || len(applied) != 1 || applied[0].Source.Version != 18 {
-		t.Fatal(applied, e)
-	}
+	assertMigrationRange(t, applied, e, 18, latestMigrationVersion)
 	if !reflect.DeepEqual(before, snapshot()) {
 		t.Fatal("migration18 changed existing rows")
 	}
