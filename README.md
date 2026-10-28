@@ -278,6 +278,7 @@ Clerk設定の公式手順：[Google接続](https://clerk.com/docs/guides/config
 | `make test-integration` | 一時schemaでmigration・認可・秘密管理・AI原価・メール接続・契約登録と解析一覧をDB/API検証 |
 | `make test-evaluation-smoke` | 合成30通の本文正規化・解析・契約/請求登録、処理途中の停止、機密値残存検出を検証 |
 | `make test-evaluation` | 合成3,000通を含む評価を実行し、metadataだけのJSONをGit対象外の`.local/evaluation/`へ保存 |
+| `make test-evaluation-hatchet` | 一時Workerで合成10通をHatchet経由で処理し、アプリDB・Hatchet履歴・評価中のログを検査 |
 | `make smoke` | API・Web疎通と、Hatchet経由でのWorker実行・DB接続 |
 | `make fmt` | Go / TypeScript / Svelteを整形 |
 | `make db-shell` | migration用ロールでアプリDBへ接続 |
@@ -298,6 +299,14 @@ docker compose run --rm --no-deps api go test ./internal/health -v
 合成評価は`make up`後に実行してください。一時schema・一時鍵とメモリ内のメール/AIアダプターを使い、外部通信や有料AI呼出しを行いません。実際の処理サービス、所有者別DB台帳、自動契約・請求登録を通します。10通ごとに正常支払6・無関係1・無効抽出1・AI結果不明1・本文取得失敗1を投入し、結果不明になったバッチの未送信分だけを次の明示要求で処理します。重複leaseと登録の再実行で重複が生じないことも確認します。
 
 JSONの`synthetic_costs`はアダプターが返す合成金額で、実料金ではありません。不明原価は金額を`null`、件数を`unknown_calls`として残します。時間は直接leaseを実行した所要時間です。本文・疑似秘密の検出文字列は、一時schemaの全行、lease JSON、画面向け結果JSONについて生文字・hex・単独base64を検査します。任意の変換後の値、実Hatchetの履歴、Dockerログを網羅する検査ではありません。実Googleログイン・IMAP通信・AI精度/実原価・Hatchet配信/保存・外部Webhook・実利用者UIは未確認としてJSONに明記します。
+
+`make test-evaluation-hatchet`は別の追加評価です。通常Workerへの評価モード追加や外部AI接続は行わず、既存ローカルHatchetに一意な名前の一時Worker/taskを登録します。leaseのみを配送し、成功6・無関係1・失敗2・結果不明1、重複leaseの再配送を確認します。Hatchetの実行履歴には合成metadataが残ります。Hatchet DBのpublicテーブルをread-only snapshotで検査し、各評価run IDが実際に保存されたことも確認します。
+
+結果は`.local/evaluation/hatchet-*/`に保存されます。`hatchet-report.json`が配送・DB検査、`evaluation_worker-check.json`が評価コンテナの標準出力/標準エラー、`docker_services-check.json`が評価開始以降に取得したapi/worker/hatchetのDockerログの検査結果です。全て成功した場合だけ`complete.json`が作られます。probe manifestと生ログを含むため、ディレクトリは0700、ファイルは0600とし、共有・コミットしないでください。検出時は値を表示せず失敗します。
+
+この検査も生文字・hex・単独base64の範囲です。ローカルの取得時点の履歴/ログを対象とし、取得後の遅延ログ、Hatchet Cloud、外部payload storage、通常Workerのdispatch loop、Workerプロセス強制終了、Hatchet経由の切断・削除は未確認です。実IMAP・実AIの精度/料金も対象外です。
+
+ログ取得前後に対象3サービスが起動していることを確認し、取得コマンド自体の失敗は評価失敗にします。対象期間にログがなければ、Dockerログの結果には`bytes: 0`・`empty: true`を記録します。評価コンテナ自身の出力は空なら失敗します。
 
 ## 構成と永続化
 

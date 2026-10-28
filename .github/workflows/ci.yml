@@ -40,6 +40,9 @@ jobs:
         run: make test-integration
       - name: Synthetic mail processing evaluation
         run: make test-evaluation-smoke
+      - name: Synthetic Hatchet history and log evaluation
+        id: hatchet_evaluation
+        run: make test-evaluation-hatchet
       - name: Reconnect after restart
         run: |
           docker compose restart api worker
@@ -49,7 +52,8 @@ jobs:
         if: always()
         run: docker compose ps -a
       - name: Show logs on failure
-        if: failure()
+        # Evaluation may have detected a marker in these logs; keep them private.
+        if: failure() && steps.hatchet_evaluation.outcome == 'skipped'
         run: docker compose logs --tail=100 api worker hatchet hatchet-init migrate
       - name: Stop project
         if: always()

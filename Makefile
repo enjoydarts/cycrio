@@ -68,3 +68,7 @@ test-evaluation-smoke:
 
 test-evaluation:
 	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration,evaluation ./internal/database -run '^TestPoCEvaluation' -count=1 -timeout=10m -v -args -evaluation-report-dir=/app/.local/evaluation
+
+.PHONY: test-evaluation-hatchet
+test-evaluation-hatchet:
+	sh deploy/local/evaluate-hatchet.sh
