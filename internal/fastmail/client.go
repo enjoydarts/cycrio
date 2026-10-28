@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"errors"
 	"net"
+	"net/netip"
 	"strings"
 	"time"
 	"unicode"
@@ -19,7 +20,11 @@ import (
 const checkTimeout = 30 * time.Second
 
 type Client struct {
-	dial func(context.Context, string, *tls.Config) (net.Conn, error)
+	dial      func(context.Context, string, *tls.Config) (net.Conn, error)
+	host      string
+	port      int
+	lookup    func(context.Context, string) ([]netip.Addr, error)
+	tlsConfig *tls.Config
 }
 
 var _ mailaccounts.Checker = (*Client)(nil)
@@ -49,9 +54,7 @@ func (e *tlsHandshakeError) Unwrap() error { return e.cause }
 func (c *Client) Check(ctx context.Context, login string, password []byte) ([]mailaccounts.RemoteFolder, error) {
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	conn, err := c.dial(ctx, "imap.fastmail.com:993", &tls.Config{
-		ServerName: "imap.fastmail.com", MinVersion: tls.VersionTLS12,
-	})
+	conn, err := c.connect(ctx)
 	if err != nil {
 		code := "connection_failed"
 		var handshakeErr *tlsHandshakeError

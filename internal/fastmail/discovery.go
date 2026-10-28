@@ -25,7 +25,7 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	conn, err := c.dial(ctx, "imap.fastmail.com:993", &tls.Config{ServerName: "imap.fastmail.com", MinVersion: tls.VersionTLS12})
+	conn, err := c.connect(ctx)
 	if err != nil {
 		code := "connection_failed"
 		var handshake *tlsHandshakeError
