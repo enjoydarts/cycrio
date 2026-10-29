@@ -22,7 +22,9 @@
         >{/each}
     </tbody>
   </table>
-{:else}<p class="empty">集計対象の支払い・返金はありません。</p>{/if}
+{:else}<p class="empty library-content">
+    集計対象の支払い・返金はありません。
+  </p>{/if}
 <details class="calculation library-content">
   <summary>集計条件・対象外の明細</summary>
   <div class="billing-population">

@@ -92,6 +92,10 @@ test('summary server rendering distinguishes no records, zero and negative exact
   };
   const empty = render(Component, { props: { summary } }).body;
   assert.match(empty, /集計対象の支払い・返金はありません/);
+  assert.match(
+    empty,
+    /<p[^>]*class="[^"]*\blibrary-content\b[^"]*"[^>]*>集計対象の支払い・返金はありません。<\/p>/,
+  );
   const big = '1000000000000000000000000.000000000001';
   const html = render(Component, {
     props: {
