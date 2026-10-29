@@ -233,6 +233,40 @@ test('successful AI test presents activation as the next action without another 
   assert.match(html, /再テスト/);
   assert.doesNotMatch(html, /AI の実行を停止する/);
 });
+test('model and price controls remain rendered after a previous HTTP 400 test', async () => {
+  const fixture = setupFixture();
+  fixture.state.runtime.latest_test = {
+    ...run(),
+    state: 'failed',
+    primary_outcome: 'success',
+    secondary_outcome: 'provider_http',
+    secondary_failure: {
+      http_status: 400,
+      reason: 'request_rejected',
+      hint: '送信形式を確認してください。',
+    },
+  } as any;
+  const controller = createAISetupController(
+    fixture.api,
+    async () => 'synthetic',
+    () => {},
+    () => {},
+  );
+  await controller.load();
+  const Component = (
+    await import(
+      await component('AISetup', {
+        view: controller.state(),
+        pane: 'models',
+        initialized: true,
+      })
+    )
+  ).default;
+  const html = render(Component).body;
+  assert.match(html, /一次判定<select/);
+  assert.match(html, /選択モデルの参考料金/);
+  assert.match(html, /不明（無料を意味しません）/);
+});
 test('fresh model setup presents one route summary without duplicate metadata panels', async () => {
   const fixture = setupFixture();
   const controller = createAISetupController(

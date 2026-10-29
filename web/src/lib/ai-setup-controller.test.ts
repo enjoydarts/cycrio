@@ -13,7 +13,41 @@ import {
   secondaryID,
 } from './ai-setup-test-fixtures.ts';
 import { parseRuntimeState } from './airuntime-api.ts';
-import { runtime, id } from './airuntime-test-fixtures.ts';
+import { runtime, run, id } from './airuntime-test-fixtures.ts';
+test('a previous HTTP 400 test does not prevent loading model and price selections', async () => {
+  const { api, state } = setupFixture();
+  state.runtime.latest_test = {
+    ...run(),
+    state: 'failed',
+    primary_outcome: 'success',
+    secondary_outcome: 'provider_http',
+    secondary_failure: {
+      http_status: 400,
+      reason: 'request_rejected',
+      hint: '送信形式を確認してください。',
+    },
+  } as any;
+  const controller = createAISetupController(
+    api,
+    async () => 't',
+    () => {},
+    () => {},
+  );
+  await controller.load();
+  const loaded = controller.state();
+  assert.equal(loaded.status, 'ready');
+  assert.equal(loaded.selection?.values.primary, id);
+  assert.equal(loaded.selection?.values.secondary, secondaryID);
+  assert.equal(
+    loaded.runtime?.latest_test?.secondary_failure?.http_status,
+    400,
+  );
+  assert.equal(canSaveSetup(loaded, 'openrouter'), true);
+  assert.equal(
+    state.requests.some((r) => r.method !== 'GET'),
+    false,
+  );
+});
 test('preferred route keeps exact tag across immutable snapshot UUID changes', () => {
   const route = routeFixture();
   const other = {

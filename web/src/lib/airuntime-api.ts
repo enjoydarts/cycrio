@@ -78,6 +78,7 @@ export type ConfigInput = ConfigValues & {
 export type TestFailure = {
   http_status: number;
   reason:
+    | 'request_rejected'
     | 'credentials_rejected'
     | 'payment_required'
     | 'model_route_unavailable'
@@ -314,6 +315,7 @@ export function parseTestRun(value: unknown): TestRun {
 function parseTestFailure(value: unknown): TestFailure {
   const v = object(value);
   const reason = choice(v.reason, [
+    'request_rejected',
     'credentials_rejected',
     'payment_required',
     'model_route_unavailable',
@@ -322,6 +324,7 @@ function parseTestFailure(value: unknown): TestFailure {
   const status = integer(v.http_status, 100, 599);
   if (
     {
+      request_rejected: 400,
       credentials_rejected: 401,
       payment_required: 402,
       model_route_unavailable: 404,

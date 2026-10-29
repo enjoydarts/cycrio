@@ -86,6 +86,24 @@ test('runtime preserves immutable exact route proof and independent safe stage f
   assert.equal(parsed.primary_failure, null);
   assert.deepEqual(parsed.secondary_failure, failure);
 });
+test('HTTP 400 request rejection guidance parses without weakening status validation', () => {
+  const failure = {
+    http_status: 400,
+    reason: 'request_rejected',
+    hint: '送信形式を確認してください。',
+  };
+  assert.deepEqual(
+    parseTestRun({ ...run(), secondary_failure: failure }).secondary_failure,
+    failure,
+  );
+  for (const patch of [{ http_status: 401 }, { reason: 'unknown_reason' }]) {
+    assert.throws(
+      () =>
+        parseTestRun({ ...run(), secondary_failure: { ...failure, ...patch } }),
+      { code: 'dependency_unavailable' },
+    );
+  }
+});
 test('policy preserves standard terms and public reconfirmation state', () => {
   const terms = {
     id: 'liquid-standard-2026-09-30',
