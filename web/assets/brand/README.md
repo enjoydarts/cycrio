@@ -18,7 +18,7 @@
 
 ## カラー
 
-共通設定は `src/lib/brand.css` にあります。Primary `#22C55E`、Secondary `#0F766E`、Accent `#A7F3D0`、Background `#ECFDF5`。白文字を載せるボタンは Secondary、本文は濃いティール、Primary は装飾に使用します。Clerk も同じ CSS 変数を参照します。
+共通設定は `src/lib/brand.css` にあります。Primary `#22C55E`、Secondary `#0F766E`、Accent `#A7F3D0`、Background `#FFFFFF`。2026-10-29 のユーザー指定により、ライトモードのページ背景をミントから白へ変更しました。白文字を載せるボタンは Secondary、本文は濃いティール、Primary は装飾に使用します。Clerk も同じ CSS 変数を参照します。
 
 ## 生成記録
 

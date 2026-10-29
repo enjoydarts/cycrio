@@ -108,12 +108,7 @@
     justify-items: center;
     align-content: center;
     padding: 48px 16px;
-    background: radial-gradient(
-      circle at top,
-      var(--color-surface),
-      var(--brand-background) 55%,
-      var(--color-surface-soft)
-    );
+    background: var(--brand-background);
   }
   .access-layout {
     width: 100%;

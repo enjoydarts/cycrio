@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
-test('the application preserves the approved Cycrio green, teal and mint identity', async () => {
+test('the application pairs the approved Cycrio accents with a white light background', async () => {
   const source = await readFile(
     new URL('./brand.css', import.meta.url),
     'utf8',
@@ -11,7 +11,7 @@ test('the application preserves the approved Cycrio green, teal and mint identit
     'brand-primary': '#22c55e',
     'brand-secondary': '#0f766e',
     'brand-accent': '#a7f3d0',
-    'brand-background': '#ecfdf5',
+    'brand-background': '#ffffff',
   })) {
     assert.match(light, new RegExp(`--${token}:\\s*${color};`, 'i'), token);
   }
