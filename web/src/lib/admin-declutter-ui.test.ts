@@ -267,6 +267,35 @@ test('model and price controls remain rendered after a previous HTTP 400 test', 
   assert.match(html, /選択モデルの参考料金/);
   assert.match(html, /不明（無料を意味しません）/);
 });
+test('route selection identifies Google endpoint regions without showing unknown precision', async () => {
+  const fixture = setupFixture();
+  fixture.state.routes.routes[0] = {
+    ...fixture.state.routes.routes[0],
+    provider_name: 'Google',
+    tag: 'google-vertex/europe',
+    quantization: 'Unknown',
+  };
+  fixture.state.runtime.draft!.openrouter_provider = 'google-vertex/europe';
+  const controller = createAISetupController(
+    fixture.api,
+    async () => 'synthetic',
+    () => {},
+    () => {},
+  );
+  await controller.load();
+  const Component = (
+    await import(
+      await component('AISetup', {
+        view: controller.state(),
+        pane: 'models',
+        initialized: true,
+      })
+    )
+  ).default;
+  const html = render(Component).body;
+  assert.match(html, /Google Vertex AI · 欧州/);
+  assert.doesNotMatch(html, /Unknown|unknown/);
+});
 test('fresh model setup presents one route summary without duplicate metadata panels', async () => {
   const fixture = setupFixture();
   const controller = createAISetupController(

@@ -29,6 +29,7 @@
   import { safeAnalysisReturn } from './setup-readiness.ts';
   import StandardMailPolicy from './StandardMailPolicy.svelte';
   import SetupPrice from './SetupPrice.svelte';
+  import { routeDisplayName, routeQuantization } from './ai-route-display.ts';
   import './setup.css';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
@@ -474,12 +475,12 @@
           {#if secondary?.provider === 'openrouter' && route}<div
               class="route-summary"
             >
-              <p>配信先：{route.provider_name} · 確認済み ZDR</p>
+              <p>配信先：{routeDisplayName(route)} · 確認済み ZDR</p>
               <details>
                 <summary>配信先を確認・変更</summary>
                 <p class="muted">
-                  {route.model_name}{route.quantization
-                    ? ` · ${route.quantization}`
+                  {route.model_name}{routeQuantization(route)
+                    ? ` · ${routeQuantization(route)}`
                     : ''}
                 </p>
                 {#if view.routes?.snapshot}<p class="muted">
@@ -503,10 +504,7 @@
                     onchange={(e) =>
                       controller?.chooseRoute(e.currentTarget.value)}
                     >{#each view.routes?.routes.filter((r) => r.eligible && r.model_id === secondary?.id) ?? [] as option}<option
-                        value={option.id}
-                        >{option.provider_name}{option.quantization
-                          ? ` · ${option.quantization}`
-                          : ''}</option
+                        value={option.id}>{routeDisplayName(option)}</option
                       >{/each}</select
                   ></label
                 >
@@ -529,10 +527,7 @@
                     controller?.chooseRoute(e.currentTarget.value)}
                   ><option value="">配信先を選び直す</option
                   >{#each view.routes?.routes.filter((r) => r.eligible && r.model_id === secondary?.id) ?? [] as option}<option
-                      value={option.id}
-                      >{option.provider_name}{option.quantization
-                        ? ` · ${option.quantization}`
-                        : ''}</option
+                      value={option.id}>{routeDisplayName(option)}</option
                     >{/each}</select
                 ></label
               >
