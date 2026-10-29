@@ -275,6 +275,7 @@
       </p>{/if}
     {#if tab === 'history'}<div class="library-content">
         {#key historyKey}<AnalysisHistory
+            {accounts}
             account={filter.account_id}
             offset={filter.offset}
             previous={link({ offset: Math.max(0, filter.offset - 20) })}

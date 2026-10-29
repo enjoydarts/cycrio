@@ -192,7 +192,7 @@
       {#if retry}<p class="notice">
           このメールだけを現在の条件で再解析します。別の操作で結果が更新されている場合は、最新の結果を確認してからやり直してください。
         </p>{:else}<label class="section"
-          >今回解析する上限（1〜100件）<input
+          >手動で今回だけ解析する件数（1〜100件）<input
             id="analysis-max"
             type="text"
             inputmode="numeric"

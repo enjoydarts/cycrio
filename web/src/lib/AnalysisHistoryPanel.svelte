@@ -47,7 +47,9 @@
         </p>
         <p>指定上限 {run.max_messages} 件</p>
       </details>
-    </li>{:else}<li class="empty">実行履歴はありません。</li>{/each}
+    </li>{:else}<li class="empty">
+      AI解析はまだ開始されていません。探索中の場合は上の取り込み状況を確認してください。
+    </li>{/each}
 </ul>
 
 <style>

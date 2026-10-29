@@ -9,18 +9,21 @@
     type RunPage,
   } from './analysis-api.ts';
   import { createAnalysisHistory } from './analysis-controller.ts';
-  import { processingActive } from './mail-processing-controller.ts';
+  import ImportHistory from './ImportHistory.svelte';
+  import type { ImportAccount } from './import-history-controller.ts';
   import type { FeedView } from './daily-controller.ts';
   import { processingErrors } from './mail-processing-text.ts';
   import AnalysisHistoryPanel from './AnalysisHistoryPanel.svelte';
   let {
     account,
+    accounts,
     offset,
     previous,
     next,
     onBusyChange = () => {},
   }: {
     account: string;
+    accounts: ImportAccount[];
     offset: number;
     previous: string;
     next: string;
@@ -61,7 +64,11 @@
     void controller?.load(filter);
   });
   $effect(() => {
-    if (view.status === 'loading' || !view.page?.runs.some(processingActive))
+    if (
+      view.status === 'loading' ||
+      view.status === 'denied' ||
+      view.status === 'disposed'
+    )
       return;
     const timer = setTimeout(() => void controller?.load(filter), 5000);
     return () => clearTimeout(timer);
@@ -93,6 +100,10 @@
 </script>
 
 <div class="daily">
+  <ImportHistory
+    accounts={accounts.filter((a) => !account || a.id === account)}
+  />
+  <h2>AI解析の実行履歴</h2>
   {#if error}<p class="notice error" role="alert">{error}</p>{/if}
   {#if view.status === 'loading' && !view.page}<p class="notice" role="status">
       履歴を読み込んでいます…

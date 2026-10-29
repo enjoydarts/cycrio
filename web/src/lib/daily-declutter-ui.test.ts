@@ -144,6 +144,61 @@ test('analysis places results before its single management disclosure', async ()
   );
   assert.match(body, /メールを取り込む/);
 });
+test('import progress is visible before any AI run exists and shows discovery stop reasons', async () => {
+  const state = {
+    id: 'automation',
+    account_id: 'account',
+    state: 'enabled',
+    reason: '',
+    scope: { since: '2025-01-01', before: '2026-01-01' },
+    retry_at: null,
+    last_success_at: null,
+    progress: {
+      bootstrap_complete: false,
+      historical_complete: false,
+      discovered_count: 0,
+      pending_count: 0,
+      completed_count: 0,
+      failed_count: 0,
+      unknown_count: 0,
+    },
+    recent_sync_runs: [],
+  };
+  let body = await html('ImportProgressPanel', {
+    entries: [{ label: 'Personal', state }],
+  });
+  assert.match(visible(body), /Personal/);
+  assert.match(visible(body), /取り込み準備中/);
+  assert.match(visible(body), /解析待ち/);
+  assert.match(visible(body), /期間全体の件数制限ではありません/);
+  body = await html('ImportProgressPanel', {
+    entries: [
+      {
+        label: 'Personal',
+        state: {
+          ...state,
+          state: 'stopped',
+          reason: 'response_too_large',
+          recent_sync_runs: [
+            {
+              id: 'sync',
+              state: 'failed',
+              mode: 'historical',
+              created_at: '2026-10-29T00:00:00Z',
+              examined_count: 7,
+              added_count: 7,
+              error_code: 'response_too_large',
+            },
+          ],
+        },
+      },
+    ],
+  });
+  assert.match(visible(body), /停止中/);
+  assert.match(visible(body), /応答が取得上限を超え/);
+  assert.match(body, /探索履歴/);
+  assert.doesNotMatch(body, /実行履歴はありません/);
+});
 test('history rows retain visible failures and stop actions with optional run breakdowns', async () => {
   const body = await html('AnalysisHistoryPanel', {
       page: {
