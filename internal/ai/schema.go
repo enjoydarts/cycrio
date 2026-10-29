@@ -89,7 +89,10 @@ func readValue(d *json.Decoder, depth int) (any, error) {
 
 func ExtractionSchema() map[string]any {
 	nullableString := func() map[string]any { return map[string]any{"type": []string{"string", "null"}} }
-	props := map[string]any{"service": map[string]any{"type": "string"}, "plan": nullableString(), "event_type": map[string]any{"type": "string", "enum": []string{"invoice", "payment", "renewal", "refund", "change", "cancellation", "trial"}}, "amount": nullableString(), "currency": nullableString(), "billed_at": nullableString(), "period_start": nullableString(), "period_end": nullableString(), "next_billing_at": nullableString(), "interval_unit": map[string]any{"type": []string{"string", "null"}, "enum": []any{"day", "week", "month", "year", nil}}, "interval_count": map[string]any{"type": []string{"integer", "null"}}}
+	// Keep nullable enums as separate branches: some upstream schema adapters
+	// reject null values inside enum even when the field type includes null.
+	intervalUnit := map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": []string{"day", "week", "month", "year"}}, map[string]any{"type": "null"}}}
+	props := map[string]any{"service": map[string]any{"type": "string"}, "plan": nullableString(), "event_type": map[string]any{"type": "string", "enum": []string{"invoice", "payment", "renewal", "refund", "change", "cancellation", "trial"}}, "amount": nullableString(), "currency": nullableString(), "billed_at": nullableString(), "period_start": nullableString(), "period_end": nullableString(), "next_billing_at": nullableString(), "interval_unit": intervalUnit, "interval_count": map[string]any{"type": []string{"integer", "null"}}}
 	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count"}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"events"}, "properties": map[string]any{"events": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": props}}}}
 }

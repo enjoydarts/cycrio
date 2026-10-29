@@ -7,7 +7,7 @@ import (
 )
 
 func TestSafeTestFailureHints(t *testing.T) {
-	for status, reason := range map[int]string{401: "credentials_rejected", 402: "payment_required", 404: "model_route_unavailable", 429: "rate_limited"} {
+	for status, reason := range map[int]string{400: "request_rejected", 401: "credentials_rejected", 402: "payment_required", 404: "model_route_unavailable", 429: "rate_limited"} {
 		hint := TestFailureForStatus(status)
 		if hint == nil || hint.HTTPStatus != status || hint.Reason != reason || hint.Hint == "" {
 			t.Fatal(status, hint)

@@ -11,6 +11,9 @@ type TestFailure struct {
 func TestFailureForStatus(status int) *TestFailure {
 	out := &TestFailure{HTTPStatus: status}
 	switch status {
+	case 400:
+		out.Reason = "request_rejected"
+		out.Hint = "この段階のプロバイダーが送信形式やパラメーターを受け付けませんでした。モデル・配信先との互換性を確認してください。"
 	case 401:
 		out.Reason = "credentials_rejected"
 		out.Hint = "この段階のプロバイダーのAPIキーが拒否されました。APIキー設定で登録内容と有効状態を確認してください。"
