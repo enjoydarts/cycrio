@@ -11,15 +11,21 @@
   import { createAnalysisHistory } from './analysis-controller.ts';
   import { processingActive } from './mail-processing-controller.ts';
   import type { FeedView } from './daily-controller.ts';
-  import { runNames } from './daily-text.ts';
-  import { processingDate, processingErrors } from './mail-processing-text.ts';
+  import { processingErrors } from './mail-processing-text.ts';
+  import AnalysisHistoryPanel from './AnalysisHistoryPanel.svelte';
   let {
     account,
     offset,
     previous,
     next,
-  }: { account: string; offset: number; previous: string; next: string } =
-    $props();
+    onBusyChange = () => {},
+  }: {
+    account: string;
+    offset: number;
+    previous: string;
+    next: string;
+    onBusyChange?: (busy: boolean) => void;
+  } = $props();
   const session = getAppSession(),
     token = session.token,
     api = createAnalysisAPI(PUBLIC_API_BASE_URL);
@@ -34,6 +40,9 @@
     abort: AbortController | undefined,
     disposed = false;
   const filter = $derived({ account_id: account, limit: 20, offset });
+  $effect(() => {
+    onBusyChange(!!saving);
+  });
   onMount(() => {
     controller = createAnalysisHistory(
       api,
@@ -84,7 +93,6 @@
 </script>
 
 <div class="daily">
-  <p class="muted">進行中は5秒ごとに更新 · 日時は日本時間</p>
   {#if error}<p class="notice error" role="alert">{error}</p>{/if}
   {#if view.status === 'loading' && !view.page}<p class="notice" role="status">
       履歴を読み込んでいます…
@@ -92,29 +100,11 @@
       {processingErrors[view.error]}
     </p>
     <button onclick={() => controller?.load(filter)}>再読み込み</button>{/if}
-  {#if view.page}<ul class="compact-list">
-      {#each view.page.runs as run (run.id)}<li>
-          <div class="titlebar">
-            <div>
-              <strong>{runNames[run.state]}</strong><span class="secondary"
-                >{run.account_label} · {processingDate(run.created_at)}</span
-              >
-            </div>
-            {#if processingActive(run)}<button
-                disabled={!!saving}
-                onclick={() => cancel(run)}>解析を停止</button
-              >{/if}
-          </div>
-          <p>
-            完了 {run.completed_count} / 対象 {run.total_count} 件 · 指定上限 {run.max_messages}
-            件
-          </p>
-          <p class="muted">
-            関連 {run.related_count} · 非関連 {run.unrelated_count} · 失敗 {run.failed_count}
-            · 結果不明 {run.unknown_count}
-          </p>
-        </li>{:else}<li class="empty">実行履歴はありません。</li>{/each}
-    </ul>
+  {#if view.page}<AnalysisHistoryPanel
+      page={view.page}
+      {saving}
+      onCancel={cancel}
+    />
     <div class="pager">
       <span>全 {view.page.total} 件</span>
       <div class="actions">

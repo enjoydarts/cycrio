@@ -15,6 +15,8 @@
   import { processingErrors } from './mail-processing-text.ts';
   import BillingSummaryTable from './BillingSummaryTable.svelte';
   import Modal from './Modal.svelte';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
   import './billing.css';
   const session = getAppSession(),
@@ -73,63 +75,82 @@
   });
 </script>
 
-<section class="daily billing" aria-labelledby="billing-summary-heading">
-  <a class="button" href="/subscriptions">← サブスク一覧</a>
-  <header class="titlebar">
-    <div>
-      <h1 id="billing-summary-heading">支払・返金明細の集計</h1>
-      <p>記録した支払い・返金を月ごとに確認します。</p>
+<section
+  class="daily billing library-page"
+  aria-labelledby="billing-summary-heading"
+>
+  <LibraryHeader
+    title="支払・返金"
+    eyebrow="PAYMENTS"
+    id="billing-summary-heading"
+  />
+  <LibraryPanel
+    ><div class="library-toolbar">
+      <label
+        >月<input
+          type="month"
+          required
+          value={filter.month}
+          onchange={(event) => {
+            if (event.currentTarget.validity.valid && event.currentTarget.value)
+              void goto(link({ month: event.currentTarget.value }));
+          }}
+        /></label
+      ><label
+        >対象<button
+          type="button"
+          aria-label="集計対象を変更"
+          onclick={openPicker}
+          >{filter.subscription_id
+            ? (view.selected?.service ?? '選択したサブスク')
+            : 'すべてのサブスク'} <span aria-hidden="true">⌄</span></button
+        ></label
+      >
     </div>
-  </header>
-  <div class="toolbar">
-    <label
-      >集計月（日本時間）<input
-        type="month"
-        required
-        value={filter.month}
-        onchange={(event) => {
-          if (event.currentTarget.validity.valid && event.currentTarget.value)
-            void goto(link({ month: event.currentTarget.value }));
-        }}
-      /></label
-    ><button type="button" onclick={openPicker}>サブスクを選択</button>
-  </div>
-  <div class="billing-scope">
-    <div>
-      <strong>集計対象</strong>
-      <p>
-        {filter.subscription_id
-          ? (view.selected?.service ?? '選択したサブスクを確認中…')
-          : '自分のすべてのサブスク（終了済みを含む）'}
-      </p>
-      {#if view.selected}<p class="muted">
-          {view.selected.plan ?? 'プラン不明'} · {view.selected.status ===
-          'active'
-            ? '利用中'
-            : '終了済み'}
+    {#if view.status === 'idle' || view.status === 'loading'}<p
+        role="status"
+        class="notice library-content"
+      >
+        保存済みの明細を集計しています…
+      </p>{:else if view.error}<div class="notice library-content" role="alert">
+        <p>{processingErrors[view.error]}</p>
+        <button onclick={() => controller?.load(filter)}
+          >集計を再読み込み</button
+        >
+      </div>{:else if view.summary}<BillingSummaryTable
+        summary={view.summary}
+      />{/if}</LibraryPanel
+  >
+  <details class="scope-details">
+    <summary>集計対象の詳細</summary>
+    <div class="billing-scope">
+      <div>
+        <p>
+          {filter.subscription_id
+            ? (view.selected?.service ?? '選択したサブスクを確認中…')
+            : '自分のすべてのサブスク（終了済みを含む）'}
         </p>
-        <p class="billing-id">{view.selected.id}</p>{/if}
+        {#if view.selected}<p class="muted">
+            {view.selected.plan ?? 'プラン不明'} · {view.selected.status ===
+            'active'
+              ? '利用中'
+              : view.selected.status === 'ended'
+                ? '終了済み'
+                : '状態不明'}
+          </p>
+          <p class="billing-id">{view.selected.id}</p>{/if}
+      </div>
+      {#if filter.subscription_id}<div class="actions">
+          <button type="button" onclick={() => choose(null)}
+            >すべてを集計</button
+          ><a
+            href={`/subscriptions/${filter.subscription_id}?tab=history&month=${filter.month}`}
+            >このサブスクの履歴</a
+          >
+        </div>{/if}
     </div>
-    {#if filter.subscription_id}<button
-        type="button"
-        onclick={() => choose(null)}>選択を解除してすべてを集計</button
-      ><a
-        class="button"
-        href={`/subscriptions/${filter.subscription_id}?tab=history&month=${filter.month}`}
-        >このサブスクの履歴</a
-      >{/if}
-  </div>
-  {#if view.status === 'idle' || view.status === 'loading'}<p
-      role="status"
-      class="notice"
-    >
-      保存済みの明細を集計しています…
-    </p>{:else if view.error}<div class="notice" role="alert">
-      <p>{processingErrors[view.error]}</p>
-      <button onclick={() => controller?.load(filter)}>集計を再読み込み</button>
-    </div>{:else if view.summary}<BillingSummaryTable
-      summary={view.summary}
-    />{/if}
+  </details>
+  <p class="back-link"><a href="/subscriptions">サブスク一覧へ</a></p>
   {#if picking}<Modal
       open
       title="集計するサブスクを選択"
@@ -170,7 +191,7 @@
                     ><td
                       ><strong>{s.service}</strong><span class="secondary"
                         >{s.plan ?? 'プラン不明'}</span
-                      ><span class="secondary billing-id">{s.id}</span></td
+                      ></td
                     ><td data-label="状態"
                       >{s.status === 'active'
                         ? '利用中'
@@ -205,3 +226,22 @@
       </div></Modal
     >{/if}
 </section>
+
+<style>
+  .scope-details {
+    margin-top: 22px;
+    color: var(--color-muted);
+    font-size: 12px;
+  }
+  summary {
+    cursor: pointer;
+    min-height: 32px;
+  }
+  .back-link {
+    margin-top: 24px;
+    font-size: 12px;
+  }
+  .back-link a {
+    color: var(--color-muted);
+  }
+</style>

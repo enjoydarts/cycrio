@@ -19,18 +19,21 @@
     configure,
     request,
     reload,
+    onDirty = () => {},
   }: {
     states: SyncState[];
     busy: boolean;
     configure: (provider: ModelProvider, input: SyncInput) => Promise<boolean>;
     request: (provider: ModelProvider) => void;
     reload: () => Promise<boolean>;
+    onDirty?: (dirty: boolean) => void;
   } = $props();
   let drafts = $state<
     Partial<
       Record<ModelProvider, RevisionDraft<Omit<SyncInput, 'expected_version'>>>
     >
   >({});
+  let selected = $state<ModelProvider | null>(null);
   const values = (row: SyncState) => ({
     automatic_enabled: row.automatic_enabled,
     interval_hours: row.interval_hours,
@@ -43,6 +46,9 @@
         row.version,
         values(row),
       );
+  });
+  $effect(() => {
+    onDirty(Object.values(drafts).some((draft) => !!draft?.dirty));
   });
   const statusNames = {
     never: '未実行',
@@ -80,17 +86,45 @@
   }
 </script>
 
-<details>
-  <summary>カタログの同期と自動更新</summary>
+<section aria-label="カタログの同期と自動更新">
   <p class="muted">
     OpenRouter はモデルと価格を取得します。OpenAI / Anthropic は登録済み API
     キーでモデルを取得し、価格は手入力します。Liquid AI は手入力のみです。推論
     API は呼び出しません。
   </p>
-  <div class="sync-grid">
+  <table aria-label="提供元の同期状態">
+    <thead
+      ><tr
+        ><th>提供元</th><th>状態</th><th>最終成功（日本時間）</th><th
+          ><span class="sr-only">操作</span></th
+        ></tr
+      ></thead
+    >
+    <tbody
+      >{#each states as row (row.provider)}<tr
+          ><td><strong>{providerNames[row.provider]}</strong></td><td
+            >{statusNames[row.status]}{#if row.error_code}<span class="error">
+                · 同期を確認してください</span
+              >{/if}</td
+          ><td>{datetime(row.last_success_at)}</td><td
+            ><button
+              disabled={busy}
+              aria-label={`${providerNames[row.provider]} の同期設定`}
+              aria-pressed={selected === row.provider}
+              onclick={() => (selected = row.provider)}
+              >{selected === row.provider ? '選択中' : '設定'}</button
+            ></td
+          ></tr
+        >{/each}</tbody
+    >
+  </table>
+  {#if selected === null}<p class="muted">
+      提供元を選ぶと、同期の設定と実行状況を確認できます。
+    </p>{/if}
+  <div>
     {#each states as row (row.provider)}
       {@const draft = drafts[row.provider]}
-      <article class="box">
+      <article class="box" hidden={selected !== row.provider}>
         <h4>{providerNames[row.provider]}</h4>
         <p>状態：{statusNames[row.status]}</p>
         {#if row.error_code}<p class="error">
@@ -175,4 +209,19 @@
       </article>
     {/each}
   </div>
-</details>
+</section>
+
+<style>
+  [hidden] {
+    display: none !important;
+  }
+  td button {
+    margin: 0;
+  }
+  @media (max-width: 720px) {
+    table,
+    tbody {
+      display: block;
+    }
+  }
+</style>

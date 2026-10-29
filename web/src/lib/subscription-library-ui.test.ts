@@ -15,7 +15,7 @@ async function componentURL(name: string): Promise<string> {
   const nested: Record<string, string> = {};
   for (const m of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${m[1]}.svelte`] = await componentURL(m[1]);
-  return `data:text/javascript;base64,${Buffer.from(js.code.replace(/(from\s+|import\s*)(['"])([^'"]+)\2/g, (_m, prefix, q, path) => `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`)).toString('base64')}`;
+  return `data:text/javascript;base64,${Buffer.from(js.code.replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '').replace(/(from\s+|import\s*)(['"])([^'"]+)\2/g, (_m, prefix, q, path) => `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`)).toString('base64')}`;
 }
 test('library list and cards expose real amounts, unknown sources and accessible detail actions', async () => {
   const Component = (await import(await componentURL('SubscriptionListPanel')))
@@ -71,6 +71,8 @@ async function libraryHTML(query = '', available = true) {
     './SubscriptionListPanel.svelte': await componentURL(
       'SubscriptionListPanel',
     ),
+    './LibraryHeader.svelte': await componentURL('LibraryHeader'),
+    './LibraryPanel.svelte': await componentURL('LibraryPanel'),
   };
   for (const name of [
     'Modal',

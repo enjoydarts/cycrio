@@ -28,6 +28,8 @@
   import AnalysisHistory from './AnalysisHistory.svelte';
   import MailAutomation from './MailAutomation.svelte';
   import AnalysisResultStatus from './AnalysisResultStatus.svelte';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
   const session = getAppSession(),
     token = session.token,
@@ -49,6 +51,8 @@
     startKey = $state(0),
     historyKey = $state(0),
     automationFrozen = $state(false),
+    managementOpen = $state(false),
+    historyBusy = $state(false),
     navigationMessage = $state('');
   let controller = $state<ReturnType<typeof createAnalysisController>>(),
     detailController:
@@ -189,7 +193,7 @@
     unknown: '結果不明',
   };
   beforeNavigate(({ cancel }) => {
-    if (automationFrozen) {
+    if (automationFrozen || historyBusy) {
       cancel();
       navigationMessage =
         '受付状況を確認するまで画面の移動を停止しています。同じ要求で受付を確認してください。';
@@ -197,198 +201,229 @@
   });
 </script>
 
-<section class="daily">
-  <header class="titlebar">
-    <div>
-      <h1>
-        {tab === 'attention'
-          ? '確認が必要なメール'
-          : tab === 'history'
-            ? '取り込み履歴'
-            : 'メールの確認'}
-      </h1>
-      <p>メールごとの解析結果と、サブスクへの登録状況を確認できます。</p>
-    </div>
-    <a
-      class="button primary"
-      href={'/import' +
-        (filter.account_id ? '?account_id=' + filter.account_id : '')}
-      >メールを取り込む</a
-    >
-  </header>
-  {#if navigationMessage && automationFrozen}<p class="notice" role="status">
-      {navigationMessage}
-    </p>{/if}
-  <div class="toolbar analysis-toolbar">
-    <div class="filters">
-      <label
-        >メールアカウント<select
-          value={filter.account_id}
-          disabled={automationFrozen}
-          onchange={(e) =>
-            goto(link({ account_id: e.currentTarget.value, offset: 0 }))}
-          ><option value="">すべてのアカウント</option
-          >{#each accounts as a}<option value={a.id}>{a.label}</option
-            >{/each}</select
-        ></label
-      >{#if tab === 'all'}<label
-          >解析状態<select
-            value={filter.state}
-            onchange={(e) =>
-              goto(link({ state: e.currentTarget.value, offset: 0 }))}
-            ><option value="all">すべて</option><option value="related"
-              >関連あり</option
-            ><option value="failed">失敗</option><option value="unknown"
-              >結果不明</option
-            ><option value="not_related">非関連</option></select
-          ></label
-        >{/if}
-    </div>
-    <button
-      onclick={() =>
-        tab === 'history' ? historyKey++ : controller?.load(filter)}
-      >更新</button
-    >
-  </div>
-  {#if accountError}<p role="alert" class="notice">
-      メールアカウントを読み込めませんでした。<button onclick={loadAccounts}
-        >再読み込み</button
+<section class="daily library-page">
+  <LibraryHeader
+    title={tab === 'attention'
+      ? '確認が必要なメール'
+      : tab === 'history'
+        ? '取り込み履歴'
+        : 'メールの確認'}
+    eyebrow="MAIL REVIEW"
+  >
+    {#snippet action()}
+      <a
+        class="button primary"
+        href={'/import' +
+          (filter.account_id ? '?account_id=' + filter.account_id : '')}
+        >メールを取り込む</a
       >
-    </p>{/if}
-  <details class="section">
-    <summary>取り込みの状態・停止 / 再開</summary>
-    <MailAutomation
-      account={accounts.find(
-        (a) =>
-          a.id ===
-          (filter.account_id || page.url.searchParams.get('setup_account')),
-      ) ??
-        accounts[0] ??
-        null}
-      returnTo={page.url.pathname + page.url.search}
-      onFrozen={(value) => (automationFrozen = value)}
-      onRefresh={() => {
-        if (!saving && tab !== 'history') void controller?.load(filter);
-      }}
-    />
-  </details>
-  <details class="section">
-    <summary>詳細操作</summary>
-    <p>
-      必要な場合だけ、同期済みメールの件数を指定して解析できます。失敗・結果不明の再解析は各結果の詳細から行えます。
-    </p>
-    <button disabled={automationFrozen} onclick={() => (startOpen = true)}
-      >件数を指定して手動解析</button
-    ><a href="/settings/mail">メール接続・手動同期を確認</a>
-  </details>
-  <nav class="tabs" aria-label="解析結果の表示">
-    {#each [['all', '最近の結果'], ['attention', '要対応'], ['registered', '登録済み'], ['history', '実行履歴']] as [key, label]}<a
-        href={link({ tab: key, offset: 0, state: 'all' })}
-        aria-current={tab === key ? 'page' : undefined}>{label}</a
-      >{/each}
-    {#if tab === 'pending'}<a
-        href={link({ tab: 'pending', offset: 0 })}
-        aria-current="page">未登録（旧表示）</a
-      >{/if}
-  </nav>
-  {#if tab === 'history'}{#key historyKey}<AnalysisHistory
-        account={filter.account_id}
-        offset={filter.offset}
-        previous={link({ offset: Math.max(0, filter.offset - 20) })}
-        next={link({ offset: filter.offset + 20 })}
-      />{/key}
-  {:else if view.status === 'loading' && !view.page}<p
+    {/snippet}
+  </LibraryHeader>
+  {#if navigationMessage && (automationFrozen || historyBusy)}<p
       class="notice"
       role="status"
     >
-      解析結果を読み込んでいます…
-    </p>{:else if view.error}<div class="notice" role="alert">
-      <p>{processingErrors[view.error]}</p>
-      <button onclick={() => controller?.load(filter)}>再読み込み</button>
-    </div>{:else if view.page}
-    {#if view.page.results.length}<table>
-        <thead
-          ><tr
-            ><th>検出した情報</th><th>抽出金額</th><th>解析日時（日本時間）</th
-            ><th>処理状況・登録先</th><th>詳細</th></tr
-          ></thead
-        ><tbody
-          >{#each view.page.results as result (result.id)}<tr
-              ><td
-                ><strong
-                  >{result.events[0]?.service ??
-                    resultNames[result.state]}</strong
-                ><span class="secondary"
-                  >{result.events.length
-                    ? `${eventNames[result.events[0].event_type]}${result.events.length > 1 ? ` / ほか ${result.events.length - 1} イベント` : ''}`
-                    : resultNames[result.state]}</span
-                ><span class="secondary">{result.account_label}</span></td
-              ><td data-label="抽出金額" class="money"
-                >{result.events[0]
-                  ? money(result.events[0].amount, result.events[0].currency)
-                  : '—'}</td
-              ><td data-label="解析日時"
-                >{processingDate(result.finished_at)}</td
-              ><td data-label="確認状況"><AnalysisResultStatus {result} /></td
-              ><td
-                >{#if result.events.length || ['failed', 'unknown'].includes(result.state)}<button
-                    onclick={() => {
-                      selected = result;
-                      detailReadError = false;
-                      detailOpen = true;
-                      void detailController?.load({
-                        id: result.id,
-                        account_id: result.account_id,
-                        fallback: result,
-                      });
-                    }}
-                    >{result.state === 'failed' ||
-                    result.state === 'unknown' ||
-                    result.automation_state === 'needs_review' ||
-                    result.billing_automation?.some((a) =>
-                      ['needs_review', 'failed'].includes(a.state),
-                    )
-                      ? '対応する'
-                      : '詳細を見る'}</button
-                  >{/if}</td
-              ></tr
-            >{/each}</tbody
-        >
-      </table>
-    {:else}<div class="empty">
-        <h2>
-          {tab === 'pending'
-            ? '未確認の解析結果はありません'
-            : tab === 'registered'
-              ? '登録済みの解析結果はありません'
-              : '解析結果はありません'}
-        </h2>
-        <p>
-          {tab === 'attention'
-            ? '対応が必要な解析結果はありません。'
-            : '自動処理を始めると、ここに結果が届きます。'}
-        </p>
-        <div class="actions">
-          <a
-            href={'/import' +
-              (filter.account_id ? '?account_id=' + filter.account_id : '')}
-            >メールを取り込む</a
-          >
-        </div>
-      </div>{/if}
-    <div class="pager">
-      <span>全 {view.page.total} 件（メール単位）</span>
-      <div class="actions">
-        {#if filter.offset > 0}<a
-            class="button"
-            href={link({ offset: Math.max(0, filter.offset - 20) })}>前へ</a
-          >{/if}{#if filter.offset + 20 < view.page.total}<a
-            class="button"
-            href={link({ offset: filter.offset + 20 })}>次へ</a
+      {navigationMessage}
+    </p>{/if}
+  <LibraryPanel
+    ><nav class="library-tabs" aria-label="解析結果の表示">
+      {#each [['all', '最近の結果'], ['attention', '要対応'], ['registered', '登録済み'], ['history', '実行履歴']] as [key, label]}<a
+          href={link({ tab: key, offset: 0, state: 'all' })}
+          aria-current={tab === key ? 'page' : undefined}>{label}</a
+        >{/each}
+      {#if tab === 'pending'}<a
+          href={link({ tab: 'pending', offset: 0 })}
+          aria-current="page">未登録（旧表示）</a
+        >{/if}
+    </nav>
+    <div class="library-toolbar analysis-toolbar">
+      <div class="filters">
+        <label
+          >メール<select
+            value={filter.account_id}
+            disabled={automationFrozen || historyBusy}
+            onchange={(e) =>
+              goto(link({ account_id: e.currentTarget.value, offset: 0 }))}
+            ><option value="">すべてのアカウント</option
+            >{#each accounts as a}<option value={a.id}>{a.label}</option
+              >{/each}</select
+          ></label
+        >{#if tab === 'all'}<label
+            >解析状態<select
+              value={filter.state}
+              onchange={(e) =>
+                goto(link({ state: e.currentTarget.value, offset: 0 }))}
+              ><option value="all">すべて</option><option value="related"
+                >関連あり</option
+              ><option value="failed">失敗</option><option value="unknown"
+                >結果不明</option
+              ><option value="not_related">非関連</option></select
+            ></label
           >{/if}
       </div>
+      <button
+        disabled={historyBusy}
+        onclick={() =>
+          tab === 'history' ? historyKey++ : controller?.load(filter)}
+        >更新</button
+      >
     </div>
-  {/if}
+    {#if accountError}<p role="alert" class="notice library-content">
+        メールアカウントを読み込めませんでした。<button onclick={loadAccounts}
+          >再読み込み</button
+        >
+      </p>{/if}
+    {#if tab === 'history'}<div class="library-content">
+        {#key historyKey}<AnalysisHistory
+            account={filter.account_id}
+            offset={filter.offset}
+            previous={link({ offset: Math.max(0, filter.offset - 20) })}
+            next={link({ offset: filter.offset + 20 })}
+            onBusyChange={(value) => (historyBusy = value)}
+          />{/key}
+      </div>
+    {:else if view.status === 'loading' && !view.page}<p
+        class="notice library-content"
+        role="status"
+      >
+        解析結果を読み込んでいます…
+      </p>{:else if view.error}<div class="notice library-content" role="alert">
+        <p>{processingErrors[view.error]}</p>
+        <button onclick={() => controller?.load(filter)}>再読み込み</button>
+      </div>{:else if view.page}
+      {#if view.page.results.length}<table>
+          <thead
+            ><tr
+              ><th>検出した情報</th><th>抽出金額</th><th
+                >解析日時（日本時間）</th
+              ><th>処理状況・登録先</th><th>詳細</th></tr
+            ></thead
+          ><tbody
+            >{#each view.page.results as result (result.id)}<tr
+                ><td
+                  ><strong
+                    >{result.events[0]?.service ??
+                      resultNames[result.state]}</strong
+                  ><span class="secondary"
+                    >{result.events.length
+                      ? `${eventNames[result.events[0].event_type]}${result.events.length > 1 ? ` / ほか ${result.events.length - 1} イベント` : ''}`
+                      : resultNames[result.state]}</span
+                  ><span class="secondary">{result.account_label}</span></td
+                ><td data-label="抽出金額" class="money"
+                  >{result.events[0]
+                    ? money(result.events[0].amount, result.events[0].currency)
+                    : '—'}</td
+                ><td data-label="解析日時"
+                  >{processingDate(result.finished_at)}</td
+                ><td data-label="確認状況"><AnalysisResultStatus {result} /></td
+                ><td
+                  >{#if result.events.length || ['failed', 'unknown'].includes(result.state)}<button
+                      onclick={() => {
+                        selected = result;
+                        detailReadError = false;
+                        detailOpen = true;
+                        void detailController?.load({
+                          id: result.id,
+                          account_id: result.account_id,
+                          fallback: result,
+                        });
+                      }}
+                      >{result.state === 'failed' ||
+                      result.state === 'unknown' ||
+                      result.automation_state === 'needs_review' ||
+                      result.billing_automation?.some((a) =>
+                        ['needs_review', 'failed'].includes(a.state),
+                      )
+                        ? '対応する'
+                        : '詳細を見る'}</button
+                    >{/if}</td
+                ></tr
+              >{/each}</tbody
+          >
+        </table>
+      {:else}<div class="empty library-content">
+          <h2>
+            {tab === 'pending'
+              ? '未確認の解析結果はありません'
+              : tab === 'registered'
+                ? '登録済みの解析結果はありません'
+                : '解析結果はありません'}
+          </h2>
+          <p>
+            {tab === 'attention'
+              ? '対応が必要な解析結果はありません。'
+              : '自動処理を始めると、ここに結果が届きます。'}
+          </p>
+          <div class="actions">
+            <a
+              href={'/import' +
+                (filter.account_id ? '?account_id=' + filter.account_id : '')}
+              >メールを取り込む</a
+            >
+          </div>
+        </div>{/if}
+      <div class="library-footer">
+        <span>全 {view.page.total} 件（メール単位）</span>
+        <div class="actions">
+          {#if filter.offset > 0}<a
+              class="button"
+              href={link({ offset: Math.max(0, filter.offset - 20) })}>前へ</a
+            >{/if}{#if filter.offset + 20 < view.page.total}<a
+              class="button"
+              href={link({ offset: filter.offset + 20 })}>次へ</a
+            >{/if}
+        </div>
+      </div>
+    {/if}
+  </LibraryPanel>
+  <details
+    class="management"
+    open={managementOpen || automationFrozen}
+    ontoggle={(event) => {
+      if (automationFrozen && !event.currentTarget.open)
+        event.currentTarget.open = true;
+      managementOpen = event.currentTarget.open;
+    }}
+  >
+    <summary
+      onclick={(event) => {
+        if (automationFrozen) event.preventDefault();
+      }}
+      >取り込みの管理{#if automationFrozen}<span role="status">
+          · 受付状況を確認してください</span
+        >{/if}</summary
+    >
+    <div class="management-body">
+      <MailAutomation
+        account={accounts.find(
+          (a) =>
+            a.id ===
+            (filter.account_id || page.url.searchParams.get('setup_account')),
+        ) ??
+          accounts[0] ??
+          null}
+        returnTo={page.url.pathname + page.url.search}
+        onFrozen={(value) => {
+          automationFrozen = value;
+          if (value) managementOpen = true;
+        }}
+        onRefresh={() => {
+          if (!saving && tab !== 'history') void controller?.load(filter);
+        }}
+      />
+      <div class="manual-actions">
+        <h2>手動解析・接続設定</h2>
+        <p class="muted">
+          同期済みメールの解析や、メール接続の設定を確認できます。
+        </p>
+        <div class="actions">
+          <button disabled={automationFrozen} onclick={() => (startOpen = true)}
+            >件数を指定して手動解析</button
+          ><a href="/settings/mail">メール接続・手動同期</a>
+        </div>
+      </div>
+    </div>
+  </details>
 </section>
 <Modal
   open={detailOpen}
@@ -448,6 +483,29 @@
 >
 
 <style>
+  .management {
+    margin-top: 28px;
+    border-top: 1px solid var(--color-border);
+    padding: 18px 0;
+    color: var(--color-muted);
+    font-size: 12px;
+  }
+  .management > summary {
+    cursor: pointer;
+    min-height: 32px;
+  }
+  .management-body {
+    padding-top: 20px;
+    color: var(--color-text);
+  }
+  .manual-actions {
+    margin-top: 24px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-border);
+  }
+  .manual-actions h2 {
+    font-size: 14px;
+  }
   .analysis-toolbar .filters {
     flex: 1 1 28rem;
     min-width: 0;

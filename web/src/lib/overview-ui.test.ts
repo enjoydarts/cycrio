@@ -16,11 +16,13 @@ async function componentURL(name: string): Promise<string> {
   const nested: Record<string, string> = {};
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await componentURL(match[1]);
-  const code = js.code.replace(
-    /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
-    (_m, p, q, path) =>
-      `${p}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
-  );
+  const code = js.code
+    .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
+    .replace(
+      /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+      (_m, p, q, path) =>
+        `${p}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
+    );
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 }
 const ready = () => ({

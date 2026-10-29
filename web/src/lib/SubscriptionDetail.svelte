@@ -27,6 +27,8 @@
     EditorView,
   } from './subscriptions-controller.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
   let {
     id,
@@ -143,32 +145,29 @@
   }}
 />
 
-<section class="daily" class:embedded>
-  {#if !embedded}<a class="button" href={`/subscriptions${sourceQuery}`}
-      >← サブスク一覧</a
-    >{/if}
+{#snippet detailBody()}
   {#if view.status === 'loading'}<p role="status" class="notice">
       読み込んでいます…
     </p>{:else if view.error}<div class="notice" role="alert">
       <p>{processingErrors[view.error]}</p>
       <button onclick={() => controller?.load(id)}>再読み込み</button>
     </div>{:else if view.page}{@const s = view.page}
-    <header class="titlebar">
-      <div>
-        {#if embedded}<ServiceAvatar name={s.service} />{/if}
-        <h1>{s.service}</h1>
-        <p>{s.plan ?? 'プラン不明'}</p>
-      </div>
-      <button
-        class="primary"
-        disabled={frozen || childFrozen}
-        onclick={() => {
-          editing = true;
-          localTab = 'edit';
-        }}>契約を編集</button
-      >
-    </header>
-    <nav class="tabs" aria-label="サブスクの詳細">
+    {#if embedded}<header class="titlebar">
+        <div>
+          {#if embedded}<ServiceAvatar name={s.service} />{/if}
+          <h1>{s.service}</h1>
+          <p>{s.plan ?? 'プラン不明'}</p>
+        </div>
+        <button
+          class="primary"
+          disabled={frozen || childFrozen}
+          onclick={() => {
+            editing = true;
+            localTab = 'edit';
+          }}>契約を編集</button
+        >
+      </header>{/if}
+    <nav class={embedded ? 'tabs' : 'library-tabs'} aria-label="サブスクの詳細">
       {#if embedded}{#each [['overview', '契約情報'], ['history', '請求履歴'], ['schedule', '請求予定'], ['sources', '取得元'], ['edit', '編集']] as [value, label]}<button
             type="button"
             disabled={frozen || childFrozen}
@@ -303,6 +302,39 @@
             }}
           />{/key}</Modal
       >{/if}
+  {/if}
+{/snippet}
+
+<section class="daily" class:embedded class:library-page={!embedded}>
+  {#if embedded}
+    {@render detailBody()}
+  {:else}
+    <LibraryHeader
+      title={view.status === 'ready' && view.page
+        ? view.page.service
+        : 'サブスクの詳細'}
+      description={view.status === 'ready' && view.page
+        ? (view.page.plan ?? 'プラン不明')
+        : undefined}
+      eyebrow="MY LIBRARY"
+    >
+      {#snippet action()}
+        <a class="button" href={`/subscriptions${sourceQuery}`}
+          >← サブスク一覧</a
+        >
+        {#if view.status === 'ready' && view.page}<button
+            class="primary"
+            disabled={frozen || childFrozen}
+            onclick={() => {
+              editing = true;
+              localTab = 'edit';
+            }}>契約を編集</button
+          >{/if}
+      {/snippet}
+    </LibraryHeader>
+    <LibraryPanel
+      ><div class="library-content">{@render detailBody()}</div></LibraryPanel
+    >
   {/if}
 </section>
 {#if !embedded}<Modal

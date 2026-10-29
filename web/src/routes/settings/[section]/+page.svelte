@@ -30,17 +30,17 @@
     content="noindex"
   /></svelte:head
 >
-<header class="page-heading">
+<nav class="settings-breadcrumb" aria-label="設定の現在位置">
   <a class="settings-back" href="/settings">← 設定一覧に戻る</a>
-  <h1>設定</h1>
-</header>
+  <span aria-hidden="true">/</span><span>{title}</span>
+</nav>
 <div class="settings-content">
   {#if access === 'denied'}
-    <h2>管理者の権限が必要です</h2>
+    <h1>管理者の権限が必要です</h1>
     <p>この設定を利用する権限がありません。</p>
     <a href="/settings/mail">メール連携へ戻る</a>
   {:else if access === 'not_found'}
-    <h2>設定が見つかりません</h2>
+    <h1>設定が見つかりません</h1>
     <p>指定された設定ページはありません。</p>
     <a href="/settings/mail">メール連携へ戻る</a>
   {:else}
@@ -97,12 +97,25 @@
 </div>
 
 <style>
+  .settings-breadcrumb {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-bottom: 1.75rem;
+    font-size: 0.8rem;
+    color: var(--color-muted);
+  }
   .settings-back {
-    display: none;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    text-decoration: none;
   }
   .settings-content {
     min-width: 0;
-    max-width: 1060px;
+    max-width: 1280px;
+    margin-inline: auto;
   }
   @media (max-width: 700px) {
     .settings-back {
@@ -110,7 +123,6 @@
       width: fit-content;
       min-height: 44px;
       padding-block: 8px;
-      margin-bottom: 8px;
     }
   }
 </style>

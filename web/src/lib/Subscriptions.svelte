@@ -34,6 +34,8 @@
   import SubscriptionDetail from './SubscriptionDetail.svelte';
   import SubscriptionDrawer from './SubscriptionDrawer.svelte';
   import SubscriptionListPanel from './SubscriptionListPanel.svelte';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
   const session = getAppSession(),
     workspace = getWorkspace(),
@@ -196,15 +198,15 @@
     }
   }}
 />
-<section class="library daily">
-  <header class="library-header">
-    <div>
-      <span class="eyebrow">MY LIBRARY</span>
-      <h1>{account ? `${account.label} のサブスク` : 'サブスクリプション'}</h1>
-      <p>メールから見つけたサブスクを、ひとつに。</p>
-    </div>
-    <a class="primary button" href={importURL}>＋ メールから取り込む</a>
-  </header>
+<section class="library daily library-page">
+  <LibraryHeader
+    title={account ? `${account.label} のサブスク` : 'サブスクリプション'}
+    eyebrow="MY LIBRARY"
+    description="メールから見つけたサブスクを、ひとつに。"
+    >{#snippet action()}<a class="primary button" href={importURL}
+        >＋ メールから取り込む</a
+      >{/snippet}</LibraryHeader
+  >
   {#if navigationMessage && frozen}<p class="notice" role="status">
       {navigationMessage}
     </p>{/if}
@@ -230,9 +232,9 @@
         <p><a href="/analysis?tab=attention">解析結果を確認する →</a></p>
       </div>
     </div>{/if}
-  <div class="list-panel">
+  <LibraryPanel>
     <div class="panel-heading">
-      <nav aria-label="サブスクの状態">
+      <nav class="library-tabs" aria-label="サブスクの状態">
         {#each [['all', 'すべて'], ['active', '利用中'], ['ended', '終了済み'], ['unknown', '状態不明']] as [value, label]}<a
             href={link({
               status: value as SubscriptionFilter['status'],
@@ -342,7 +344,7 @@
             >{/if}
         </div>
       </footer>{/if}
-  </div>
+  </LibraryPanel>
   <div class="footnote">
     <a href="/subscriptions/summary">支払・返金明細の月次集計</a><button
       disabled={view.status === 'loading' || frozen}
@@ -404,33 +406,6 @@
     max-width: 1280px;
     margin: 0 auto;
   }
-  .library-header {
-    display: flex;
-    justify-content: space-between;
-    gap: 24px;
-    align-items: center;
-    margin-bottom: 28px;
-  }
-  .eyebrow {
-    font-size: 10px;
-    letter-spacing: 1.7px;
-    color: var(--color-muted);
-    font-weight: 600;
-  }
-  h1 {
-    font-size: 28px;
-    letter-spacing: -0.7px;
-    margin: 9px 0 8px;
-    font-weight: 650;
-  }
-  .library-header p {
-    color: var(--color-muted);
-    font-size: 13px;
-    margin: 0;
-  }
-  .library-header .primary {
-    white-space: nowrap;
-  }
   .summary {
     display: grid;
     grid-template-columns: 1fr 1.3fr 1fr;
@@ -480,16 +455,10 @@
   .attention {
     color: #c98538;
   }
-  .list-panel {
-    border: 1px solid var(--color-border);
-    border-radius: 12px;
-    background: var(--color-surface);
-    overflow: hidden;
-  }
   .panel-heading {
     display: flex;
     justify-content: space-between;
-    padding: 0 22px;
+    padding: 0;
     gap: 12px;
     border-bottom: 1px solid var(--color-border);
   }
@@ -526,6 +495,7 @@
     font-size: 11px;
     color: var(--color-muted);
     white-space: nowrap;
+    margin-right: 22px;
   }
   .library-toolbar {
     display: flex;
@@ -610,22 +580,6 @@
     clip-path: inset(50%);
   }
   @media (max-width: 650px) {
-    .library-header {
-      align-items: flex-start;
-      gap: 10px;
-      margin-bottom: 22px;
-    }
-    h1 {
-      font-size: 21px;
-    }
-    .library-header p {
-      font-size: 11px;
-    }
-    .library-header .primary {
-      font-size: 10px;
-      padding: 10px;
-      margin-top: 22px;
-    }
     .summary {
       padding: 18px 0;
       margin-bottom: 22px;
@@ -646,7 +600,7 @@
       line-height: 1.6;
     }
     .panel-heading {
-      padding: 0 14px;
+      padding: 0;
     }
     nav {
       gap: 15px;

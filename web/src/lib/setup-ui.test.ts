@@ -14,11 +14,13 @@ test('compact price form emits valid currency and decimal patterns in actual HTM
   );
   const { js, warnings } = compile(source, { generate: 'server' });
   assert.deepEqual(warnings, []);
-  const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
-    (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
-  );
+  const code = js.code
+    .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
+    .replace(
+      /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+      (_m, prefix, quote, path) =>
+        `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+    );
   const Component = (
     await import(
       `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
@@ -80,11 +82,13 @@ async function setupComponentURL(name: string): Promise<string> {
   const nested: Record<string, string> = {};
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await setupComponentURL(match[1]);
-  const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
-    (_m, prefix, quote, path) =>
-      `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
-  );
+  const code = js.code
+    .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
+    .replace(
+      /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+      (_m, prefix, quote, path) =>
+        `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
+    );
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 }
 test('owner mail setup returns to the validated analysis context without invoking any API during rendering', async () => {

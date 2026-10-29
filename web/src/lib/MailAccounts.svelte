@@ -6,6 +6,8 @@
   import type { MailSyncAPI } from './mail-sync-api.ts';
   import type { SyncRequests } from './mail-sync-controller.ts';
   import Modal from './Modal.svelte';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   import { safeAnalysisReturn } from './setup-readiness.ts';
   import {
     createMailController,
@@ -229,91 +231,97 @@
     </p>{/if}
 {/snippet}
 
-<section class="mail-workspace" aria-label="自分のメール連携">
+<section class="mail-workspace library-page" aria-label="自分のメール連携">
   {#if !connectOnly}
-    <div class="mail-heading">
-      <div>
-        <h2>メール連携</h2>
-        <p>接続情報と、対象のフォルダーを管理します。</p>
+    <LibraryHeader
+      title="メール連携"
+      description="接続情報と、対象のフォルダーを管理します。"
+      >{#snippet action()}
+        <button
+          class="primary"
+          disabled={busy || view.accounts.length >= 10 || view.uncertain}
+          onclick={() => {
+            query = '';
+            editing = false;
+            controller?.newAccount();
+          }}>＋ メールを接続</button
+        >
+      {/snippet}</LibraryHeader
+    >
+    <LibraryPanel>
+      <div class="mail-list-heading library-toolbar">
+        <span>登録済み {view.accounts.length} 件</span><button
+          id="mail-refresh"
+          class="mail-button"
+          disabled={busy}
+          onclick={() => controller?.refresh()}>更新</button
+        >
       </div>
-      <button
-        class="mail-button mail-primary"
-        disabled={busy || view.accounts.length >= 10 || view.uncertain}
-        onclick={() => {
-          query = '';
-          editing = false;
-          controller?.newAccount();
-        }}>＋ メールを接続</button
-      >
-    </div>
-    <div class="mail-list-heading">
-      <span>登録済み {view.accounts.length} 件</span><button
-        id="mail-refresh"
-        class="mail-button"
-        disabled={busy}
-        onclick={() => controller?.refresh()}>更新</button
-      >
-    </div>
-    {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
-        メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
-        <a class="mail-button" href="/import">取り込みを続ける</a>
-      </p>{:else if oauthResult === 'failed'}<p
-        class="mail-feedback"
-        role="alert"
-      >
-        メールの認証が完了しませんでした。接続設定からもう一度お試しください。
-      </p>{/if}
-    {#if !view.form}{@render feedback()}{/if}
-    <section class="mail-list" aria-label="メールアカウント一覧">
-      {#if view.status === 'loading' && !view.accounts.length}<p role="status">
-          読み込み中です…
-        </p>{:else if !view.accounts.length}<p class="mail-empty">
-          アカウントはまだ登録されていません。接続情報を追加してください。
+      {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
+          メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
+          <a class="mail-button" href="/import">取り込みを続ける</a>
+        </p>{:else if oauthResult === 'failed'}<p
+          class="mail-feedback"
+          role="alert"
+        >
+          メールの認証が完了しませんでした。接続設定からもう一度お試しください。
         </p>{/if}
-      <ul>
-        {#each view.accounts as row (row.id)}<li>
-            <div class="mail-account-row">
-              <div class="mail-account-name">
-                <strong>{row.label}</strong><span
-                  >{providerNames[row.provider]} · 対象 {row.folders.filter(
-                    (folder) => folder.selected,
-                  ).length} フォルダー</span
+      {#if !view.form}{@render feedback()}{/if}
+      <section class="mail-list" aria-label="メールアカウント一覧">
+        {#if view.status === 'loading' && !view.accounts.length}<p
+            role="status"
+          >
+            読み込み中です…
+          </p>{:else if !view.accounts.length}<p class="mail-empty">
+            アカウントはまだ登録されていません。接続情報を追加してください。
+          </p>{/if}
+        <ul>
+          {#each view.accounts as row (row.id)}<li>
+              <div class="mail-account-row">
+                <div class="mail-account-name">
+                  <strong>{row.label}</strong><span
+                    >{providerNames[row.provider]} · 対象 {row.folders.filter(
+                      (folder) => folder.selected,
+                    ).length} フォルダー</span
+                  >
+                </div>
+                <span class="mail-badge">{states[row.state]}</span><button
+                  class="mail-button"
+                  aria-label={`${row.label}の接続設定`}
+                  disabled={busy}
+                  onclick={() => {
+                    query = '';
+                    editing = false;
+                    controller?.select(row.id);
+                  }}>接続を編集</button
                 >
               </div>
-              <span class="mail-badge">{states[row.state]}</span><button
-                class="mail-button"
-                aria-label={`${row.label}の接続設定`}
-                disabled={busy}
-                onclick={() => {
-                  query = '';
-                  editing = false;
-                  controller?.select(row.id);
-                }}>接続を編集</button
-              >
-            </div>
-          </li>{/each}
-      </ul>
-    </section>
-    <details class="mail-guide">
-      <summary>連携について</summary>
-      <p>
-        Gmail / Google Workspace と Outlook.com / Hotmail
-        は各サービスの認証画面で、メールの読み取りを許可します。Google Workspace
-        は組織の管理者による許可が必要な場合があります。アプリの Google
-        ログインとは別の認可です。 Fastmail は専用のアプリパスワードで <code
-          >imap.fastmail.com:993</code
-        >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
-        143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
-        送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
-      </p>
-    </details>
-    {#if returnTarget}<div class="mail-return">
-        {#if returnLocked}<span class="mail-button" aria-disabled="true"
-            >解析へ戻って条件を確認</span
-          >{:else}<a class="mail-button" href={returnTarget}
-            >解析へ戻って条件を確認</a
-          >{/if}
-      </div>{/if}
+            </li>{/each}
+        </ul>
+      </section>
+      <div class="library-content">
+        <details class="mail-guide">
+          <summary>連携について</summary>
+          <p>
+            Gmail / Google Workspace と Outlook.com / Hotmail
+            は各サービスの認証画面で、メールの読み取りを許可します。Google
+            Workspace は組織の管理者による許可が必要な場合があります。アプリの
+            Google ログインとは別の認可です。 Fastmail
+            は専用のアプリパスワードで <code>imap.fastmail.com:993</code
+            >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
+            143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
+            送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
+          </p>
+        </details>
+        {#if returnTarget}<div class="mail-return">
+            {#if returnLocked}<span class="mail-button" aria-disabled="true"
+                >解析へ戻って条件を確認</span
+              >{:else}<a class="mail-button" href={returnTarget}
+                >解析へ戻って条件を確認</a
+              >{/if}
+          </div>{/if}
+      </div>
+    </LibraryPanel>
   {/if}
   {#if connectOnly && !view.form}
     {@render feedback()}
@@ -701,7 +709,6 @@
     margin-top: 0;
     min-width: 0;
   }
-  .mail-heading,
   .mail-section-heading,
   .mail-probe,
   .mail-actions {
@@ -711,18 +718,10 @@
     justify-content: space-between;
     gap: 1rem;
   }
-  .mail-heading {
-    align-items: flex-start;
-  }
-  h2,
   h3,
   h4,
   p {
     margin: 0;
-  }
-  h2 {
-    font-size: 1.1rem;
-    margin-bottom: 0.5rem;
   }
   h3 {
     font-size: 1.05rem;
@@ -734,7 +733,6 @@
   p {
     line-height: 1.9;
   }
-  .mail-heading p,
   .mail-help,
   .mail-empty {
     color: var(--color-muted);
@@ -792,7 +790,7 @@
     align-items: center;
     gap: 16px;
     border-bottom: 1px solid var(--color-border);
-    padding: 18px 0;
+    padding: 20px 22px;
     overflow-wrap: anywhere;
   }
   .mail-account-name {
@@ -966,9 +964,6 @@
   @media (max-width: 850px) {
     .mail-fields {
       grid-template-columns: minmax(0, 1fr);
-    }
-    .mail-heading {
-      gap: 0.75rem;
     }
   }
   @media (max-width: 400px) {

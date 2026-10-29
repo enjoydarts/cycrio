@@ -114,9 +114,12 @@
     await tick();
     sidebar?.querySelector<HTMLElement>('a,button')?.focus();
   }
-  function closeMenu(restore = true) {
+  async function closeMenu(restore = true) {
     menuOpen = false;
-    if (restore) menuButton?.focus();
+    if (restore) {
+      await tick();
+      menuButton?.focus();
+    }
   }
   function keyboard(event: KeyboardEvent) {
     if (!mobile || !menuOpen) return;
@@ -218,7 +221,13 @@
       href="/"
       aria-label="Cycrio ホーム"
       onclick={() => closeMenu(false)}
-      ><span class="brand-symbol" aria-hidden="true">C</span>Cycrio</a
+      ><img
+        class="brand-logo"
+        src="/brand/cycrio-mark-128.png"
+        width="36"
+        height="36"
+        alt=""
+      />Cycrio</a
     >
     <div class="sidebar-navigation">
       <p class="rail-label">ライブラリ</p>
@@ -400,14 +409,12 @@
     font-weight: 750;
     letter-spacing: -1px;
   }
-  .brand-symbol {
-    display: grid;
-    place-items: center;
-    width: 33px;
-    height: 33px;
-    border-radius: 11px;
-    background: #8a7aff;
-    font-size: 25px;
+  .brand-logo {
+    display: block;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    object-fit: contain;
   }
   .sidebar-navigation {
     flex: 1;

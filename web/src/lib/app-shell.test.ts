@@ -5,6 +5,38 @@ import { compile, parse } from 'svelte/compiler';
 import { render } from 'svelte/server';
 import { createRawSnippet } from 'svelte';
 
+test('mobile close restores focus after the background inert state has flushed', async () => {
+  const source = await readFile(
+    new URL('./AppShell.svelte', import.meta.url),
+    'utf8',
+  );
+  const ast = parse(source, { modern: true }) as any;
+  const node = ast.instance.content.body.find(
+    (value: any) =>
+      value.type === 'FunctionDeclaration' && value.id.name === 'closeMenu',
+  );
+  let release!: () => void,
+    focused = 0;
+  const flushed = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const fixture = new Function(
+    'tick',
+    'menuButton',
+    `let menuOpen=true; return { close:(${source.slice(node.start, node.end)}), isOpen:()=>menuOpen }`,
+  )(() => flushed, {
+    focus() {
+      focused++;
+    },
+  });
+  const closing = fixture.close();
+  assert.equal(fixture.isOpen(), false);
+  assert.equal(focused, 0);
+  release();
+  await closing;
+  assert.equal(focused, 1);
+});
+
 test('rail labels and navigation retain AA contrast on the fixed dark surface', async () => {
   const source = await readFile(
     new URL('./brand.css', import.meta.url),
@@ -68,6 +100,8 @@ test('single rail keeps library navigation and a bottom settings link without ne
   };
   const html = render(Component, { props }).body;
   const sidebar = html.match(/<aside\b[\s\S]*?<\/aside>/)?.[0] ?? '';
+  assert.match(sidebar, /<img[^>]*src="\/brand\/cycrio-mark-128.png"/);
+  assert.doesNotMatch(sidebar, /brand-symbol/);
   assert.doesNotMatch(sidebar, /aria-label="設定項目"/);
   assert.match(sidebar, /href="\/settings"[^>]*aria-current="page"/);
   assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);

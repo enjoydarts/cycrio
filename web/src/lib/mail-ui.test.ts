@@ -282,19 +282,23 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
       /from\s+['"]\.\/([^'"]+)\.svelte['"]/g,
     ))
       nested[`./${match[1]}.svelte`] = await compiledURL(match[1]);
-    const resolved = componentCode.replace(
-      /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
-      (_m, prefix, quote, path) =>
-        `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
-    );
+    const resolved = componentCode
+      .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
+      .replace(
+        /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+        (_m, prefix, quote, path) =>
+          `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
+      );
     return `data:text/javascript;base64,${Buffer.from(resolved).toString('base64')}`;
   }
   const processingURL = await compiledURL('MailProcessing');
   const modalURL = await compiledURL('Modal');
+  const headerURL = await compiledURL('LibraryHeader');
+  const panelURL = await compiledURL('LibraryPanel');
   const code = js.code.replace(
     /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
     (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path === './Modal.svelte' ? modalURL : path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+      `${prefix}${quote}${path === './LibraryHeader.svelte' ? headerURL : path === './LibraryPanel.svelte' ? panelURL : path === './Modal.svelte' ? modalURL : path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const Component = (
     await import(

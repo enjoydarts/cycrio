@@ -23,6 +23,7 @@
     reset,
     invalid,
     reload,
+    onDirty = () => {},
   }: {
     model: Model;
     prices: Price[];
@@ -31,8 +32,10 @@
     reset: (expected_version: number) => Promise<boolean>;
     invalid: () => void;
     reload: () => Promise<boolean>;
+    onDirty?: (dirty: boolean) => void;
   } = $props();
   let confirmVersion = $state<number | null>(null);
+  let purpose = $state<'reference' | 'manage' | 'history'>('reference');
   type PriceForm = Record<
     (typeof priceFields)[number] | 'currency' | 'effective_from' | 'source_url',
     string
@@ -47,6 +50,9 @@
   let draft = $state<RevisionDraft<PriceForm> | null>(null);
   $effect(() => {
     draft = reconcileRevisionDraft(draft, model.version, blankValues());
+  });
+  $effect(() => {
+    onDirty(!!draft?.dirty || confirmVersion !== null);
   });
   const labels = {
     input_per_million: '入力 / 100万トークン',
@@ -118,11 +124,7 @@
 
 {#snippet priceDetails(price: Price | null)}
   {#if price}
-    <p>
-      <code>{price.id}</code><br />{price.currency} · 取得（日本時間）{datetime(
-        price.captured_at,
-      )}
-    </p>
+    <p>{price.currency} · 取得（日本時間）{datetime(price.captured_at)}</p>
     <dl class="rates">
       {#each ['input', 'output', ...Object.keys(price.rates).filter((k) => k !== 'input' && k !== 'output')] as key}
         {@const rate = price.rates[key]}
@@ -137,6 +139,7 @@
       {/each}
     </dl>
     <p class="muted">適用開始（日本時間）{datetime(price.effective_from)}</p>
+    <details><summary>価格の技術情報</summary><code>{price.id}</code></details>
     {#if httpsURL(price.source_url)}<a
         href={price.source_url}
         target="_blank"
@@ -152,20 +155,29 @@
 <section aria-label="モデルの価格">
   <h4>現在の参照価格</h4>
   <p class="muted">
-    カタログ上の参考価格です。条件別価格・割引・追加料金があるため、実際の呼出し原価ではありません。空欄は不明、0
-    は明示的なゼロです。
+    呼出し原価とは異なる参考価格です。空欄は不明、0 は明示的なゼロです。
   </p>
-  {@render priceDetails(model.current_price)}
-  <details>
-    <summary>最新 API 価格</summary>{@render priceDetails(model.api_price)}
-  </details>
-  <details>
-    <summary>手入力の上書き価格</summary>{@render priceDetails(
-      model.manual_price,
-    )}
-  </details>
-  <details>
-    <summary>手入力価格を登録・更新</summary>
+  <nav class="price-tabs" aria-label="価格の表示">
+    {#each [['reference', '参照価格'], ['manage', '価格を管理'], ['history', '価格履歴']] as [value, label]}<button
+        type="button"
+        disabled={busy}
+        aria-pressed={purpose === value}
+        onclick={() => (purpose = value as typeof purpose)}>{label}</button
+      >{/each}
+  </nav>
+  <section aria-label="参照価格" hidden={purpose !== 'reference'}>
+    {@render priceDetails(model.current_price)}
+    <details>
+      <summary>最新 API 価格</summary>{@render priceDetails(model.api_price)}
+    </details>
+    <details>
+      <summary>手入力の上書き価格</summary>{@render priceDetails(
+        model.manual_price,
+      )}
+    </details>
+  </section>
+  <section aria-label="価格を管理" hidden={purpose !== 'manage'}>
+    <h4>手入力価格を登録・更新</h4>
     <p class="muted">
       一部の料金だけを登録できます。空欄の項目は不明です。API
       同期後もこの上書きを保持します。
@@ -229,40 +241,41 @@
         >
       </form>
     {/if}
-  </details>
-  {#if model.manual_price}
-    {#if confirmVersion !== null}<div
-        class="box"
-        role="group"
-        aria-label="価格上書き解除の確認"
-      >
-        <p>
-          手入力の上書きを解除し、最新 API 価格（未取得なら不明）へ戻しますか？
-        </p>
-        {#if confirmVersion !== model.version}<p class="error" role="status">
-            確認中に保存状態が更新されました。キャンセルして最新の価格を確認してください。
-          </p>{/if}
-        <div class="actions">
-          <button
-            id="confirm-price-reset"
-            disabled={busy}
-            onclick={() => {
-              const version = confirmVersion;
-              confirmVersion = null;
-              if (version !== null) void reset(version);
-            }}>上書きを解除する</button
-          ><button disabled={busy} onclick={() => confirmation(false)}
-            >キャンセル</button
-          >
-        </div>
-      </div>{:else}<button
-        id="price-reset"
-        disabled={busy}
-        onclick={() => confirmation(true)}>API 価格へ戻す</button
-      >{/if}
-  {/if}
-  <details>
-    <summary>価格履歴（最新 50 件）</summary>
+    {#if model.manual_price}
+      {#if confirmVersion !== null}<div
+          class="box"
+          role="group"
+          aria-label="価格上書き解除の確認"
+        >
+          <p>
+            手入力の上書きを解除し、最新 API
+            価格（未取得なら不明）へ戻しますか？
+          </p>
+          {#if confirmVersion !== model.version}<p class="error" role="status">
+              確認中に保存状態が更新されました。キャンセルして最新の価格を確認してください。
+            </p>{/if}
+          <div class="actions">
+            <button
+              id="confirm-price-reset"
+              disabled={busy}
+              onclick={() => {
+                const version = confirmVersion;
+                confirmVersion = null;
+                if (version !== null) void reset(version);
+              }}>上書きを解除する</button
+            ><button disabled={busy} onclick={() => confirmation(false)}
+              >キャンセル</button
+            >
+          </div>
+        </div>{:else}<button
+          id="price-reset"
+          disabled={busy}
+          onclick={() => confirmation(true)}>API 価格へ戻す</button
+        >{/if}
+    {/if}
+  </section>
+  <section aria-label="価格履歴" hidden={purpose !== 'history'}>
+    <h4>価格履歴（最新 50 件）</h4>
     <ol>
       {#each prices as price (price.id)}<li class="box">
           <strong>{price.source === 'api' ? 'API 取得' : '手入力'}</strong
@@ -270,5 +283,21 @@
         </li>{/each}
     </ol>
     {#if prices.length === 0}<p>履歴はありません。</p>{/if}
-  </details>
+  </section>
 </section>
+
+<style>
+  [hidden] {
+    display: none !important;
+  }
+  .price-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 1rem;
+  }
+  .price-tabs button[aria-pressed='true'] {
+    background: var(--color-action);
+    color: var(--color-on-action);
+  }
+</style>

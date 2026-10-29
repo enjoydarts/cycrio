@@ -1,6 +1,8 @@
 <script lang="ts">
   import { getAppSession } from './app-context.ts';
   import type { ThemePreference } from './theme.ts';
+  import LibraryHeader from './LibraryHeader.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
   const session = getAppSession();
   const options: { value: ThemePreference; label: string }[] = [
     { value: 'light', label: 'ライト' },
@@ -9,33 +11,23 @@
   ];
 </script>
 
-<section aria-label="表示テーマ">
-  <h2>表示テーマ</h2>
-  <p>
-    この端末で使う配色を選びます。システムでは端末の設定に合わせて切り替わります。
-  </p>
-  <div class="theme-options" role="group" aria-label="表示テーマ">
-    {#each options as option}<button
-        class:active={session.theme === option.value}
-        aria-pressed={session.theme === option.value}
-        onclick={() => session.setTheme(option.value)}>{option.label}</button
-      >{/each}
-  </div>
+<section class="library-page" aria-label="表示テーマ">
+  <LibraryHeader
+    title="表示テーマ"
+    description="この端末で使う配色を選びます。"
+  />
+  <LibraryPanel padded>
+    <div class="theme-options" role="group" aria-label="表示テーマ">
+      {#each options as option}<button
+          class:active={session.theme === option.value}
+          aria-pressed={session.theme === option.value}
+          onclick={() => session.setTheme(option.value)}>{option.label}</button
+        >{/each}
+    </div>
+  </LibraryPanel>
 </section>
 
 <style>
-  section {
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 28px;
-  }
-  h2 {
-    margin: 0 0 8px;
-    font-size: 16px;
-  }
-  p {
-    margin: 0 0 20px;
-    color: var(--color-muted);
-  }
   .theme-options {
     display: flex;
     flex-wrap: wrap;
