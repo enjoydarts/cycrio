@@ -39,12 +39,16 @@ jobs:
       - name: Authentication and credential integration tests
         run: make test-integration
       - name: Synthetic database and key recovery exercise
-        run: make test-recovery
+        # Linux bind mounts retain the root ownership and 0700/0600 modes
+        # created by keyring-init. Keep the private modes and use the same
+        # owner for host-side backup/key operations on this disposable runner.
+        run: sudo make test-recovery
       - name: Synthetic mail processing evaluation
         run: make test-evaluation-smoke
       - name: Synthetic Hatchet history and log evaluation
         id: hatchet_evaluation
-        run: make test-evaluation-hatchet
+        # This host-side script also reads private container-created artifacts.
+        run: sudo make test-evaluation-hatchet
       - name: Reconnect after restart
         run: |
           docker compose restart api worker
