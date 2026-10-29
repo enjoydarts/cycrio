@@ -1,7 +1,9 @@
 import type { Clerk } from '@clerk/clerk-js';
 import { ApiError, type createAPI, type CurrentUser } from './api.ts';
+import { clerkAppearance } from './clerk-appearance.ts';
 
 export type AuthSDK = {
+  client?: Pick<NonNullable<Clerk['client']>, 'lastAuthenticationStrategy'>;
   user: { id: string } | null | undefined;
   session:
     { id: string; getToken: () => Promise<string | null> } | null | undefined;
@@ -15,9 +17,9 @@ export type AuthSDK = {
 };
 export type AuthState =
   | {
-      status:
-        'loading' | 'unconfigured' | 'signed_out' | 'checking' | 'redirecting';
+      status: 'loading' | 'unconfigured' | 'checking' | 'redirecting';
     }
+  | { status: 'signed_out'; lastAuthenticationStrategy?: string | null }
   | { status: 'allowed'; user: CurrentUser }
   | { status: 'pending'; clerkUserId: string }
   | { status: 'denied' }
@@ -56,20 +58,7 @@ async function loadClerk(key: string): Promise<AuthSDK> {
       signInForceRedirectUrl: '/',
       signUpForceRedirectUrl: '/',
       afterSignOutUrl: '/',
-      appearance: {
-        variables: {
-          colorPrimary: 'var(--color-action)',
-          colorText: 'var(--color-text)',
-          colorTextSecondary: 'var(--color-muted)',
-          colorBackground: 'var(--color-surface)',
-          colorSuccess: 'var(--color-action)',
-          borderRadius: '0.85rem',
-        },
-        elements: {
-          cardBox: { width: '100%', boxShadow: 'none' },
-          card: { boxShadow: 'none' },
-        },
-      },
+      appearance: clerkAppearance,
     });
     return clerk;
   })();
@@ -121,7 +110,11 @@ export function createAuthController(
     const user = sdk.user;
     const session = sdk.session;
     if (!user || !session) {
-      emit({ status: 'signed_out' });
+      emit({
+        status: 'signed_out',
+        lastAuthenticationStrategy:
+          sdk.client?.lastAuthenticationStrategy ?? null,
+      });
       return;
     }
     const scope = { clerkUserId: user.id, sessionId: session.id };

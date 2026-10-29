@@ -88,6 +88,27 @@ test('signed-out visitor sees sign in without a private API request', async () =
   assert.equal(f.unsubscribed, true);
 });
 
+test('signed-out state exposes only the actual Clerk last authentication method', async () => {
+  for (const strategy of [null, 'oauth_google', 'password'] as const) {
+    const f = fixture(() => {
+      assert.fail('signed-out visitors cannot call private endpoints');
+    }, false);
+    f.sdk.client = { lastAuthenticationStrategy: strategy };
+    const controller = createAuthController(
+      f.api,
+      'home',
+      f.changed,
+      async () => f.sdk,
+    );
+    await controller.start();
+    assert.deepEqual(f.states.at(-1), {
+      status: 'signed_out',
+      lastAuthenticationStrategy: strategy,
+    });
+    controller.dispose();
+  }
+});
+
 test('allowed user identity comes from the server', async () => {
   const f = fixture(() => Response.json({ id: 'internal-id', role: 'user' }));
   const controller = createAuthController(

@@ -37,6 +37,50 @@ test('mobile close restores focus after the background inert state has flushed',
   assert.equal(focused, 1);
 });
 
+test('signed-out access places its brand above one compact authentication card', async () => {
+  const C = await component('AppAccess');
+  const html = render(C, {
+    props: {
+      state: { status: 'signed_out' },
+      retry: () => {},
+      signOut: () => {},
+      mountAuth: () => () => {},
+    },
+  }).body;
+  assert.ok(
+    html.indexOf('class="access-brand') < html.indexOf('class="access-panel'),
+  );
+  assert.match(html, /サインインして続ける/);
+  assert.doesNotMatch(
+    html,
+    /毎月の支出に、見通しを|メールとつながるサブスクリプション管理/,
+  );
+  assert.equal((html.match(/<h1\b/g) ?? []).length, 1);
+  assert.match(html, /clerk-host/);
+});
+
+test('Last used is shown only when Clerk reports an actual previous Google authentication', async () => {
+  const C = await component('AppAccess');
+  for (const strategy of [undefined, null, 'password', 'oauth_google']) {
+    const html = render(C, {
+      props: {
+        state: { status: 'signed_out', lastAuthenticationStrategy: strategy },
+        retry: () => {},
+        signOut: () => {},
+        mountAuth: () => () => {},
+      },
+    }).body;
+    assert.equal(
+      /class="[^"]*\blast-google\b/.test(html),
+      strategy === 'oauth_google',
+    );
+    assert.equal(
+      html.includes('前回利用したログイン方法: Google'),
+      strategy === 'oauth_google',
+    );
+  }
+});
+
 test('rail labels and navigation retain AA contrast on the fixed dark surface', async () => {
   const source = await readFile(
     new URL('./brand.css', import.meta.url),

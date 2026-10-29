@@ -27,90 +27,172 @@
 </script>
 
 <main class="access-page">
-  <section class="access-panel" aria-label="アカウントのアクセス確認">
+  <div class="access-layout">
     <a class="access-brand" href="/"
       ><img
         src="/brand/cycrio-mark-128.png"
-        width="40"
-        height="40"
+        width="56"
+        height="56"
         alt=""
-      />Cycrio</a
+      />{#if state.status === 'signed_out'}<h1 class="brand-name">
+          Cycrio
+        </h1>{:else}<span class="brand-name">Cycrio</span>{/if}</a
     >
-    <div aria-live={state.status === 'signed_out' ? 'off' : 'polite'}>
+    {#if state.status === 'signed_out'}<p class="access-caption">
+        サインインして続ける
+      </p>{/if}
+    <section
+      class="access-panel"
+      class:auth-card-shell={state.status === 'signed_out'}
+      aria-label="アカウントのアクセス確認"
+    >
+      <div aria-live={state.status === 'signed_out' ? 'off' : 'polite'}>
+        {#if state.status === 'signed_out'}
+          <p class="sr-only">Google アカウントでログインしてください。</p>
+        {:else if state.status === 'unconfigured'}
+          <h1>ログインの準備中です</h1>
+          <p>管理者による認証設定の完了後に、ご利用いただけます。</p>
+          <button class="primary" onclick={retry}>設定を再確認</button>
+        {:else if state.status === 'pending'}
+          <h1>利用許可をお待ちください</h1>
+          <p>ログインを確認しました。管理者の許可後にご利用いただけます。</p>
+          <p class="approval-identity">
+            管理者に次のユーザーIDをお伝えください。<br />
+            <span>ユーザーID：</span><code>{state.clerkUserId}</code>
+          </p>
+          <button class="primary" onclick={retry}>利用許可を再確認</button
+          ><button onclick={signOut}>ログアウト</button>
+        {:else if state.status === 'error'}
+          <h1>確認できませんでした</h1>
+          <p>{errors[state.code]}</p>
+          <button class="primary" onclick={retry}>もう一度試す</button
+          >{#if state.signedIn}<button onclick={signOut}>ログアウト</button
+            >{/if}
+        {:else if state.status === 'denied'}
+          <h1>利用権限がありません</h1>
+          <p>権限について管理者へお問い合わせください。</p>
+          <button onclick={signOut}>ログアウト</button>
+        {:else}
+          <h1>
+            {state.status === 'redirecting'
+              ? 'ログインを完了しています'
+              : 'アクセスを確認しています'}
+          </h1>
+          <p>しばらくお待ちください。</p>
+        {/if}
+      </div>
       {#if state.status === 'signed_out'}
-        <h1>毎月の支出に、見通しを。</h1>
-        <p>
-          メールとつながるサブスクリプション管理。<br />Google
-          アカウントでログインしてください。
-        </p>
-      {:else if state.status === 'unconfigured'}
-        <h1>ログインの準備中です</h1>
-        <p>管理者による認証設定の完了後に、ご利用いただけます。</p>
-        <button class="primary" onclick={retry}>設定を再確認</button>
-      {:else if state.status === 'pending'}
-        <h1>利用許可をお待ちください</h1>
-        <p>ログインを確認しました。管理者の許可後にご利用いただけます。</p>
-        <p class="approval-identity">
-          管理者に次のユーザーIDをお伝えください。<br />
-          <span>ユーザーID：</span><code>{state.clerkUserId}</code>
-        </p>
-        <button class="primary" onclick={retry}>利用許可を再確認</button><button
-          onclick={signOut}>ログアウト</button
+        <div
+          class="clerk-host"
+          class:last-google={state.lastAuthenticationStrategy ===
+            'oauth_google'}
         >
-      {:else if state.status === 'error'}
-        <h1>確認できませんでした</h1>
-        <p>{errors[state.code]}</p>
-        <button class="primary" onclick={retry}>もう一度試す</button
-        >{#if state.signedIn}<button onclick={signOut}>ログアウト</button>{/if}
-      {:else if state.status === 'denied'}
-        <h1>利用権限がありません</h1>
-        <p>権限について管理者へお問い合わせください。</p>
-        <button onclick={signOut}>ログアウト</button>
-      {:else}
-        <h1>
-          {state.status === 'redirecting'
-            ? 'ログインを完了しています'
-            : 'アクセスを確認しています'}
-        </h1>
-        <p>しばらくお待ちください。</p>
+          {#if state.lastAuthenticationStrategy === 'oauth_google'}<span
+              class="sr-only">前回利用したログイン方法: Google</span
+            >{/if}
+          {#key signUp}<div use:authForm></div>{/key}
+        </div>
       {/if}
-    </div>
-    {#if state.status === 'signed_out'}
-      {#key signUp}<div class="clerk-host" use:authForm></div>{/key}
-      <p class="login-note">
-        ご利用には管理者の許可が必要です。<br
-        />メール取得の許可は、ログイン後に別途設定します。
+    </section>
+    {#if state.status === 'signed_out'}<p class="login-note">
+        ご利用には管理者の許可が必要です。
       </p>
     {/if}
-  </section>
+  </div>
 </main>
 
 <style>
   .access-page {
     min-height: 100svh;
     display: grid;
-    place-items: center;
-    padding: 28px 16px;
+    justify-items: center;
+    align-content: center;
+    padding: 48px 16px;
+    background: radial-gradient(circle at top, #ffffff, #f4f4f5 55%, #e4e4e7);
+  }
+  :global(:root[data-theme='dark']) .access-page {
+    background: radial-gradient(
+      circle at top,
+      var(--color-surface),
+      var(--brand-background) 55%,
+      #11131d
+    );
+  }
+  .access-layout {
+    width: 100%;
+    max-width: 400px;
+  }
+  .clerk-host :global(button.cl-socialButtonsBlockButton:hover) {
+    background: color-mix(
+      in srgb,
+      var(--color-surface) 90%,
+      var(--color-border)
+    );
+  }
+  .clerk-host.last-google :global(button.cl-socialButtonsBlockButton) {
+    position: relative;
+    overflow: visible;
+  }
+  .clerk-host.last-google
+    :global(
+      button.cl-socialButtonsBlockButton:not(
+          :has(.cl-lastAuthenticationStrategyBadge)
+        )::after
+    ) {
+    content: 'Last used';
+    position: absolute;
+    right: -10px;
+    top: -11px;
+    pointer-events: none;
+    padding: 1px 6px;
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
+    background: var(--color-surface);
+    color: var(--color-muted);
+    font-size: 11px;
+    line-height: 18px;
+    font-weight: 400;
+    box-shadow: 0 0 0 1px var(--color-surface);
   }
   .access-panel {
     width: 100%;
-    max-width: 460px;
     padding: 32px;
     border: 1px solid var(--color-border);
     border-radius: 12px;
     background: var(--color-surface);
+    box-shadow: 0 10px 32px var(--color-shadow);
   }
   .access-brand {
     display: flex;
+    flex-direction: column;
     min-height: 44px;
-    gap: 8px;
+    gap: 12px;
     align-items: center;
     color: var(--color-text);
     text-decoration: none;
     font-size: 28px;
     font-weight: 750;
     letter-spacing: -1px;
-    margin-bottom: 26px;
+    margin-bottom: 12px;
+  }
+  .auth-card-shell {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .brand-name {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 32px;
+    margin: 0;
+    letter-spacing: -0.7px;
+  }
+  .access-caption {
+    text-align: center;
+    margin: 0 0 28px;
+    font-size: 14px;
   }
   h1 {
     font-size: 23px;
@@ -138,10 +220,9 @@
     border-color: var(--color-action);
   }
   .login-note {
-    border-top: 1px solid var(--color-border);
-    padding-top: 18px;
     margin: 18px 0 0;
     font-size: 12px;
+    text-align: center;
   }
   .approval-identity {
     overflow-wrap: anywhere;
@@ -157,12 +238,30 @@
     min-width: 0;
     max-width: 100%;
   }
-  .clerk-host :global(.cl-card) {
-    padding: 16px 0;
+  .clerk-host :global(.cl-signIn-start .cl-headerTitle),
+  .clerk-host :global(.cl-signIn-start .cl-headerSubtitle),
+  .clerk-host :global(.cl-signUp-start .cl-headerTitle),
+  .clerk-host :global(.cl-signUp-start .cl-headerSubtitle),
+  .clerk-host :global(.cl-signIn-start .cl-footerAction),
+  .clerk-host :global(.cl-signUp-start .cl-footerAction) {
+    display: none;
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
   }
   @media (max-width: 400px) {
-    .access-panel {
+    .access-panel:not(.auth-card-shell) {
       padding: 24px 20px;
+    }
+    .clerk-host :global(.cl-card) {
+      padding: 24px;
     }
     h1 {
       font-size: 21px;
