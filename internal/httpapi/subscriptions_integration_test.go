@@ -12,6 +12,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
+	"github.com/google/uuid"
 )
 
 func TestSubscriptionHTTPDatabaseLifecycle(t *testing.T) {
@@ -41,6 +42,14 @@ func TestSubscriptionHTTPDatabaseLifecycle(t *testing.T) {
 		}
 	}
 	var first, again subscriptions.Subscription
+	account := uuid.NewString()
+	if _, e = pool.Exec(ctx, `INSERT INTO mail_accounts(id,owner_id,label,state,version,credential_version) VALUES($1,$2,'Historical','disconnected',1,1)`, account, owner.ID); e != nil {
+		t.Fatal(e)
+	}
+	request("GET", "/v1/subscriptions?account_id="+account, "", "contract_owner", 200, nil)
+	request("GET", "/v1/subscriptions?account_id="+account, "", "contract_other", 404, nil)
+	request("GET", "/v1/subscriptions?account_id="+uuid.NewString(), "", "contract_owner", 404, nil)
+	request("GET", "/v1/subscriptions?account_id=bad", "", "contract_owner", 400, nil)
 	request("POST", "/v1/subscriptions", subscriptionCreateBody, "contract_owner", 201, &first)
 	if first.Service != "Example" || first.Sources == nil || first.Amount != nil {
 		t.Fatal(first)

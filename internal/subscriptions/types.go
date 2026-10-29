@@ -27,6 +27,9 @@ type Values struct {
 	Status          string  `json:"status"`
 }
 type Source struct {
+	AccountID     *string  `json:"account_id,omitempty"`
+	AccountLabel  *string  `json:"account_label,omitempty"`
+	Provider      *string  `json:"provider,omitempty"`
 	Provenance    string   `json:"provenance"`
 	ResultID      string   `json:"result_id"`
 	EventIndex    int      `json:"event_index"`
@@ -60,11 +63,12 @@ type SourceInput struct {
 	Confirmed        bool   `json:"confirmed"`
 }
 type Filter struct {
-	Query  string
-	Status string
-	Sort   string
-	Limit  int
-	Offset int
+	AccountID string
+	Query     string
+	Status    string
+	Sort      string
+	Limit     int
+	Offset    int
 }
 type Page struct {
 	Subscriptions []Subscription `json:"subscriptions"`

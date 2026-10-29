@@ -95,14 +95,15 @@ func applicationPagination(q url.Values) (limit, offset int, e error) {
 }
 func subscriptionFilter(raw string) (subscriptions.Filter, error) {
 	f := subscriptions.Filter{}
-	q, e := applicationQuery(raw, "q", "status", "sort", "limit", "offset")
+	q, e := applicationQuery(raw, "q", "status", "sort", "limit", "offset", "account_id")
 	if e != nil {
 		return f, e
 	}
-	if q.Has("status") && q.Get("status") == "" || q.Has("sort") && q.Get("sort") == "" {
+	if q.Has("status") && q.Get("status") == "" || q.Has("sort") && q.Get("sort") == "" || q.Has("account_id") && q.Get("account_id") == "" {
 		return f, subscriptions.ErrInvalid
 	}
 	f.Query = q.Get("q")
+	f.AccountID = q.Get("account_id")
 	f.Status = q.Get("status")
 	f.Sort = q.Get("sort")
 	f.Limit, f.Offset, e = applicationPagination(q)

@@ -49,6 +49,9 @@ func TestSubscriptionsTransactionsOwnershipAndSources(t *testing.T) {
 	if e != nil || first.Version != 1 || len(first.Sources) != 1 || first.Sources[0].OriginalEvent.Service != "Original service" {
 		t.Fatal(first, e)
 	}
+	if first.Sources[0].AccountID == nil || *first.Sources[0].AccountID != f.account || first.Sources[0].AccountLabel == nil || *first.Sources[0].AccountLabel != "Synthetic" || first.Sources[0].Provider == nil || *first.Sources[0].Provider != "fastmail" {
+		t.Fatal("created source connection metadata", first.Sources[0])
+	}
 	again, e := repo.Create(ctx, f.owner, in)
 	if e != nil || again.ID != first.ID {
 		t.Fatal("idempotent", again, e)
@@ -74,6 +77,9 @@ func TestSubscriptionsTransactionsOwnershipAndSources(t *testing.T) {
 	if e != nil || edited.Version != 2 || edited.Service != "Corrected" || edited.Sources[0].OriginalEvent.Service != "Original service" {
 		t.Fatal(edited, e)
 	}
+	if edited.Sources[0].AccountID == nil || *edited.Sources[0].AccountID != f.account {
+		t.Fatal("editing must preserve source connection", edited.Sources[0])
+	}
 	if _, e = repo.Update(ctx, f.owner, first.ID, update); !errors.Is(e, subscriptions.ErrConflict) {
 		t.Fatal("stale version", e)
 	}
@@ -84,6 +90,9 @@ func TestSubscriptionsTransactionsOwnershipAndSources(t *testing.T) {
 	linked, e := repo.AttachSource(ctx, f.owner, first.ID, link)
 	if e != nil || linked.Version != 3 || len(linked.Sources) != 2 {
 		t.Fatal(linked, e)
+	}
+	if linked.Sources[1].AccountID == nil || *linked.Sources[1].AccountID != f.account {
+		t.Fatal("attached source connection metadata", linked.Sources[1])
 	}
 	link.ExpectedVersion = 3
 	if _, e = repo.AttachSource(ctx, f.owner, first.ID, link); !errors.Is(e, subscriptions.ErrConflict) {

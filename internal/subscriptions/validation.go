@@ -66,6 +66,9 @@ func ValidSourceInput(in SourceInput) bool {
 	return in.Confirmed && in.ExpectedVersion > 0 && ValidSource(&in.SourceResultID, &in.SourceEventIndex)
 }
 func InvalidFilter(f Filter) bool {
+	if f.AccountID != "" && !ValidID(f.AccountID) {
+		return true
+	}
 	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || !utf8.ValidString(f.Query) || strings.ContainsRune(f.Query, 0) || utf8.RuneCountInString(f.Query) > 200 || !slices.Contains([]string{"", "all", "active", "ended", "unknown"}, f.Status) || !slices.Contains([]string{"", "next_billing", "service", "updated"}, f.Sort)
 }
 func InvalidAnalysisFilter(f AnalysisFilter) bool {

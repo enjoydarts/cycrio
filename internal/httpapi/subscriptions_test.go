@@ -220,3 +220,20 @@ func TestSubscriptionSourceRequiresExplicitNonNullIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestSubscriptionHTTPAccountFilter(t *testing.T) {
+	for _, role := range []string{"user", "platform_admin"} {
+		f := &subscriptionFixture{}
+		w := credentialRequest(subscriptionHandler(f, role), "GET", "/v1/subscriptions?account_id="+subscriptionUUID, "", "Bearer valid", "http://localhost:3100", "")
+		if w.Code != 200 || f.owner != subscriptionUUID || f.filter.AccountID != subscriptionUUID {
+			t.Fatal(role, w.Code, w.Body.String(), f.owner)
+		}
+	}
+	for _, query := range []string{"account_id=", "account_id=bad", "account_id=" + subscriptionUUID + "&account_id=" + subscriptionUUID, "account_id=" + subscriptionUUID + "&owner_id=" + subscriptionUUID} {
+		f := &subscriptionFixture{}
+		w := credentialRequest(subscriptionHandler(f, "user"), "GET", "/v1/subscriptions?"+query, "", "Bearer valid", "http://localhost:3100", "")
+		if w.Code != 400 || f.calls != 0 {
+			t.Fatal(query, w.Code, f.calls)
+		}
+	}
+}
