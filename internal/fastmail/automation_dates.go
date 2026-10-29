@@ -94,9 +94,9 @@ func (g *automaticDiscoveryGuard) accept(b byte, literal, headerEnd bool) error 
 		return errInvalidFraming
 	}
 	g.line = append(g.line, b)
-	if len(g.line) > 8192 {
-		return errResponseTooLarge
-	}
+	// boundedConn already limits the entire page, including this buffer. SEARCH
+	// can legitimately return 4096 ten-digit UIDs on one line (about 45 KiB).
+	// A smaller line limit rejects ordinary dense mailboxes before pagination.
 	if b != '\n' {
 		return nil
 	}
