@@ -10,6 +10,8 @@ import (
 )
 
 type AnalysisFeedService interface {
+	AnalysisMessages(context.Context, string, subscriptions.MessageFilter) (subscriptions.MessagePage, error)
+	AnalysisMessage(context.Context, string, string) (subscriptions.MessageDetail, error)
 	AnalysisResults(context.Context, string, subscriptions.AnalysisFilter) (subscriptions.AnalysisPage, error)
 	AnalysisRuns(context.Context, string, subscriptions.AnalysisFilter) (subscriptions.RunPage, error)
 }
@@ -42,6 +44,7 @@ func analysisFilter(raw string, runs bool) (subscriptions.AnalysisFilter, error)
 	return f, nil
 }
 func registerAnalysisFeed(mux *http.ServeMux, service AnalysisFeedService, protect protectFunc) {
+	registerAnalysisMessages(mux, service, protect)
 	for _, runs := range []bool{false, true} {
 		path := "GET /v1/analysis/results"
 		if runs {

@@ -47,9 +47,14 @@
   bind:this={dialog}
   aria-labelledby={titleId}
   oncancel={(event) => {
-    if (busy || !canClose()) event.preventDefault();
+    event.preventDefault();
+    if (!busy && canClose()) onclose();
   }}
-  {onclose}
+  onclose={() => {
+    // Native close events are queued: a previous close must not dismiss a
+    // dialog that has already been reopened for another selected item.
+    if (open && !dialog?.open) onclose();
+  }}
 >
   <header>
     <h2 id={titleId} bind:this={heading} tabindex="-1">{title}</h2>
@@ -58,7 +63,7 @@
       disabled={busy}
       aria-label="閉じる"
       onclick={() => {
-        if (!busy && canClose()) dialog?.close();
+        if (!busy && canClose()) onclose();
       }}><span aria-hidden="true">×</span></button
     >
   </header>

@@ -10,7 +10,10 @@
   } from './import-history-controller.ts';
   import type { FeedView } from './daily-controller.ts';
   import ImportProgressPanel from './ImportProgressPanel.svelte';
-  let { accounts }: { accounts: ImportAccount[] } = $props();
+  let {
+    accounts,
+    compact = false,
+  }: { accounts: ImportAccount[]; compact?: boolean } = $props();
   const session = getAppSession();
   let view = $state<FeedView<ImportEntry[]>>({
     page: null,
@@ -54,4 +57,4 @@
   <button onclick={() => controller?.load(accounts)}
     >取り込み状況を再読み込み</button
   >{/if}
-{#if view.page}<ImportProgressPanel entries={view.page} />{/if}
+{#if view.page}<ImportProgressPanel entries={view.page} {compact} />{/if}

@@ -57,17 +57,17 @@
 
 <style>
   dialog {
-    margin: 0 0 0 auto;
+    box-sizing: border-box;
+    margin: auto;
     padding: 0;
-    width: min(560px, 100%);
-    max-width: 100%;
-    height: 100svh;
-    max-height: 100svh;
-    border: 0;
-    border-left: 1px solid var(--color-border);
+    width: calc(100% - 32px);
+    max-width: 900px;
+    max-height: calc(100svh - 32px);
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
     background: var(--color-surface);
     color: var(--color-text);
-    box-shadow: -16px 0 80px #0002;
+    box-shadow: 0 24px 100px #0003;
     overflow: auto;
     overscroll-behavior: contain;
   }
@@ -78,31 +78,37 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 18px 26px;
+    gap: 16px;
+    padding: 16px 24px;
     border-bottom: 1px solid var(--color-border);
   }
   h2 {
-    font-size: 15px;
+    font-size: 18px;
     margin: 0;
+    overflow-wrap: anywhere;
   }
   button {
-    background: transparent;
-    border: 0;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 6px;
     color: inherit;
-    min-width: 40px;
-    min-height: 40px;
-    font-size: 25px;
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 24px;
     cursor: pointer;
   }
   .body {
-    padding: 28px;
+    padding: 24px;
   }
   @media (max-width: 650px) {
     .body {
-      padding: 22px 18px;
+      padding: 20px 16px;
     }
     header {
-      padding: 14px 18px;
+      padding: 14px 16px;
     }
   }
 </style>

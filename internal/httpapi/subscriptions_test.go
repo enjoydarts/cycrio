@@ -28,6 +28,14 @@ type subscriptionFixture struct {
 }
 
 func (f *subscriptionFixture) record(owner string) { f.calls++; f.owner = owner }
+func (f *subscriptionFixture) AnalysisMessages(_ context.Context, owner string, in subscriptions.MessageFilter) (subscriptions.MessagePage, error) {
+	f.record(owner)
+	return subscriptions.MessagePage{Limit: in.Limit, Offset: in.Offset}, f.err
+}
+func (f *subscriptionFixture) AnalysisMessage(_ context.Context, owner, id string) (subscriptions.MessageDetail, error) {
+	f.record(owner)
+	return subscriptions.MessageDetail{Message: subscriptions.ImportMessage{ID: id}}, f.err
+}
 func (f *subscriptionFixture) List(_ context.Context, owner string, in subscriptions.Filter) (subscriptions.Page, error) {
 	f.record(owner)
 	f.filter = in

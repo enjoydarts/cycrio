@@ -4,7 +4,11 @@
   import { processingDate, processingReasons } from './mail-processing-text.ts';
   let {
     entries,
-  }: { entries: { label: string; state: MailAutomationState }[] } = $props();
+    compact = false,
+  }: {
+    entries: { label: string; state: MailAutomationState }[];
+    compact?: boolean;
+  } = $props();
   const reason = (code: string) =>
     (processingReasons as Record<string, string>)[code] ??
     '接続や送信条件を確認してください。';
@@ -33,11 +37,11 @@
   };
 </script>
 
-<section aria-label="取り込みの進行状況">
-  <h2>取り込みの進行状況</h2>
-  <p class="secondary">
-    5秒ごとに更新します。指定期間を分割して処理するため、100件は1回の処理単位で、期間全体の件数制限ではありません。
-  </p>
+<section aria-label="取り込みの進行状況" class:compact>
+  <h2>{compact ? '接続・メール探索の状況' : '取り込みの進行状況'}</h2>
+  {#if !compact}<p class="secondary">
+      5秒ごとに更新します。指定期間を分割して処理するため、100件は1回の処理単位で、期間全体の件数制限ではありません。
+    </p>{/if}
   <ul class="compact-list">
     {#each entries as { label, state: s } (s.account_id)}<li>
         <div class="heading">
@@ -49,19 +53,22 @@
               s.scope.before,
             )}（日本時間・終了日を含む）
           </p>{/if}
-        {#if s.reason && s.state !== 'enabled'}<p class="warning" role="status">
+        {#if s.reason && (compact || s.state !== 'enabled')}<p
+            class="warning"
+            role="status"
+          >
             {reason(s.reason)}
           </p>{/if}
         {#if s.retry_at}<p>
             次の接続確認：{processingDate(s.retry_at)}（日本時間）
           </p>{/if}
-        <dl>
-          {#each [['発見', s.progress.discovered_count], ['解析待ち', s.progress.pending_count], ['解析済み', s.progress.completed_count], ['解析失敗', s.progress.failed_count], ['結果不明', s.progress.unknown_count]] as [name, count]}<div
-            >
-              <dt>{name}</dt>
-              <dd>{count} 件</dd>
-            </div>{/each}
-        </dl>
+        {#if !compact}<dl>
+            {#each [['発見', s.progress.discovered_count], ['解析待ち', s.progress.pending_count], ['解析済み', s.progress.completed_count], ['解析失敗', s.progress.failed_count], ['結果不明', s.progress.unknown_count]] as [name, count]}<div
+              >
+                <dt>{name}</dt>
+                <dd>{count} 件</dd>
+              </div>{/each}
+          </dl>{/if}
         <p class="secondary">
           {s.progress.historical_complete
             ? '指定期間の探索は完了しました。'
@@ -144,5 +151,17 @@
   }
   details ul {
     padding-left: 18px;
+  }
+  .compact .compact-list > li {
+    padding: 10px 0;
+  }
+  .compact h2 {
+    font-size: 13px;
+  }
+  .compact h3 {
+    font-size: 12px;
+  }
+  .compact p {
+    margin: 6px 0;
   }
 </style>
