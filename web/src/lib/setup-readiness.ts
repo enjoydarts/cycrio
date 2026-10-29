@@ -14,9 +14,27 @@ export function safeAnalysisReturn(value: string | null | undefined): string {
     const u = new URL(value, 'https://cycrio.invalid');
     if (
       u.origin !== 'https://cycrio.invalid' ||
-      !['/analysis', '/settings/mail'].includes(u.pathname)
+      !['/analysis', '/settings/mail', '/import'].includes(u.pathname)
     )
       return '/analysis';
+    if (u.pathname === '/import') {
+      for (const [key, value] of u.searchParams) {
+        if (
+          !['account_id', 'setup_account', 'connect'].includes(key) ||
+          u.searchParams.getAll(key).length !== 1
+        )
+          return '/analysis';
+        if (
+          key === 'connect'
+            ? value !== 'true'
+            : !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+                value,
+              ) || value === '00000000-0000-0000-0000-000000000000'
+        )
+          return '/analysis';
+      }
+      return u.pathname + u.search;
+    }
     for (const [key] of u.searchParams)
       if (
         ![

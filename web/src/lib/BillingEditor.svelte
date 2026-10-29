@@ -27,6 +27,7 @@
     drafts: draftsProp,
     onSaved: onSavedProp,
     onBusyChange: onBusyChangeProp = () => {},
+    onDirty: onDirtyProp = () => {},
   }: {
     subscription: Subscription;
     initial?: BillingEntry | null;
@@ -34,18 +35,27 @@
     drafts: BillingDrafts;
     onSaved: (entry: BillingEntry) => void;
     onBusyChange?: (busy: boolean) => void;
+    onDirty?: (dirty: boolean) => void;
   } = $props();
   // The controller, visible original values and callbacks share one immutable
   // target lifetime. A different target is mounted by BillingHistory's key.
-  const { subscription, initial, source, drafts, onSaved, onBusyChange } =
-    untrack(() => ({
-      subscription: subscriptionProp,
-      initial: initialProp,
-      source: sourceProp,
-      drafts: draftsProp,
-      onSaved: onSavedProp,
-      onBusyChange: onBusyChangeProp,
-    }));
+  const {
+    subscription,
+    initial,
+    source,
+    drafts,
+    onSaved,
+    onBusyChange,
+    onDirty,
+  } = untrack(() => ({
+    subscription: subscriptionProp,
+    initial: initialProp,
+    source: sourceProp,
+    drafts: draftsProp,
+    onSaved: onSavedProp,
+    onBusyChange: onBusyChangeProp,
+    onDirty: onDirtyProp,
+  }));
   const session = getAppSession(),
     token = session.token,
     api = createBillingAPI(PUBLIC_API_BASE_URL);
@@ -107,7 +117,8 @@
       token,
       (next) => {
         view = next;
-        onBusyChange(next.status === 'saving');
+        onBusyChange(next.status === 'saving' || next.uncertain);
+        onDirty(next.dirty);
         if (next.error === 'conflict') reuseConfirmed = false;
         if (next.status === 'denied' || next.status === 'disposed') {
           reuse = null;
@@ -128,6 +139,7 @@
       },
     );
     view = controller.state();
+    onDirty(view.dirty);
     const current = controller;
     async function initialize() {
       if (source && !initial)
@@ -139,6 +151,7 @@
     return () => {
       current.dispose();
       onBusyChange(false);
+      onDirty(false);
     };
   });
 </script>

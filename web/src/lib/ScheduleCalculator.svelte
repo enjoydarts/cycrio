@@ -25,10 +25,14 @@
     subscription: subscriptionProp,
     drafts: draftsProp,
     onSaved: onSavedProp,
+    onFrozen = () => {},
+    onDirty = () => {},
   }: {
     subscription: Subscription;
     drafts: ScheduleDrafts;
     onSaved: (subscription: Subscription) => void;
+    onFrozen?: (frozen: boolean) => void;
+    onDirty?: (dirty: boolean) => void;
   } = $props();
   const { subscription, drafts, onSaved } = untrack(() => ({
     subscription: subscriptionProp,
@@ -60,6 +64,12 @@
     }
   });
   const shown = $derived(scheduleDisplaySnapshot(view));
+  $effect(() => {
+    onFrozen(busy || view.uncertain);
+  });
+  $effect(() => {
+    onDirty(view.dirty && !view.saved);
+  });
   function edit(patch: Partial<ScheduleDraft>) {
     controller?.edit(patch);
   }

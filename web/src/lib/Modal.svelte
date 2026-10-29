@@ -5,12 +5,14 @@
     title,
     onclose,
     busy = false,
+    canClose = () => true,
     children,
   }: {
     open: boolean;
     title: string;
     onclose: () => void;
     busy?: boolean;
+    canClose?: () => boolean;
     children: Snippet;
   } = $props();
   const titleId = $props.id();
@@ -36,7 +38,8 @@
   onkeydown={(event) => {
     // Repeated native close requests can become noncancelable. Block the
     // keyboard default while sending, even when a disabled button loses focus.
-    if (dialog?.open && busy && event.key === 'Escape') event.preventDefault();
+    if (dialog?.open && event.key === 'Escape' && (busy || !canClose()))
+      event.preventDefault();
   }}
 />
 
@@ -44,7 +47,7 @@
   bind:this={dialog}
   aria-labelledby={titleId}
   oncancel={(event) => {
-    if (busy) event.preventDefault();
+    if (busy || !canClose()) event.preventDefault();
   }}
   {onclose}
 >
@@ -54,7 +57,9 @@
       type="button"
       disabled={busy}
       aria-label="閉じる"
-      onclick={() => dialog?.close()}><span aria-hidden="true">×</span></button
+      onclick={() => {
+        if (!busy && canClose()) dialog?.close();
+      }}><span aria-hidden="true">×</span></button
     >
   </header>
   {@render children()}

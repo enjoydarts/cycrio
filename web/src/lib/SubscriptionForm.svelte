@@ -26,6 +26,7 @@
     onSaved,
     onBackToResults = () => {},
     onBusyChange = () => {},
+    onFrozen = () => {},
   }: {
     initial?: Subscription | null;
     event?: ProcessingEvent | null;
@@ -34,6 +35,9 @@
     onSaved: (s: Subscription) => void;
     onBackToResults?: () => void;
     onBusyChange?: (busy: boolean) => void;
+    onFrozen?: (
+      state: Pick<EditorView, 'status' | 'uncertain' | 'dirty'>,
+    ) => void;
   } = $props();
   const session = getAppSession(),
     token = session.token,
@@ -71,6 +75,7 @@
       (next) => {
         view = next;
         onBusyChange(next.status === 'saving');
+        onFrozen(next);
       },
       session.onDenied,
       () => crypto.randomUUID(),
@@ -86,6 +91,7 @@
         : undefined,
     );
     view = controller.state();
+    onFrozen(view);
     if (event && !view.dirty) controller.edit(subscriptionFromEvent(event));
     return () => {
       controller?.dispose();

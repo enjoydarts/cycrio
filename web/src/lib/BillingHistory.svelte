@@ -27,11 +27,21 @@
   import BillingEditor from './BillingEditor.svelte';
   import Modal from './Modal.svelte';
   import './billing.css';
-  let { subscription }: { subscription: Subscription } = $props();
+  let {
+    subscription,
+    onFrozen = () => {},
+    drafts: providedDrafts,
+    onDirty = () => {},
+  }: {
+    subscription: Subscription;
+    onFrozen?: (frozen: boolean) => void;
+    drafts?: BillingDrafts;
+    onDirty?: (dirty: boolean) => void;
+  } = $props();
   const session = getAppSession(),
     token = session.token,
-    api = createBillingAPI(PUBLIC_API_BASE_URL),
-    drafts: BillingDrafts = new Map();
+    api = createBillingAPI(PUBLIC_API_BASE_URL);
+  const drafts = untrack(() => providedDrafts ?? (new Map() as BillingDrafts));
   let controller:
     | ReturnType<typeof createBillingFeed<BillingPage, BillingFilter>>
     | undefined;
@@ -53,6 +63,9 @@
     sourceMessage = $state(''),
     navigationMessage = $state('');
   let handledSource = '';
+  $effect(() => {
+    onFrozen(busy);
+  });
   let editorSequence = 0;
   let sourceSequence = 0,
     sourceAbort: AbortController | undefined,
@@ -220,7 +233,7 @@
       sourceSequence++;
       sourceAbort?.abort();
       controller?.dispose();
-      drafts.clear();
+      if (!providedDrafts) drafts.clear();
     };
   });
   $effect(() => {
@@ -365,6 +378,7 @@
           source={target.source}
           {drafts}
           onBusyChange={target.onBusyChange}
+          {onDirty}
           onSaved={target.onclose}
         /></Modal
       >{/key}{/if}

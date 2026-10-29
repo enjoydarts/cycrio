@@ -21,6 +21,10 @@
     syncAPI,
     returnTo = null,
     oauthResult = null,
+    connectOnly = false,
+    onConnected = () => {},
+    onConnectClose = () => {},
+    onFrozen = () => {},
   }: {
     api: MailAPI;
     token: TokenProvider;
@@ -28,12 +32,18 @@
     syncAPI?: MailSyncAPI;
     returnTo?: string | null;
     oauthResult?: string | null;
+    connectOnly?: boolean;
+    onConnected?: (account: MailAccount) => void;
+    onConnectClose?: () => void;
+    onFrozen?: (frozen: boolean) => void;
   } = $props();
   const syncRequests: SyncRequests = new Map();
   let view = $state(emptyMailView());
   let query = $state('');
   let editing = $state(false);
   let syncSaving = $state(false);
+  let confirmClose = $state(false);
+  let notifiedClose = false;
   let controller: ReturnType<typeof createMailController> | undefined;
   const account = $derived(view.accounts.find((a) => a.id === view.selected));
   const providerNames: Record<MailAccount['provider'], string> = {
@@ -110,6 +120,65 @@
         }).format(new Date(value))
       : '未確認';
   }
+  async function submitConnection() {
+    const form = controller?.state().form;
+    if (oauth) {
+      await controller?.connectOAuth();
+      return;
+    }
+    await controller?.save();
+    const next = controller?.state();
+    const saved = next?.accounts.find((row) => row.id === form?.id);
+    if (
+      form?.baseline === 0 &&
+      saved &&
+      next?.status === 'ready' &&
+      next.success
+    ) {
+      if (connectOnly) {
+        notifiedClose = true;
+        controller?.close();
+        onFrozen(false);
+      }
+      onConnected(saved);
+    }
+  }
+  function closeConnection() {
+    if (notifiedClose || !requestConnectionClose()) return;
+    controller?.close();
+    if (controller?.state().form) return;
+    editing = false;
+    onFrozen(false);
+    if (connectOnly) {
+      notifiedClose = true;
+      onConnectClose();
+    }
+  }
+  function requestConnectionClose() {
+    if (busy || (connectOnly && view.uncertain)) return false;
+    if (
+      connectOnly &&
+      (view.form?.credentialsDirty || view.form?.foldersDirty)
+    ) {
+      confirmClose = true;
+      return false;
+    }
+    return true;
+  }
+  function discardConnection() {
+    if (busy || view.uncertain) return;
+    controller?.discard();
+    confirmClose = false;
+    closeConnection();
+  }
+  $effect(() => {
+    onFrozen(
+      busy ||
+        view.uncertain ||
+        !!view.form?.credentialsDirty ||
+        !!view.form?.foldersDirty,
+    );
+  });
   onMount(() => {
     controller = createMailController(
       api,
@@ -119,8 +188,21 @@
       },
       onDenied,
     );
-    void controller.refresh();
     let active = true;
+    let openedConnection = false;
+    const initializeConnection = async () => {
+      await controller?.refresh();
+      if (
+        active &&
+        connectOnly &&
+        !openedConnection &&
+        controller?.state().status === 'ready'
+      ) {
+        openedConnection = true;
+        controller.newAccount();
+      }
+    };
+    void initializeConnection();
     let timer: ReturnType<typeof setTimeout>;
     const poll = async () => {
       await controller?.poll();
@@ -148,99 +230,137 @@
 {/snippet}
 
 <section class="mail-workspace" aria-label="自分のメール連携">
-  <div class="mail-heading">
-    <div>
-      <h2>メール連携</h2>
-      <p>接続情報と、対象のフォルダーを管理します。</p>
+  {#if !connectOnly}
+    <div class="mail-heading">
+      <div>
+        <h2>メール連携</h2>
+        <p>接続情報と、対象のフォルダーを管理します。</p>
+      </div>
+      <button
+        class="mail-button mail-primary"
+        disabled={busy || view.accounts.length >= 10 || view.uncertain}
+        onclick={() => {
+          query = '';
+          editing = false;
+          controller?.newAccount();
+        }}>＋ メールを接続</button
+      >
     </div>
-    <button
-      class="mail-button mail-primary"
-      disabled={busy || view.accounts.length >= 10 || view.uncertain}
-      onclick={() => {
-        query = '';
-        editing = false;
-        controller?.newAccount();
-      }}>＋ メールを接続</button
-    >
-  </div>
-  <div class="mail-list-heading">
-    <span>登録済み {view.accounts.length} 件</span><button
-      id="mail-refresh"
-      class="mail-button"
-      disabled={busy}
-      onclick={() => controller?.refresh()}>更新</button
-    >
-  </div>
-  {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
-      メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
-    </p>{:else if oauthResult === 'failed'}<p
-      class="mail-feedback"
-      role="alert"
-    >
-      メールの認証が完了しませんでした。接続設定からもう一度お試しください。
-    </p>{/if}
-  {#if !view.form}{@render feedback()}{/if}
-  <section class="mail-list" aria-label="メールアカウント一覧">
-    {#if view.status === 'loading' && !view.accounts.length}<p role="status">
-        読み込み中です…
-      </p>{:else if !view.accounts.length}<p class="mail-empty">
-        アカウントはまだ登録されていません。接続情報を追加してください。
+    <div class="mail-list-heading">
+      <span>登録済み {view.accounts.length} 件</span><button
+        id="mail-refresh"
+        class="mail-button"
+        disabled={busy}
+        onclick={() => controller?.refresh()}>更新</button
+      >
+    </div>
+    {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
+        メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
+        <a class="mail-button" href="/import">取り込みを続ける</a>
+      </p>{:else if oauthResult === 'failed'}<p
+        class="mail-feedback"
+        role="alert"
+      >
+        メールの認証が完了しませんでした。接続設定からもう一度お試しください。
       </p>{/if}
-    <ul>
-      {#each view.accounts as row (row.id)}<li>
-          <div class="mail-account-row">
-            <div class="mail-account-name">
-              <strong>{row.label}</strong><span
-                >{providerNames[row.provider]} · 対象 {row.folders.filter(
-                  (folder) => folder.selected,
-                ).length} フォルダー</span
+    {#if !view.form}{@render feedback()}{/if}
+    <section class="mail-list" aria-label="メールアカウント一覧">
+      {#if view.status === 'loading' && !view.accounts.length}<p role="status">
+          読み込み中です…
+        </p>{:else if !view.accounts.length}<p class="mail-empty">
+          アカウントはまだ登録されていません。接続情報を追加してください。
+        </p>{/if}
+      <ul>
+        {#each view.accounts as row (row.id)}<li>
+            <div class="mail-account-row">
+              <div class="mail-account-name">
+                <strong>{row.label}</strong><span
+                  >{providerNames[row.provider]} · 対象 {row.folders.filter(
+                    (folder) => folder.selected,
+                  ).length} フォルダー</span
+                >
+              </div>
+              <span class="mail-badge">{states[row.state]}</span><button
+                class="mail-button"
+                aria-label={`${row.label}の接続設定`}
+                disabled={busy}
+                onclick={() => {
+                  query = '';
+                  editing = false;
+                  controller?.select(row.id);
+                }}>接続を編集</button
               >
             </div>
-            <span class="mail-badge">{states[row.state]}</span><button
-              class="mail-button"
-              aria-label={`${row.label}の接続設定`}
-              disabled={busy}
-              onclick={() => {
-                query = '';
-                editing = false;
-                controller?.select(row.id);
-              }}>接続を編集</button
-            >
-          </div>
-        </li>{/each}
-    </ul>
-  </section>
-  <details class="mail-guide">
-    <summary>連携について</summary>
-    <p>
-      Gmail / Google Workspace と Outlook.com / Hotmail
-      は各サービスの認証画面で、メールの読み取りを許可します。Google Workspace
-      は組織の管理者による許可が必要な場合があります。アプリの Google
-      ログインとは別の認可です。 Fastmail は専用のアプリパスワードで <code
-        >imap.fastmail.com:993</code
-      >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
-      143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
-      送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
-    </p>
-  </details>
-  {#if returnTarget}<div class="mail-return">
-      {#if returnLocked}<span class="mail-button" aria-disabled="true"
-          >解析へ戻って条件を確認</span
-        >{:else}<a class="mail-button" href={returnTarget}
-          >解析へ戻って条件を確認</a
-        >{/if}
-    </div>{/if}
+          </li>{/each}
+      </ul>
+    </section>
+    <details class="mail-guide">
+      <summary>連携について</summary>
+      <p>
+        Gmail / Google Workspace と Outlook.com / Hotmail
+        は各サービスの認証画面で、メールの読み取りを許可します。Google Workspace
+        は組織の管理者による許可が必要な場合があります。アプリの Google
+        ログインとは別の認可です。 Fastmail は専用のアプリパスワードで <code
+          >imap.fastmail.com:993</code
+        >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
+        143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
+        送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
+      </p>
+    </details>
+    {#if returnTarget}<div class="mail-return">
+        {#if returnLocked}<span class="mail-button" aria-disabled="true"
+            >解析へ戻って条件を確認</span
+          >{:else}<a class="mail-button" href={returnTarget}
+            >解析へ戻って条件を確認</a
+          >{/if}
+      </div>{/if}
+  {/if}
+  {#if connectOnly && !view.form}
+    {@render feedback()}
+    {#if view.status === 'loading'}<p role="status">
+        接続を読み込み中です…
+      </p>{:else if view.accounts.length >= 10}<p role="alert">
+        接続できるメールは10件までです。
+      </p>{/if}
+    {#if view.status === 'error'}<button
+        class="mail-button"
+        onclick={async () => {
+          await controller?.refresh();
+          if (controller?.state().status === 'ready') controller.newAccount();
+        }}>再試行</button
+      >{/if}
+    <button class="mail-button" disabled={busy} onclick={closeConnection}
+      >戻る</button
+    >
+  {/if}
   <Modal
     open={view.form !== null}
     title={account?.label ?? 'メールを追加'}
     {busy}
-    onclose={() => {
-      controller?.close();
-      editing = false;
-    }}
+    canClose={requestConnectionClose}
+    onclose={closeConnection}
   >
     <div class="mail-detail">
       {@render feedback()}
+      {#if connectOnly && confirmClose}
+        <div class="mail-feedback" role="alert">
+          <p>保存していない入力があります。入力を破棄して閉じますか？</p>
+          <div class="mail-actions">
+            <button
+              class="mail-button"
+              disabled={busy || view.uncertain}
+              onclick={discardConnection}>入力を破棄して閉じる</button
+            >
+            <button
+              class="mail-button"
+              disabled={busy || view.uncertain}
+              onclick={() => {
+                confirmClose = false;
+              }}>編集を続ける</button
+            >
+          </div>
+        </div>
+      {/if}
       {#if view.form}
         <div class="mail-section-heading">
           <h3>
@@ -255,8 +375,7 @@
           <form
             onsubmit={(event) => {
               event.preventDefault();
-              if (oauth) void controller?.connectOAuth();
-              else void controller?.save();
+              void submitConnection();
             }}
             autocomplete="off"
           >

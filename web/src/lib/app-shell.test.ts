@@ -5,6 +5,36 @@ import { compile, parse } from 'svelte/compiler';
 import { render } from 'svelte/server';
 import { createRawSnippet } from 'svelte';
 
+test('rail labels and navigation retain AA contrast on the fixed dark surface', async () => {
+  const source = await readFile(
+    new URL('./brand.css', import.meta.url),
+    'utf8',
+  );
+  const colors = Object.fromEntries(
+    [
+      ...source.matchAll(/--(color-rail(?:-text|-muted)?):\s*#([a-f0-9]{6})/g),
+    ].map((match) => [match[1], match[2]]),
+  );
+  const luminance = (hex: string) =>
+    hex
+      .match(/../g)!
+      .map((value) => parseInt(value, 16) / 255)
+      .map((value) =>
+        value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4,
+      )
+      .reduce(
+        (sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index],
+        0,
+      );
+  for (const foreground of ['color-rail-text', 'color-rail-muted']) {
+    const values = [
+      luminance(colors[foreground]),
+      luminance(colors['color-rail']),
+    ].sort((a, b) => a - b);
+    assert.ok((values[1] + 0.05) / (values[0] + 0.05) >= 4.5, foreground);
+  }
+});
+
 async function component(name: string) {
   return (await import(await componentURL(name))).default;
 }
@@ -19,13 +49,13 @@ async function componentURL(name: string): Promise<string> {
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await componentURL(match[1]);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
   );
   return `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 }
-test('settings expand inside the application sidebar and keep a single selected page', async () => {
+test('single rail keeps library navigation and a bottom settings link without nested settings', async () => {
   const Component = await component('AppShell');
   const props = {
     user: {
@@ -38,14 +68,9 @@ test('settings expand inside the application sidebar and keep a single selected 
   };
   const html = render(Component, { props }).body;
   const sidebar = html.match(/<aside\b[\s\S]*?<\/aside>/)?.[0] ?? '';
-  assert.match(sidebar, /aria-label="設定項目"/);
-  assert.match(
-    sidebar,
-    /href="\/settings\/integrations"[^>]*aria-current="page"/,
-  );
+  assert.doesNotMatch(sidebar, /aria-label="設定項目"/);
+  assert.match(sidebar, /href="\/settings"[^>]*aria-current="page"/);
   assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
-  assert.match(sidebar, /個人設定/);
-  assert.match(sidebar, /管理者設定/);
   assert.doesNotMatch(
     sidebar,
     /href="\/settings\/(?:ai-models|ai-runtime|mail-policy)"/,
@@ -63,6 +88,42 @@ test('settings expand inside the application sidebar and keep a single selected 
   }).body;
   assert.doesNotMatch(analysis, /aria-label="設定項目"/);
   assert.match(analysis, /href="\/settings"/);
+  for (const href of [
+    '/subscriptions',
+    '/analysis?tab=attention',
+    '/subscriptions/summary',
+    '/analysis?tab=history',
+    '/import?connect=true',
+  ]) {
+    assert.ok(analysis.includes(`href="${href}"`));
+  }
+  assert.match(analysis, /aria-label="確認が必要なメール"/);
+  assert.match(analysis, /aria-controls="workspace-sidebar"/);
+  assert.doesNotMatch(analysis, /確認が必要なメール[^<]*0/);
+});
+test('query navigation selects attention and history without selecting subscription summary', async () => {
+  const Component = await component('AppShell');
+  const props = {
+    user: { id: 'owner', role: 'user' },
+    signOut() {},
+    children: createRawSnippet(() => ({ render: () => '<p>本文</p>' })),
+  };
+  for (const [pathname, search, href] of [
+    ['/analysis', '?tab=attention', '/analysis?tab=attention'],
+    ['/analysis', '?tab=history', '/analysis?tab=history'],
+    ['/subscriptions/summary', '', '/subscriptions/summary'],
+  ]) {
+    const html = render(Component, {
+      props: { ...props, pathname, search },
+    }).body;
+    assert.match(
+      html,
+      new RegExp(
+        `href="${href.replace(/[?]/g, '\\?')}"[^>]*aria-current="page"`,
+      ),
+    );
+    assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
+  }
 });
 test('legacy AI settings URLs select the shared AI navigation entry', async () => {
   const Component = await component('SettingsNavigation');

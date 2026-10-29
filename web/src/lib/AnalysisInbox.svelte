@@ -200,11 +200,21 @@
 <section class="daily">
   <header class="titlebar">
     <div>
-      <h1>メール解析</h1>
-      <p>
-        初回の取り込みから新着確認・解析・サブスクと支払履歴への登録まで、自動で進めます。
-      </p>
+      <h1>
+        {tab === 'attention'
+          ? '確認が必要なメール'
+          : tab === 'history'
+            ? '取り込み履歴'
+            : 'メールの確認'}
+      </h1>
+      <p>メールごとの解析結果と、サブスクへの登録状況を確認できます。</p>
     </div>
+    <a
+      class="button primary"
+      href={'/import' +
+        (filter.account_id ? '?account_id=' + filter.account_id : '')}
+      >メールを取り込む</a
+    >
   </header>
   {#if navigationMessage && automationFrozen}<p class="notice" role="status">
       {navigationMessage}
@@ -245,20 +255,23 @@
         >再読み込み</button
       >
     </p>{/if}
-  <MailAutomation
-    account={accounts.find(
-      (a) =>
-        a.id ===
-        (filter.account_id || page.url.searchParams.get('setup_account')),
-    ) ??
-      accounts[0] ??
-      null}
-    returnTo={page.url.pathname + page.url.search}
-    onFrozen={(value) => (automationFrozen = value)}
-    onRefresh={() => {
-      if (!saving && tab !== 'history') void controller?.load(filter);
-    }}
-  />
+  <details class="section">
+    <summary>取り込みの状態・停止 / 再開</summary>
+    <MailAutomation
+      account={accounts.find(
+        (a) =>
+          a.id ===
+          (filter.account_id || page.url.searchParams.get('setup_account')),
+      ) ??
+        accounts[0] ??
+        null}
+      returnTo={page.url.pathname + page.url.search}
+      onFrozen={(value) => (automationFrozen = value)}
+      onRefresh={() => {
+        if (!saving && tab !== 'history') void controller?.load(filter);
+      }}
+    />
+  </details>
   <details class="section">
     <summary>詳細操作</summary>
     <p>
@@ -356,7 +369,11 @@
             : '自動処理を始めると、ここに結果が届きます。'}
         </p>
         <div class="actions">
-          <a href="/settings/mail">メールの接続・同期</a>
+          <a
+            href={'/import' +
+              (filter.account_id ? '?account_id=' + filter.account_id : '')}
+            >メールを取り込む</a
+          >
         </div>
       </div>{/if}
     <div class="pager">

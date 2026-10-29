@@ -17,7 +17,7 @@ async function componentURL(name: string): Promise<string> {
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await componentURL(match[1]);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
     (_m, p, q, path) =>
       `${p}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
   );
@@ -73,7 +73,7 @@ test('home loading or failed reads do not leave stale figures visible as fresh d
     }
   }
 });
-test('home navigation is selected only on root and the brand links to the real home', async () => {
+test('brand keeps the real home accessible without selecting a library page on root', async () => {
   const Component = (await import(await componentURL('AppShell'))).default;
   const { createRawSnippet } = await import('svelte');
   const html = render(Component, {
@@ -84,6 +84,6 @@ test('home navigation is selected only on root and the brand links to the real h
       children: createRawSnippet(() => ({ render: () => '<p>home</p>' })),
     },
   }).body;
-  assert.match(html, /href="\/"[^>]*aria-current="page"/);
-  assert.equal((html.match(/aria-current="page"/g) ?? []).length, 1);
+  assert.match(html, /href="\/"[^>]*aria-label="Cycrio ホーム"/);
+  assert.equal((html.match(/aria-current="page"/g) ?? []).length, 0);
 });

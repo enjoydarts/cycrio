@@ -85,18 +85,20 @@ test('busy modal suppresses Escape before a noncancelable native close request',
   }
   visit(parse(source, { modern: true }));
   assert.ok(handler, 'Escape is guarded before native close request');
-  for (const [busy, open, key, expected] of [
-    [true, true, 'Escape', 1],
-    [false, true, 'Escape', 0],
-    [true, false, 'Escape', 0],
-    [true, true, 'Tab', 0],
+  for (const [busy, open, key, allowed, expected] of [
+    [true, true, 'Escape', true, 1],
+    [false, true, 'Escape', true, 0],
+    [false, true, 'Escape', false, 1],
+    [true, false, 'Escape', false, 0],
+    [true, true, 'Tab', false, 0],
   ] as const) {
     let prevented = 0;
     const listener = new Function(
       'busy',
       'dialog',
+      'canClose',
       `return (${source.slice(handler.start, handler.end)});`,
-    )(busy, { open });
+    )(busy, { open }, () => allowed);
     listener({
       key,
       preventDefault() {

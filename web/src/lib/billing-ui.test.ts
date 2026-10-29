@@ -5,6 +5,13 @@ import { compile } from 'svelte/compiler';
 import { render } from 'svelte/server';
 const source = (name: string) =>
   readFile(new URL(`./${name}`, import.meta.url), 'utf8').catch(() => '');
+test('billing history accepts a parent draft store and reports unsaved editor state across detail lifetimes', async () => {
+  const history = await source('BillingHistory.svelte');
+  assert.match(history, /drafts\?: BillingDrafts/);
+  assert.match(history, /if \(!providedDrafts\) drafts.clear\(\)/);
+  assert.match(history, /onDirty/);
+  assert.match(await source('BillingEditor.svelte'), /onDirty\(next.dirty\)/);
+});
 test('billing history is a detail tab and monthly summary remains under subscriptions navigation', async () => {
   const detail = await source('SubscriptionDetail.svelte');
   assert.match(detail, /BillingHistory/);

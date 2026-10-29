@@ -3,6 +3,7 @@
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import type { MailAccount } from './mail-api.ts';
+  import { mailFolderLabel } from './mail-controller.ts';
   import {
     createMailAutomationAPI,
     validAutomationRange,
@@ -19,11 +20,17 @@
     returnTo = '/analysis',
     onRefresh = () => {},
     onFrozen = () => {},
+    onStarted = () => {},
+    onDirty = () => {},
+    active = true,
   }: {
     account: MailAccount | null;
     returnTo?: string;
     onRefresh?: () => void;
     onFrozen?: (frozen: boolean) => void;
+    onStarted?: (accountID: string) => void;
+    onDirty?: (dirty: boolean) => void;
+    active?: boolean;
   } = $props();
   const session = getAppSession(),
     api = createMailAutomationAPI(PUBLIC_API_BASE_URL);
@@ -109,6 +116,9 @@
   $effect(() => {
     onFrozen(frozen);
   });
+  $effect(() => {
+    onDirty(view.dirty || view.confirmed);
+  });
   onMount(() => {
     controller = createMailAutomationController(
       api,
@@ -121,7 +131,7 @@
     );
     if (account) void controller.select(account.id);
     const poll = () => {
-      if (document.visibilityState !== 'hidden' && !view.denied) {
+      if (active && document.visibilityState !== 'hidden' && !view.denied) {
         void controller?.refresh();
         onRefresh();
       }
@@ -137,6 +147,7 @@
       document.removeEventListener('visibilitychange', visibility);
       controller?.dispose();
       onFrozen(false);
+      onDirty(false);
     };
   });
   async function start() {
@@ -144,6 +155,7 @@
     if (controller?.state().acknowledged === 'start') {
       reviewing = false;
       onRefresh();
+      if (account) onStarted(account.id);
     }
   }
 </script>
@@ -308,7 +320,7 @@
           <p>
             対象フォルダー：{account.folders
               .filter((f) => f.selected && f.available)
-              .map((f) => f.name)
+              .map(mailFolderLabel)
               .join('、') || '未選択'}
           </p>
           <p>

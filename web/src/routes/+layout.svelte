@@ -17,6 +17,7 @@
   import { createMailAPI } from '#lib/mail-api.ts';
   import { createMailSyncAPI } from '#lib/mail-sync-api.ts';
   import { createMailProcessingAPI } from '#lib/mail-processing-api.ts';
+  import { createOverviewAPI } from '#lib/overview-api.ts';
 
   let { children } = $props();
   let controller: ReturnType<typeof createAuthController> | undefined;
@@ -28,6 +29,15 @@
   let theme = $state<ThemePreference>('system');
   let signUp = $derived(page.url.searchParams.get('sign_up') === 'true');
   const api = createAPI(PUBLIC_API_BASE_URL);
+  const mailAPI = createMailAPI(PUBLIC_API_BASE_URL);
+  const overviewAPI = createOverviewAPI(PUBLIC_API_BASE_URL);
+  function setTheme(preference: ThemePreference) {
+    themeController?.set(preference);
+    theme = preference;
+  }
+  function onDenied() {
+    void controller?.refresh();
+  }
   provideAppSession({
     get user() {
       return sessionState.auth.status === 'allowed'
@@ -43,18 +53,13 @@
     get theme() {
       return theme;
     },
-    setTheme(preference) {
-      themeController?.set(preference);
-      theme = preference;
-    },
-    onDenied() {
-      void controller?.refresh();
-    },
+    setTheme,
+    onDenied,
     api,
     catalogAPI: createCatalogAPI(PUBLIC_API_BASE_URL),
     runtimeAPI: createAIRuntimeAPI(PUBLIC_API_BASE_URL),
     routesAPI: createAIRoutesAPI(PUBLIC_API_BASE_URL),
-    mailAPI: createMailAPI(PUBLIC_API_BASE_URL),
+    mailAPI,
     mailSyncAPI: createMailSyncAPI(PUBLIC_API_BASE_URL),
     mailProcessingAPI: createMailProcessingAPI(PUBLIC_API_BASE_URL),
   });
@@ -93,6 +98,13 @@
     <AppShell
       user={sessionState.auth.user}
       pathname={page.url.pathname}
+      search={page.url.search}
+      token={sessionState.token}
+      {mailAPI}
+      {overviewAPI}
+      {onDenied}
+      {theme}
+      {setTheme}
       signOut={() => {
         void controller?.signOut();
       }}

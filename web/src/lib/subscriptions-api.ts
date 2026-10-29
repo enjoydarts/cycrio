@@ -35,6 +35,9 @@ export type Subscription = SubscriptionValues & {
   created_at: string;
   updated_at: string;
   sources: {
+    account_id?: string;
+    account_label?: string;
+    provider?: 'gmail' | 'outlook' | 'fastmail' | 'imap';
     provenance?: 'automatic' | 'owner_confirmed';
     result_id: string;
     event_index: number;
@@ -42,6 +45,7 @@ export type Subscription = SubscriptionValues & {
   }[];
 };
 export type SubscriptionFilter = {
+  account_id?: string;
   q: string;
   status: 'all' | 'active' | 'ended' | 'unknown';
   sort: 'next_billing' | 'service' | 'updated';
@@ -113,7 +117,23 @@ export function parseSubscription(value: unknown): Subscription {
     v.sources,
     (x) => {
       const s = record(x);
+      const account =
+        s.account_id === undefined &&
+        s.account_label === undefined &&
+        s.provider === undefined
+          ? {}
+          : {
+              account_id: uuid(s.account_id),
+              account_label: text(s.account_label, 200),
+              provider: choice(s.provider, [
+                'gmail',
+                'outlook',
+                'fastmail',
+                'imap',
+              ] as const),
+            };
       return {
+        ...account,
         provenance:
           s.provenance === undefined
             ? ('owner_confirmed' as const)
@@ -171,6 +191,11 @@ export function createSubscriptionsAPI(
             offset: String(integer(filter.offset)),
           }),
       );
+      if (filter.account_id)
+        query.set(
+          'account_id',
+          input(() => uuid(filter.account_id)),
+        );
       const v = record(
         await request(`/v1/subscriptions?${query}`, token, signal),
       );
