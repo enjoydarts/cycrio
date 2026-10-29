@@ -454,8 +454,8 @@
   }
   nav a.active,
   .settings-link.active {
-    background: #7463e929;
-    color: #e4dfff;
+    background: var(--color-rail-selected);
+    color: var(--color-rail-accent);
     font-weight: 650;
   }
   nav svg {
@@ -505,8 +505,8 @@
     font-weight: 800;
   }
   .mail-logo.fastmail {
-    color: white;
-    background: #6657df;
+    color: var(--color-on-action);
+    background: var(--color-action);
   }
   .source-state {
     width: 6px;
@@ -521,8 +521,8 @@
   }
   .add-source {
     margin-top: 7px;
-    color: #c5baff;
-    border: 1px dashed #786aa1;
+    color: var(--color-rail-accent);
+    border: 1px dashed var(--color-rail-border);
     padding: 9px 12px;
     border-radius: 9px;
     font-size: 12px;
@@ -538,7 +538,7 @@
     padding-inline: 14px;
   }
   .rail-retry {
-    color: #c5baff;
+    color: var(--color-rail-accent);
     padding-inline: 14px;
   }
   .rail-bottom {
@@ -562,11 +562,11 @@
   .avatar {
     width: 30px;
     height: 30px;
-    background: #47405e;
+    background: var(--color-rail-avatar);
     border-radius: 50%;
     display: grid;
     place-items: center;
-    color: #e7dcff;
+    color: var(--color-rail-accent);
     font-size: 11px;
   }
   .account button {
@@ -642,7 +642,7 @@
     position: fixed;
     inset: 0;
     z-index: 20;
-    background: #15182c88;
+    background: var(--color-overlay);
   }
   @media (max-width: 1150px) {
     .application {

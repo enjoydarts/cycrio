@@ -384,8 +384,8 @@
     border-bottom: 2px solid transparent;
   }
   .tabs button[aria-current] {
-    color: var(--brand, #7863cf);
-    border-color: var(--brand, #7863cf);
+    color: var(--color-action);
+    border-color: var(--color-action);
   }
   .embedded h2 {
     font-size: 15px;

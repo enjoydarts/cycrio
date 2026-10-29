@@ -480,12 +480,12 @@
     font-size: 12px;
   }
   nav a[aria-current] {
-    color: var(--brand, #7863cf);
-    border-color: var(--brand, #7863cf);
+    color: var(--color-action);
+    border-color: var(--color-action);
   }
   nav span {
     font-size: 10px;
-    background: var(--color-background, #f4f4f8);
+    background: var(--color-surface-soft);
     padding: 2px 5px;
     border-radius: 5px;
   }
@@ -526,8 +526,8 @@
     font-size: 16px;
   }
   .view-switch button[aria-pressed='true'] {
-    color: var(--brand, #7863cf);
-    background: var(--brand-soft, #f0ecff);
+    color: var(--color-action);
+    background: var(--color-surface-soft);
   }
   .list-footer {
     display: flex;

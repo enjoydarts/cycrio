@@ -72,7 +72,7 @@
     overscroll-behavior: contain;
   }
   dialog::backdrop {
-    background: #18152c55;
+    background: var(--color-overlay);
   }
   header {
     display: flex;

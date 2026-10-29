@@ -1,6 +1,21 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
+test('the application preserves the approved Cycrio green, teal and mint identity', async () => {
+  const source = await readFile(
+    new URL('./brand.css', import.meta.url),
+    'utf8',
+  );
+  const light = source.match(/:root\s*\{([^}]+)\}/)![1];
+  for (const [token, color] of Object.entries({
+    'brand-primary': '#22c55e',
+    'brand-secondary': '#0f766e',
+    'brand-accent': '#a7f3d0',
+    'brand-background': '#ecfdf5',
+  })) {
+    assert.match(light, new RegExp(`--${token}:\\s*${color};`, 'i'), token);
+  }
+});
 test('both themes keep normal text, actions and errors above AA contrast against application surfaces', async () => {
   const source = await readFile(
     new URL('./brand.css', import.meta.url),
@@ -47,6 +62,15 @@ test('both themes keep normal text, actions and errors above AA contrast against
       );
     }
   }
+});
+test('mail provider initials use the contrast-checked action foreground and background together', async () => {
+  const source = await readFile(
+    new URL('./AppShell.svelte', import.meta.url),
+    'utf8',
+  );
+  const icon = source.match(/\.mail-logo\.fastmail\s*\{([^}]+)\}/)![1];
+  assert.match(icon, /color:\s*var\(--color-on-action\)/);
+  assert.match(icon, /background:\s*var\(--color-action\)/);
 });
 test('legacy settings typography and action colors use readable shared tokens', async () => {
   for (const filename of [

@@ -161,13 +161,13 @@
     font-size: 11px;
     border-radius: 5px;
     padding: 5px 8px;
-    background: var(--color-background, #f4f4f8);
+    background: var(--color-surface-soft);
     color: var(--color-muted);
     white-space: nowrap;
   }
   .active {
-    color: #278768;
-    background: #eaf7f0;
+    color: var(--color-action);
+    background: var(--color-surface-soft);
   }
   .arrow button {
     border: 0;
@@ -196,7 +196,7 @@
     text-align: left;
   }
   .card:hover {
-    border-color: var(--brand, #8876df);
+    border-color: var(--color-action);
   }
   .card-line {
     display: flex;

@@ -13,8 +13,8 @@
     display: inline-grid;
     place-items: center;
     flex-shrink: 0;
-    background: var(--brand-soft, #f0ecff);
-    color: var(--brand, #7361cb);
+    background: var(--color-surface-soft);
+    color: var(--color-action);
     font-weight: 700;
     font-size: 20px;
   }

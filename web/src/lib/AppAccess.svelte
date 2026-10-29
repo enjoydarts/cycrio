@@ -108,14 +108,11 @@
     justify-items: center;
     align-content: center;
     padding: 48px 16px;
-    background: radial-gradient(circle at top, #ffffff, #f4f4f5 55%, #e4e4e7);
-  }
-  :global(:root[data-theme='dark']) .access-page {
     background: radial-gradient(
       circle at top,
       var(--color-surface),
       var(--brand-background) 55%,
-      #11131d
+      var(--color-surface-soft)
     );
   }
   .access-layout {
