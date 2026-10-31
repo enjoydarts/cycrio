@@ -14,6 +14,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -21,14 +23,23 @@ type connectionStore interface {
 	WithConnection(context.Context, mailaccounts.CredentialVersion, func(mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error)) (mailaccounts.ConnectionSecret, error)
 }
 type Factory struct {
-	repo    connectionStore
-	resolve func(context.Context, string) ([]byte, error)
-	client  *mailoauth.Client
+	repo      connectionStore
+	resolve   func(context.Context, string) ([]byte, error)
+	client    *mailoauth.Client
+	readers   contentReaderPool
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
+}
+
+type contentReaderPool interface {
+	Reader(fastmail.ContentScope, *fastmail.Client) mailcontent.Reader
+	Close() error
 }
 
 func New(pool *pgxpool.Pool, keys *secretstore.Keyring) *Factory {
 	cs := credentials.NewService(database.NewCredentialRepository(pool), keys)
-	return &Factory{database.NewMailOAuthRepository(pool, keys), cs.Resolve, mailoauth.NewClient(nil)}
+	return &Factory{repo: database.NewMailOAuthRepository(pool, keys), resolve: cs.Resolve, client: mailoauth.NewClient(nil), readers: fastmail.NewContentPool()}
 }
 
 type backend interface {
@@ -38,6 +49,9 @@ type backend interface {
 }
 
 func (f *Factory) connection(ctx context.Context, v mailaccounts.CredentialVersion) (backend, error) {
+	if f.closed.Load() {
+		return nil, mailaccounts.ErrUnavailable
+	}
 	s, e := f.repo.WithConnection(ctx, v, func(s mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error) {
 		if s.Provider != "gmail" && s.Provider != "outlook" {
 			return s, nil
@@ -81,5 +95,23 @@ func (f *Factory) Scanner(ctx context.Context, v mailaccounts.CredentialVersion)
 	return f.connection(ctx, v)
 }
 func (f *Factory) Reader(ctx context.Context, v mailaccounts.CredentialVersion) (mailcontent.Reader, error) {
-	return f.connection(ctx, v)
+	reader, err := f.connection(ctx, v)
+	if err != nil {
+		return nil, err
+	}
+	// Current credential validation above is never bypassed by pooled sockets.
+	if client, ok := reader.(*fastmail.Client); ok && f.readers != nil {
+		return f.readers.Reader(fastmail.ContentScope{OwnerID: v.OwnerID, AccountID: v.AccountID, CredentialID: v.ID, CredentialVersion: v.Version, Provider: v.Provider, Host: v.Host, Port: v.Port}, client), nil
+	}
+	return reader, nil
+}
+
+func (f *Factory) Close() error {
+	f.closeOnce.Do(func() {
+		f.closed.Store(true)
+		if f.readers != nil {
+			f.closeErr = f.readers.Close()
+		}
+	})
+	return f.closeErr
 }

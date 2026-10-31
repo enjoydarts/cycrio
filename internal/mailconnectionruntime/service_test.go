@@ -37,6 +37,7 @@ func TestRuntimeRotatesRefreshTokenAndChecksDisabledClientEvenBeforeExpiry(t *te
 	config, _ := json.Marshal(mailoauth.Config{ClientID: "public-client", ClientSecret: "private-client", RedirectURI: "http://localhost:8090/v1/mail/oauth/callback/gmail"})
 	calls := 0
 	disabled := false
+	imapPool := &readerPoolFixture{reader: &pooledReader{}}
 	factory := &Factory{repo: store, resolve: func(context.Context, string) ([]byte, error) {
 		if disabled {
 			return nil, errors.New("disabled")
@@ -52,7 +53,7 @@ func TestRuntimeRotatesRefreshTokenAndChecksDisabledClientEvenBeforeExpiry(t *te
 			t.Fatal("wrong stored refresh token")
 		}
 		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"access_token":"new-access","refresh_token":"new-refresh","token_type":"Bearer","expires_in":3600}`))}, nil
-	})})}
+	})}), readers: imapPool}
 	if _, e := factory.Scanner(context.Background(), mailaccounts.CredentialVersion{}); e != nil {
 		t.Fatal(e)
 	}
@@ -61,6 +62,9 @@ func TestRuntimeRotatesRefreshTokenAndChecksDisabledClientEvenBeforeExpiry(t *te
 	}
 	if _, e := factory.Reader(context.Background(), mailaccounts.CredentialVersion{}); e != nil || calls != 1 {
 		t.Fatal("fresh token refreshed again", e)
+	}
+	if len(imapPool.scopes) != 0 {
+		t.Fatal("OAuth API reader entered the IMAP connection pool")
 	}
 	disabled = true
 	if _, e := factory.Checker(context.Background(), mailaccounts.CredentialVersion{}); e == nil || calls != 1 {

@@ -5,21 +5,39 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
+	"io"
+	"sync"
 )
 
 type Service struct {
-	repo    Repository
-	keys    *secretstore.Keyring
-	reader  mailcontent.Reader
-	client  InferenceClient
-	resolve CredentialResolver
-	factory mailcontent.ReaderFactory
+	repo         Repository
+	keys         *secretstore.Keyring
+	reader       mailcontent.Reader
+	client       InferenceClient
+	resolve      CredentialResolver
+	factory      mailcontent.ReaderFactory
+	readerCloser io.Closer
+	closeOnce    sync.Once
+	closeErr     error
 }
 
 type Option func(*Service)
 
 func WithReaderFactory(factory mailcontent.ReaderFactory) Option {
 	return func(s *Service) { s.factory = factory }
+}
+
+func WithReaderCloser(closer io.Closer) Option {
+	return func(s *Service) { s.readerCloser = closer }
+}
+
+func (s *Service) Close() error {
+	s.closeOnce.Do(func() {
+		if s.readerCloser != nil {
+			s.closeErr = s.readerCloser.Close()
+		}
+	})
+	return s.closeErr
 }
 func NewService(r Repository, k *secretstore.Keyring, reader mailcontent.Reader, client InferenceClient, resolve CredentialResolver, options ...Option) *Service {
 	s := &Service{repo: r, keys: k, reader: reader, client: client, resolve: resolve}

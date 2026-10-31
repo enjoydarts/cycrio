@@ -29,5 +29,6 @@ func New(pool *pgxpool.Pool, keys *secretstore.Keyring) *mailprocessing.Service 
 		}
 		return key, nil
 	}
-	return mailprocessing.NewService(database.NewMailProcessingRepository(pool), keys, fastmail.NewClient(), ai.NewClient(nil), resolve, mailprocessing.WithReaderFactory(mailconnectionruntime.New(pool, keys).Reader))
+	connections := mailconnectionruntime.New(pool, keys)
+	return mailprocessing.NewService(database.NewMailProcessingRepository(pool), keys, fastmail.NewClient(), ai.NewClient(nil), resolve, mailprocessing.WithReaderFactory(connections.Reader), mailprocessing.WithReaderCloser(connections))
 }

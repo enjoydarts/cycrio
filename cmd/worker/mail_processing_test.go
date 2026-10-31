@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -87,20 +88,20 @@ func TestMailProcessingRecoveryPollStillFindsWorkWithoutCompletionWake(t *testin
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		queued, submitted := false, 0
+		var queued atomic.Bool
+		var submitted atomic.Int64
 		go dispatchMailProcessing(ctx, func(context.Context) ([]mailprocessing.Lease, error) {
-			if !queued {
+			if !queued.Swap(false) {
 				return nil, nil
 			}
-			queued = false
 			return []mailprocessing.Lease{{RunID: "run", LeaseID: "lease"}}, nil
-		}, func(context.Context, mailprocessing.Lease) error { submitted++; return nil }, 10*time.Second, nil)
+		}, func(context.Context, mailprocessing.Lease) error { submitted.Add(1); return nil }, 10*time.Second, nil)
 		synctest.Wait()
-		queued = true
+		queued.Store(true)
 		time.Sleep(10 * time.Second)
 		synctest.Wait()
-		if submitted != 1 {
-			t.Fatalf("recovery poll submitted %d times", submitted)
+		if submitted.Load() != 1 {
+			t.Fatalf("recovery poll submitted %d times", submitted.Load())
 		}
 		cancel()
 		synctest.Wait()

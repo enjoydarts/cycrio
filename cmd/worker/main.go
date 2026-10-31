@@ -93,6 +93,7 @@ func run() error {
 		return executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	processing := mailprocessingruntime.New(pool, keyring)
+	defer func() { _ = processing.Close() }()
 	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
 		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
