@@ -52,7 +52,7 @@ export type SchedulePreview = {
   as_of: string;
   timezone: 'Asia/Tokyo';
   candidate_date: string | null;
-  reason: '' | 'ended' | 'out_of_range';
+  reason: '' | 'ended' | 'out_of_range' | 'fixed_term';
   algorithm_version: 'calendar-v1';
   overdue: boolean;
 };
@@ -84,7 +84,8 @@ export type ScheduleReason =
   | 'preview_changed'
   | 'request_conflict'
   | 'history_changed'
-  | 'ended';
+  | 'ended'
+  | 'fixed_term';
 const reasons: ScheduleReason[] = [
   'version_conflict',
   'preview_expired',
@@ -92,6 +93,7 @@ const reasons: ScheduleReason[] = [
   'request_conflict',
   'history_changed',
   'ended',
+  'fixed_term',
 ];
 export class ScheduleError extends ApiError {
   reason: ScheduleReason | null;
@@ -165,7 +167,12 @@ export function parseSchedulePreview(value: unknown): SchedulePreview {
   const v = record(value),
     as_of = date(v.as_of),
     candidate_date = nullable(v.candidate_date, date),
-    reason = choice(v.reason, ['', 'ended', 'out_of_range'] as const);
+    reason = choice(v.reason, [
+      '',
+      'ended',
+      'out_of_range',
+      'fixed_term',
+    ] as const);
   if (
     (candidate_date === null) !== (reason !== '') ||
     (candidate_date && candidate_date < as_of)

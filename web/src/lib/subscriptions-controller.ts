@@ -11,6 +11,9 @@ import {
 } from './subscriptions-api.ts';
 export const blankSubscription = (): SubscriptionValues => ({
   service: '',
+  contract_kind: 'unknown',
+  effective_date: null,
+  access_end_date: null,
   plan: null,
   amount: null,
   currency: null,
@@ -23,17 +26,29 @@ export const subscriptionFromEvent = (
   event: ProcessingEvent,
 ): SubscriptionValues => ({
   ...blankSubscription(),
-  service: event.service,
+  service: event.service ?? '',
+  contract_kind: event.contract_kind ?? 'unknown',
+  effective_date: event.effective_date ?? null,
+  access_end_date: event.access_end_date ?? null,
   plan: event.plan,
-  amount: ['refund', 'cancellation'].includes(event.event_type)
-    ? null
-    : event.amount,
-  currency: ['refund', 'cancellation'].includes(event.event_type)
-    ? null
-    : event.currency,
-  interval_unit: event.interval_unit,
-  interval_count: event.interval_count,
-  next_billing_date: event.next_billing_at,
+  amount:
+    event.contract_kind !== 'fixed_term' &&
+    event.recurring_amount &&
+    event.recurring_currency
+      ? event.recurring_amount
+      : null,
+  currency:
+    event.contract_kind !== 'fixed_term' &&
+    event.recurring_amount &&
+    event.recurring_currency
+      ? event.recurring_currency
+      : null,
+  interval_unit:
+    event.contract_kind === 'fixed_term' ? null : event.interval_unit,
+  interval_count:
+    event.contract_kind === 'fixed_term' ? null : event.interval_count,
+  next_billing_date:
+    event.contract_kind === 'fixed_term' ? null : event.next_billing_at,
   status: 'unknown',
 });
 export type EditorView = {
@@ -205,7 +220,19 @@ export function createSubscriptionEditor(
     edit(patch: Partial<SubscriptionValues>) {
       if (allowed() && view.status !== 'saving' && !view.uncertain)
         publish({
-          values: { ...view.values, ...patch },
+          values: {
+            ...view.values,
+            ...patch,
+            ...(patch.contract_kind === 'fixed_term'
+              ? {
+                  amount: null,
+                  currency: null,
+                  interval_unit: null,
+                  interval_count: null,
+                  next_billing_date: null,
+                }
+              : {}),
+          },
           dirty: true,
           confirmed: false,
           saved: null,

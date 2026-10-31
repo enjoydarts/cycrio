@@ -62,10 +62,10 @@ func (f *fakeClient) Do(_ context.Context, r ai.Request) (ai.Response, error) {
 func fixture() (*fakeRepo, *fakeClient) {
 	return &fakeRepo{state: airuntime.State{Version: 2, ActiveReady: true, Active: &airuntime.Profile{ID: uuid.NewString(), MaxInputBytes: 8192, TimeoutSeconds: 5, MaxOutputTokens: 512}}}, &fakeClient{}
 }
-func TestRunner128CallsNoRetryLedgerAndClearing(t *testing.T) {
+func TestRunner176CallsNoRetryLedgerAndClearing(t *testing.T) {
 	r, c := fixture()
 	out, err := Run(context.Background(), r, c, func(context.Context, string) ([]byte, error) { return []byte("SECRET"), nil }, uuid.NewString())
-	if err != nil || c.calls != 128 || r.begins != 128 || r.finishes != 128 || out.Partial {
+	if err != nil || c.calls != 176 || r.begins != 176 || r.finishes != 176 || out.PlannedCalls != 176 || out.Partial {
 		t.Fatalf("run %d %+v %v", c.calls, out, err)
 	}
 	if r.last.Scope != "admin_test" || r.last.RunID != nil || r.last.ConsumingUserID != nil || r.last.InitiatedByUserID == nil {

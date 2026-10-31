@@ -152,7 +152,10 @@
         {:else if result.status === 'too_many'}<p>
             対象期間の明細と参照返金は合計1000件までです。対象開始日を絞って、再度確認してください。
           </p>{/if}
-        {#if result.reason === 'ended'}<p class="schedule-warning">
+        {#if result.reason === 'fixed_term'}<p class="schedule-warning">
+            期間限定契約には候補を入力できません。
+          </p>
+        {:else if result.reason === 'ended'}<p class="schedule-warning">
             契約は終了済みです。履歴は確認できますが、候補は入力できません。
           </p>{/if}
         {#if result.counts}<p>
@@ -189,9 +192,11 @@
               </p>
               <p>
                 次回候補: {candidate.candidate_date ??
-                  (candidate.reason === 'ended'
-                    ? '終了済み'
-                    : '扱える日付の範囲を超えています')}
+                  (candidate.reason === 'fixed_term'
+                    ? '期間限定契約'
+                    : candidate.reason === 'ended'
+                      ? '終了済み'
+                      : '扱える日付の範囲を超えています')}
               </p>
               {#if hasExistingValues}<p class="notice">
                   現在の入力（{values.interval_unit

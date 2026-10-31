@@ -101,7 +101,7 @@ test('attention uses server-wide state and total rather than a related-only clie
   assert.match(url, /review=attention/);
   assert.equal(result.total, 123);
 });
-test('an extracted charge is offered as a price proposal for explicit owner confirmation', async () => {
+test('an extracted transaction never supplies a contract price without explicit recurring facts', async () => {
   const module = await import('./subscriptions-controller.ts');
   assert.equal(typeof module.subscriptionFromEvent, 'function');
   const event = {
@@ -115,8 +115,8 @@ test('an extracted charge is offered as a price proposal for explicit owner conf
     next_billing_at: null,
   };
   const values = module.subscriptionFromEvent(event as never);
-  assert.equal(values.amount, '1200');
-  assert.equal(values.currency, 'JPY');
+  assert.equal(values.amount, null);
+  assert.equal(values.currency, null);
   assert.equal(values.status, 'unknown');
   const refund = module.subscriptionFromEvent({
     ...event,

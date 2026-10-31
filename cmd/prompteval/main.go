@@ -32,7 +32,7 @@ func main() {
 func run(args []string, out io.Writer) error {
 	flags := flag.NewFlagSet("prompteval", flag.ContinueOnError)
 	flags.SetOutput(io.Discard)
-	execute := flags.Bool("execute", false, "opt in to at most 128 paid external calls")
+	execute := flags.Bool("execute", false, "opt in to at most 176 paid external calls")
 	actor := flags.String("actor-id", "", "administrator UUID (required for execution)")
 	keyringPath := flags.String("keyring-file", ".local/secrets/keyring.json", "existing encryption keyring; never generated")
 	reportPath := flags.String("report", "", "new report under .local; never overwritten")
@@ -40,7 +40,7 @@ func run(args []string, out io.Writer) error {
 		return errors.New("invalid_arguments")
 	}
 	if !*execute {
-		fmt.Fprintln(out, "dry-run: synthetic corpus, 24 development + 8 holdout, at most 128 paid calls; requires -execute -actor-id UUID; no database or external access")
+		fmt.Fprintln(out, "dry-run: synthetic corpus, 32 development + 12 holdout, at most 176 paid calls; requires -execute -actor-id UUID; no database or external access")
 		return nil
 	}
 	if _, err := uuid.Parse(*actor); err != nil {
@@ -97,7 +97,7 @@ func run(args []string, out io.Writer) error {
 	if saveErr := save(); saveErr != nil {
 		return saveErr
 	}
-	fmt.Fprintf(out, "synthetic evaluation: %d/128 calls, %d technical errors; report %s\n", report.CompletedCalls, report.TechnicalErrors, *reportPath)
+	fmt.Fprintf(out, "synthetic evaluation: %d/%d calls, %d technical errors; report %s\n", report.CompletedCalls, report.PlannedCalls, report.TechnicalErrors, *reportPath)
 	return err
 }
 func openReport(base, name string) (*os.File, error) {

@@ -116,9 +116,40 @@
 >
   {#if event}<p class="notice">
       AI
-      抽出値を確認して登録してください。不明な日付・周期は補完していません。支払い・返金の抽出金額は取引額です。契約料金として適切か確認してください。解約の検出で既存のサブスクを自動変更しません。
+      抽出値を確認して登録してください。不明な日付・周期は補完していません。通常継続料金が明示された場合だけ契約料金の初期値に使います。取引金額は契約料金へ転用しません。解約の検出で既存のサブスクを自動変更しません。
     </p>{/if}
   <div class="form-grid">
+    <label class="wide"
+      >契約種別<select
+        value={view.values.contract_kind ?? 'unknown'}
+        disabled={frozen}
+        onchange={(e) =>
+          edit({
+            contract_kind: e.currentTarget
+              .value as SubscriptionValues['contract_kind'],
+          })}
+        ><option value="unknown">不明</option><option value="recurring"
+          >継続契約</option
+        ><option value="fixed_term">期間限定（自動更新なし）</option></select
+      ></label
+    >
+    <label
+      >効力日（任意）<input
+        type="date"
+        value={view.values.effective_date ?? ''}
+        disabled={frozen}
+        oninput={(e) => edit({ effective_date: e.currentTarget.value || null })}
+      /></label
+    >
+    <label
+      >利用終了日（任意）<input
+        type="date"
+        value={view.values.access_end_date ?? ''}
+        disabled={frozen}
+        oninput={(e) =>
+          edit({ access_end_date: e.currentTarget.value || null })}
+      /></label
+    >
     <label class="wide"
       >サービス名<input
         required
@@ -136,69 +167,73 @@
         oninput={(e) => edit({ plan: e.currentTarget.value || null })}
       /></label
     >
-    <label
-      >料金（任意）<input
-        type="text"
-        inputmode="decimal"
-        placeholder="不明の場合は空欄"
-        value={view.values.amount ?? ''}
-        disabled={frozen}
-        oninput={(e) => edit({ amount: e.currentTarget.value || null })}
-      /><small class="muted">整数24桁・小数12桁まで。0 も登録できます。</small
-      ></label
-    >
-    <label
-      >通貨（料金と一緒に入力）<input
-        aria-label="通貨"
-        maxlength="3"
-        placeholder="例: JPY"
-        value={view.values.currency ?? ''}
-        disabled={frozen}
-        oninput={(e) =>
-          edit({ currency: e.currentTarget.value.toUpperCase() || null })}
-      /></label
-    >
-    <label
-      >請求周期の回数（任意）<input
-        type="text"
-        inputmode="numeric"
-        value={view.values.interval_count ?? ''}
-        disabled={frozen}
-        oninput={(e) =>
-          edit({
-            interval_count:
-              e.currentTarget.value === ''
-                ? null
-                : /^\d+$/.test(e.currentTarget.value)
-                  ? Number(e.currentTarget.value)
-                  : NaN,
-          })}
-      /><small class="muted">周期の単位と一緒に 1〜10000 を入力</small></label
-    >
-    <label
-      >周期の単位<select
-        value={view.values.interval_unit ?? ''}
-        disabled={frozen}
-        onchange={(e) =>
-          edit({
-            interval_unit: (e.currentTarget.value ||
-              null) as SubscriptionValues['interval_unit'],
-          })}
-        ><option value="">不明</option><option value="day">日</option><option
-          value="week">週間</option
-        ><option value="month">か月</option><option value="year">年</option
-        ></select
-      ></label
-    >
-    <label
-      >次回請求日（任意）<input
-        type="date"
-        value={view.values.next_billing_date ?? ''}
-        disabled={frozen}
-        oninput={(e) =>
-          edit({ next_billing_date: e.currentTarget.value || null })}
-      /></label
-    >
+    {#if view.values.contract_kind !== 'fixed_term'}
+      <label
+        >通常継続料金（任意）<input
+          type="text"
+          inputmode="decimal"
+          placeholder="不明の場合は空欄"
+          value={view.values.amount ?? ''}
+          disabled={frozen}
+          oninput={(e) => edit({ amount: e.currentTarget.value || null })}
+        /><small class="muted">整数24桁・小数12桁まで。0 も登録できます。</small
+        ></label
+      >
+      <label
+        >通貨（料金と一緒に入力）<input
+          aria-label="通貨"
+          maxlength="3"
+          placeholder="例: JPY"
+          value={view.values.currency ?? ''}
+          disabled={frozen}
+          oninput={(e) =>
+            edit({ currency: e.currentTarget.value.toUpperCase() || null })}
+        /></label
+      >
+      <label
+        >請求周期の回数（任意）<input
+          type="text"
+          inputmode="numeric"
+          value={view.values.interval_count ?? ''}
+          disabled={frozen}
+          oninput={(e) =>
+            edit({
+              interval_count:
+                e.currentTarget.value === ''
+                  ? null
+                  : /^\d+$/.test(e.currentTarget.value)
+                    ? Number(e.currentTarget.value)
+                    : NaN,
+            })}
+        /><small class="muted">周期の単位と一緒に 1〜10000 を入力</small></label
+      >
+      <label
+        >周期の単位<select
+          value={view.values.interval_unit ?? ''}
+          disabled={frozen}
+          onchange={(e) =>
+            edit({
+              interval_unit: (e.currentTarget.value ||
+                null) as SubscriptionValues['interval_unit'],
+            })}
+          ><option value="">不明</option><option value="day">日</option><option
+            value="week">週間</option
+          ><option value="month">か月</option><option value="year">年</option
+          ></select
+        ></label
+      >
+      <label
+        >次回請求日（任意）<input
+          type="date"
+          value={view.values.next_billing_date ?? ''}
+          disabled={frozen}
+          oninput={(e) =>
+            edit({ next_billing_date: e.currentTarget.value || null })}
+        /></label
+      >
+    {:else}<p class="muted wide">
+        期間限定契約には通常継続料金・請求周期・次回請求日を設定しません。
+      </p>{/if}
     <label
       >状態<select
         aria-label="状態"
@@ -223,6 +258,24 @@
         </p>
         {#if view.latest}<p>最新のサービス名: {view.latest.service}</p>
           <dl class="field-grid">
+            <div>
+              <dt>最新の契約種別</dt>
+              <dd>
+                {view.latest.contract_kind === 'fixed_term'
+                  ? '期間限定（自動更新なし）'
+                  : view.latest.contract_kind === 'recurring'
+                    ? '継続契約'
+                    : '不明'}
+              </dd>
+            </div>
+            <div>
+              <dt>最新の効力日</dt>
+              <dd>{view.latest.effective_date ?? '不明'}</dd>
+            </div>
+            <div>
+              <dt>最新の利用終了日</dt>
+              <dd>{view.latest.access_end_date ?? '不明'}</dd>
+            </div>
             <div>
               <dt>最新のプラン</dt>
               <dd>{view.latest.plan ?? '不明'}</dd>

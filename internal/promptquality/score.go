@@ -19,7 +19,7 @@ func (s *EventScore) Add(v EventScore) {
 	s.ExpectedNull += v.ExpectedNull
 }
 func equalFact(key string, a, b any) bool {
-	if key == "amount" && a != nil && b != nil {
+	if (key == "amount" || key == "recurring_amount") && a != nil && b != nil {
 		x, ok := new(big.Rat).SetString(a.(string))
 		y, yes := new(big.Rat).SetString(b.(string))
 		return ok && yes && x.Cmp(y) == 0

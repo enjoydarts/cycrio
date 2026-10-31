@@ -92,8 +92,8 @@ func ExtractionSchema() map[string]any {
 	// Keep nullable enums as separate branches: some upstream schema adapters
 	// reject null values inside enum even when the field type includes null.
 	intervalUnit := map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": []string{"day", "week", "month", "year"}}, map[string]any{"type": "null"}}}
-	props := map[string]any{"service": map[string]any{"type": "string"}, "plan": nullableString(), "event_type": map[string]any{"type": "string", "enum": []string{"invoice", "payment", "renewal", "refund", "change", "cancellation", "trial"}}, "amount": nullableString(), "currency": nullableString(), "billed_at": nullableString(), "period_start": nullableString(), "period_end": nullableString(), "next_billing_at": nullableString(), "interval_unit": intervalUnit, "interval_count": map[string]any{"type": []string{"integer", "null"}}}
-	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count"}
+	props := map[string]any{"service": nullableString(), "plan": nullableString(), "event_type": map[string]any{"type": "string", "enum": []string{"invoice", "payment", "renewal", "refund", "change", "cancellation", "trial", "payment_failed", "payment_reminder", "suspension"}}, "amount": nullableString(), "currency": nullableString(), "billed_at": nullableString(), "period_start": nullableString(), "period_end": nullableString(), "next_billing_at": nullableString(), "interval_unit": intervalUnit, "interval_count": map[string]any{"type": []string{"integer", "null"}}, "recurring_amount": nullableString(), "recurring_currency": nullableString(), "effective_date": nullableString(), "access_end_date": nullableString(), "contract_kind": map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": []string{"recurring", "fixed_term"}}, map[string]any{"type": "null"}}}}
+	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count", "recurring_amount", "recurring_currency", "effective_date", "access_end_date", "contract_kind"}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"events"}, "properties": map[string]any{"events": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": props}}}}
 }
 func ValidateExtraction(b []byte) (Extraction, error) {
@@ -111,13 +111,26 @@ func ValidateExtraction(b []byte) (Extraction, error) {
 		return bad()
 	}
 	keys := map[string]bool{"service": true, "plan": true, "event_type": true, "amount": true, "currency": true, "billed_at": true, "period_start": true, "period_end": true, "next_billing_at": true, "interval_unit": true, "interval_count": true}
+	newKeys := map[string]bool{"recurring_amount": true, "recurring_currency": true, "effective_date": true, "access_end_date": true, "contract_kind": true}
 	for _, v := range events {
 		m, ok := v.(map[string]any)
-		if !ok || len(m) != len(keys) {
+		if !ok || (len(m) != len(keys) && len(m) != len(keys)+len(newKeys)) {
 			return bad()
 		}
+		for k := range keys {
+			if _, exists := m[k]; !exists {
+				return bad()
+			}
+		}
+		if len(m) != len(keys) {
+			for k := range newKeys {
+				if _, exists := m[k]; !exists {
+					return bad()
+				}
+			}
+		}
 		for k, x := range m {
-			if !keys[k] {
+			if !keys[k] && !newKeys[k] {
 				return bad()
 			}
 			if k == "interval_count" {
@@ -134,7 +147,7 @@ func ValidateExtraction(b []byte) (Extraction, error) {
 				continue
 			}
 			if x == nil {
-				if k == "service" || k == "event_type" {
+				if k == "event_type" {
 					return bad()
 				}
 				continue
@@ -149,19 +162,23 @@ func ValidateExtraction(b []byte) (Extraction, error) {
 					return bad()
 				}
 			case "event_type":
-				if !oneOf(s, "invoice", "payment", "renewal", "refund", "change", "cancellation", "trial") {
+				if !oneOf(s, "invoice", "payment", "renewal", "refund", "change", "cancellation", "trial", "payment_failed", "payment_reminder", "suspension") {
 					return bad()
 				}
-			case "amount":
+			case "amount", "recurring_amount":
 				if !decimalPattern.MatchString(s) {
 					return bad()
 				}
-			case "currency":
+			case "currency", "recurring_currency":
 				if len(s) != 3 || !strings.Contains(currencyCodes, " "+s+" ") {
 					return bad()
 				}
 			case "interval_unit":
 				if !oneOf(s, "day", "week", "month", "year") {
+					return bad()
+				}
+			case "contract_kind":
+				if !oneOf(s, "recurring", "fixed_term") {
 					return bad()
 				}
 			default:

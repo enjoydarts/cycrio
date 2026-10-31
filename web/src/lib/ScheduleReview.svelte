@@ -40,6 +40,12 @@
     <p class="muted">
       候補は未保存です。周期・基準日・日付の指定方法・候補日を本人が確認してから保存してください。
     </p>
+  {:else if preview.reason === 'fixed_term'}<p
+      class="schedule-warning"
+      role="status"
+    >
+      期間限定契約には次回予定を保存できません。
+    </p>
   {:else if preview.reason === 'ended'}<p
       class="schedule-warning"
       role="status"

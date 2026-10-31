@@ -40,6 +40,11 @@ type historyRecord struct {
 
 func scheduleHistory(ctx context.Context, tx pgx.Tx, owner string, s subscriptions.Subscription, f billingschedule.HistoryFilter, today string) (billingschedule.HistoryPreview, error) {
 	p := billingschedule.HistoryPreview{Subscription: s, Filter: f, AsOf: today, Timezone: billingschedule.Timezone, AlgorithmVersion: billingschedule.HistoryAlgorithmVersion, Samples: []billingschedule.HistorySample{}, Candidates: []billingschedule.HistoryCandidate{}, Entries: []billingschedule.HistoryEntry{}}
+	if s.ContractKind == "fixed_term" {
+		p.Status = "insufficient"
+		p.Reason = "fixed_term"
+		return p, nil
+	}
 	if s.Status == "ended" {
 		p.Reason = "ended"
 	}

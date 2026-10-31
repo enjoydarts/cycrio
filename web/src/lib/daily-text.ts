@@ -7,6 +7,9 @@ export const eventNames: Record<ProcessingEvent['event_type'], string> = {
   change: '変更',
   cancellation: '解約',
   trial: 'お試し',
+  payment_failed: '支払い失敗',
+  payment_reminder: '支払い督促',
+  suspension: '利用停止',
 };
 export const intervalNames = {
   day: '日',

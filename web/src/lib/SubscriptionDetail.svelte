@@ -286,7 +286,12 @@
           onSaved();
           void controller?.load(id);
         }}
-      />{:else if embedded && tab === 'schedule'}<ScheduleCalculator
+      />{:else if embedded && tab === 'schedule' && s.contract_kind === 'fixed_term'}<p
+        class="notice"
+      >
+        期間限定契約には請求予定を設定しません。
+      </p>
+    {:else if embedded && tab === 'schedule'}<ScheduleCalculator
         subscription={s}
         drafts={scheduleDrafts}
         onFrozen={childState}
@@ -304,6 +309,24 @@
       </p>
       <dl class="field-grid">
         <div>
+          <dt>契約種別</dt>
+          <dd>
+            {s.contract_kind === 'fixed_term'
+              ? '期間限定（自動更新なし）'
+              : s.contract_kind === 'recurring'
+                ? '継続契約'
+                : '不明'}
+          </dd>
+        </div>
+        <div>
+          <dt>効力日</dt>
+          <dd>{s.effective_date ?? '不明'}</dd>
+        </div>
+        <div>
+          <dt>利用終了日</dt>
+          <dd>{s.access_end_date ?? '不明'}</dd>
+        </div>
+        <div>
           <dt>料金</dt>
           <dd class="money">{money(s.amount, s.currency)}</dd>
         </div>
@@ -315,16 +338,16 @@
           <dt>次回請求日</dt>
           <dd>
             {s.next_billing_date ?? '不明'}
-            {#key s.id}<ScheduleCalculator
-                subscription={s}
-                drafts={scheduleDrafts}
-                onFrozen={childState}
-                onDirty={childDirty}
-                onSaved={() => {
-                  onSaved();
-                  void controller?.load(id);
-                }}
-              />{/key}
+            {#if s.contract_kind === 'fixed_term'}期間限定契約には請求予定を設定しません。{:else}{#key s.id}<ScheduleCalculator
+                  subscription={s}
+                  drafts={scheduleDrafts}
+                  onFrozen={childState}
+                  onDirty={childDirty}
+                  onSaved={() => {
+                    onSaved();
+                    void controller?.load(id);
+                  }}
+                />{/key}{/if}
           </dd>
         </div>
         <div>

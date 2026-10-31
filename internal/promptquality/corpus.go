@@ -79,5 +79,20 @@ func Corpus() []Case {
 			rows[i].Split = "holdout"
 		}
 	}
-	return rows
+	// New schema facts are annotated before any v3 model evaluation. The older
+	// v2 report remains immutable and its accuracy is not comparable to this gold.
+	for i := range rows {
+		switch rows[i].ID {
+		case "d01", "d02", "d04", "d05", "d06", "d08", "d10", "d12", "h01", "h02":
+			// Explicit subscriptions, recurring contracts or renewals establish
+			// ongoing membership, but transaction totals still do not prove a
+			// normal recurring fee. Do not copy Amount into RecurringAmount.
+			rows[i].Events[0].ContractKind = str("recurring")
+		case "d07":
+			rows[i].Events[0].AccessEndDate = str("2026-11-30")
+		case "h04":
+			rows[i].Events[1].ContractKind = str("recurring")
+		}
+	}
+	return append(rows, lifecycleCases()...)
 }

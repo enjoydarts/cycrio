@@ -18,6 +18,15 @@ func validLabel(s string) bool {
 	return utf8.ValidString(s) && !strings.ContainsRune(s, 0) && utf8.RuneCountInString(s) >= 1 && utf8.RuneCountInString(s) <= 200
 }
 func Normalize(v Values) (Values, error) {
+	if v.ContractKind == "" {
+		v.ContractKind = "unknown"
+	}
+	if !slices.Contains([]string{"unknown", "recurring", "fixed_term"}, v.ContractKind) {
+		return Values{}, ErrInvalid
+	}
+	if v.ContractKind == "fixed_term" && (v.Amount != nil || v.Currency != nil || v.IntervalUnit != nil || v.IntervalCount != nil || v.NextBillingDate != nil) {
+		return Values{}, ErrInvalid
+	}
 	v.Service = strings.TrimSpace(v.Service)
 	if !validLabel(v.Service) || !slices.Contains([]string{"active", "ended", "unknown"}, v.Status) {
 		return Values{}, ErrInvalid
@@ -35,9 +44,12 @@ func Normalize(v Values) (Values, error) {
 	if (v.IntervalUnit == nil) != (v.IntervalCount == nil) || v.IntervalUnit != nil && (!slices.Contains([]string{"day", "week", "month", "year"}, *v.IntervalUnit) || *v.IntervalCount < 1 || *v.IntervalCount > 10000) {
 		return Values{}, ErrInvalid
 	}
-	if v.NextBillingDate != nil {
-		d, e := time.Parse("2006-01-02", *v.NextBillingDate)
-		if e != nil || d.Format("2006-01-02") != *v.NextBillingDate || d.Year() < 1 {
+	for _, date := range []*string{v.NextBillingDate, v.EffectiveDate, v.AccessEndDate} {
+		if date == nil {
+			continue
+		}
+		d, e := time.Parse("2006-01-02", *date)
+		if e != nil || d.Format("2006-01-02") != *date || d.Year() < 1 {
 			return Values{}, ErrInvalid
 		}
 	}

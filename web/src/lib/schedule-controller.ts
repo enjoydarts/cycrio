@@ -325,7 +325,8 @@ export function createScheduleController(
             reason !== 'preview_expired' &&
             reason !== 'preview_changed' &&
             reason !== 'history_changed' &&
-            reason !== 'ended',
+            reason !== 'ended' &&
+            reason !== 'fixed_term',
           latest: null,
         });
       }

@@ -19,6 +19,9 @@ import {
   uuid,
 } from './daily-api.ts';
 export type SubscriptionValues = {
+  contract_kind?: 'recurring' | 'fixed_term' | 'unknown';
+  effective_date?: string | null;
+  access_end_date?: string | null;
   service: string;
   plan: string | null;
   amount: string | null;
@@ -95,19 +98,35 @@ export function parseValues(value: unknown): SubscriptionValues {
   const interval_count = nullable(v.interval_count, (x) =>
     integer(x, 1, 10000),
   );
+  const contract_kind =
+    v.contract_kind === undefined
+      ? 'unknown'
+      : choice(v.contract_kind, [
+          'recurring',
+          'fixed_term',
+          'unknown',
+        ] as const);
+  const next_billing_date = nullable(v.next_billing_date, date);
   if (
     (amount === null) !== (currency === null) ||
-    (interval_unit === null) !== (interval_count === null)
+    (interval_unit === null) !== (interval_count === null) ||
+    (contract_kind === 'fixed_term' &&
+      [amount, currency, interval_unit, interval_count, next_billing_date].some(
+        (x) => x !== null,
+      ))
   )
     return invalid();
   return {
+    contract_kind,
+    effective_date: nullable(v.effective_date ?? null, date),
+    access_end_date: nullable(v.access_end_date ?? null, date),
     service: label(v.service),
     plan: nullable(v.plan, label),
     amount,
     currency,
     interval_unit,
     interval_count,
-    next_billing_date: nullable(v.next_billing_date, date),
+    next_billing_date,
     status: choice(v.status, ['active', 'ended', 'unknown']),
   };
 }

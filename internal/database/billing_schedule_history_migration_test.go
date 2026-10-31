@@ -36,7 +36,7 @@ func TestBillingScheduleMigrationElevenPreservesTen(t *testing.T) {
  (SELECT jsonb_agg(to_jsonb(x)-'history_evidence' ORDER BY subscription_id) FROM billing_schedule_settings x),
  (SELECT jsonb_agg(to_jsonb(x)-'history_evidence' ORDER BY request_id) FROM billing_schedule_requests x),
  (SELECT jsonb_agg(x ORDER BY id) FROM billing_schedule_audit x),
- (SELECT jsonb_agg(to_jsonb(x)-'deleted_at'-'deleted_expected_version'-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY id) FROM subscriptions x),
+ (SELECT jsonb_agg(to_jsonb(x)-'contract_kind'-'effective_date'-'access_end_date'-'deleted_at'-'deleted_expected_version'-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY id) FROM subscriptions x),
  (SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),
  (SELECT jsonb_agg(to_jsonb(x)-'provenance' ORDER BY id) FROM billing_events x),
  (SELECT jsonb_agg(x ORDER BY entry_id,version) FROM billing_event_revisions x),

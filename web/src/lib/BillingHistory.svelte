@@ -362,8 +362,8 @@
         {#each subscription.sources as source}<Button
             wrap
             onclick={() => openSource(source)}
-            >{source.original_event.service} · {source.original_event
-              .billed_at ?? '日付不明'} · イベント {source.event_index +
+            >{source.original_event.service ?? 'サービス名未確認'} · {source
+              .original_event.billed_at ?? '日付不明'} · イベント {source.event_index +
               1}</Button
           >{/each}
       </div>

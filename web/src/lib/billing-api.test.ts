@@ -61,6 +61,11 @@ test('billing sources preserve independent original AI values and event index ze
     result_id: rid,
     event_index: 0,
     original_event: {
+      recurring_amount: null,
+      recurring_currency: null,
+      contract_kind: null,
+      effective_date: null,
+      access_end_date: null,
       service: 'AI',
       plan: null,
       event_type: 'payment',

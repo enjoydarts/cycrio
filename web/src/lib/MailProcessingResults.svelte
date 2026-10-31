@@ -5,6 +5,7 @@
     ProcessingResult,
   } from './mail-processing-api.ts';
   import { processingDate, processingReasons } from './mail-processing-text.ts';
+  import { money } from './daily-text.ts';
   let {
     results,
     canRetry,
@@ -37,12 +38,17 @@
     change: '変更',
     cancellation: '解約',
     trial: '試用',
+    payment_failed: '支払い失敗',
+    payment_reminder: '支払い督促',
+    suspension: '利用停止',
   };
   const dateFields = {
     billed_at: '請求日',
     period_start: '対象期間の開始日',
     period_end: '対象期間の終了日',
     next_billing_at: '次回請求日',
+    effective_date: '効力日',
+    access_end_date: '利用終了日',
   } as const;
   const intervals = { day: '日', week: '週', month: '月', year: '年' };
 </script>
@@ -80,22 +86,41 @@
       {#each result.events as event}
         <article>
           <h6>
-            {event.service}{#if event.plan}
+            {event.service ?? 'サービス名未確認'}{#if event.plan}
               / {event.plan}{/if}
           </h6>
           <p>{types[event.event_type]}の候補</p>
           <dl>
             {#if event.amount !== null}<div>
-                <dt>金額（AI抽出）</dt>
+                <dt>取引金額（AI抽出）</dt>
                 <dd>
                   {event.amount}{#if event.currency !== null}
                     {event.currency}{:else}（通貨不明）{/if}
                 </dd>
               </div>{:else if event.currency !== null}<div>
-                <dt>通貨（AI抽出）</dt>
+                <dt>取引通貨（AI抽出）</dt>
                 <dd>{event.currency}（金額不明）</dd>
               </div>{/if}
-            {#each Object.entries(dateFields) as [field, label]}{#if event[field as keyof typeof dateFields] !== null}<div
+            <div>
+              <dt>通常継続料金（AI抽出）</dt>
+              <dd>
+                {money(
+                  event.recurring_amount ?? null,
+                  event.recurring_currency ?? null,
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt>契約種別（AI抽出）</dt>
+              <dd>
+                {event.contract_kind === 'fixed_term'
+                  ? '期間限定（自動更新なし）'
+                  : event.contract_kind === 'recurring'
+                    ? '継続契約'
+                    : '不明'}
+              </dd>
+            </div>
+            {#each Object.entries(dateFields) as [field, label]}{#if event[field as keyof typeof dateFields] != null}<div
                 >
                   <dt>{label}（AI抽出）</dt>
                   <dd>{event[field as keyof typeof dateFields]}</dd>

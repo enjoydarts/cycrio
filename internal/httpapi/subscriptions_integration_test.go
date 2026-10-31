@@ -91,3 +91,53 @@ func TestSubscriptionHTTPDatabaseLifecycle(t *testing.T) {
 	// Authorization still precedes malformed JSON or query validation.
 	request(http.MethodPost, "/v1/subscriptions?invalid=1", `{`, "contract_owner", 403, nil)
 }
+
+func TestSubscriptionLegacyPUTPreservesNewLifecycleFields(t *testing.T) {
+	ctx := context.Background()
+	pool := processingHTTPPool(t, ctx)
+	store := database.NewStore(pool)
+	owner, e := store.AllowIdentity(ctx, configured().Issuer(), "legacy_owner", false)
+	if e != nil {
+		t.Fatal(e)
+	}
+	repo := database.NewSubscriptionRepository(pool)
+	var in subscriptions.CreateInput
+	body := strings.TrimSuffix(subscriptionCreateBody, "}") + `,"contract_kind":"fixed_term","effective_date":"2026-10-31","access_end_date":"2026-11-30"}`
+	if e = json.Unmarshal([]byte(body), &in); e != nil {
+		t.Fatal(e)
+	}
+	saved, e := repo.Create(ctx, owner.ID, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	h := NewHandler(configured(), verifyFunc(func(_ context.Context, token string) (auth.Identity, error) {
+		return auth.Identity{Issuer: configured().Issuer(), Subject: token}, nil
+	}), store.FindPrincipal, pool.Ping, WithSubscriptions(repo))
+	w := credentialRequest(h, "PUT", "/v1/subscriptions/"+saved.ID, subscriptionUpdateBody, "Bearer legacy_owner", "http://localhost:3100", "application/json")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var got subscriptions.Subscription
+	if e = json.Unmarshal(w.Body.Bytes(), &got); e != nil {
+		t.Fatal(e)
+	}
+	if got.ContractKind != "fixed_term" || got.AccessEndDate == nil || *got.AccessEndDate != "2026-11-30" || got.EffectiveDate == nil {
+		t.Fatal("legacy edit silently erased explicit lifecycle", got)
+	}
+	// The modern editor can explicitly clear the dates and change contract kind.
+	modern := strings.Replace(subscriptionUpdateBody, `"expected_version":1`, `"expected_version":2`, 1)
+	modern = strings.TrimSuffix(modern, "}") + `,"contract_kind":"unknown","effective_date":null,"access_end_date":null}`
+	w = credentialRequest(h, "PUT", "/v1/subscriptions/"+saved.ID, modern, "Bearer legacy_owner", "http://localhost:3100", "application/json")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if e = json.Unmarshal(w.Body.Bytes(), &got); e != nil {
+		t.Fatal(e)
+	}
+	// Decode into a fresh target: absent nullable fields must not retain old pointers.
+	var cleared subscriptions.Subscription
+	_ = json.Unmarshal(w.Body.Bytes(), &cleared)
+	if cleared.ContractKind != "unknown" || cleared.AccessEndDate != nil || cleared.EffectiveDate != nil {
+		t.Fatal("explicit lifecycle clear failed", cleared)
+	}
+}

@@ -37,6 +37,11 @@ test('public DTO parsers whitelist fields, preserve null pricing and decimal ext
     error_code: '',
     events: [
       {
+        recurring_amount: null,
+        recurring_currency: null,
+        contract_kind: null,
+        effective_date: null,
+        access_end_date: null,
         service: 'サンプル',
         plan: null,
         event_type: 'invoice',
@@ -213,7 +218,17 @@ test('actual Go-serialized synthetic DTOs parse without dropping price precision
     fixtures.completed,
   );
   for (const name of ['related', 'unrelated', 'failed', 'unknown'])
-    assert.deepEqual(parseProcessingResult(fixtures[name]), fixtures[name]);
+    assert.deepEqual(parseProcessingResult(fixtures[name]), {
+      ...fixtures[name],
+      events: fixtures[name].events.map((event: object) => ({
+        ...event,
+        recurring_amount: null,
+        recurring_currency: null,
+        contract_kind: null,
+        effective_date: null,
+        access_end_date: null,
+      })),
+    });
   const policy = parsePolicyState(fixtures.policy);
   assert.equal(policy.profile?.secondary.price?.currency, 'USD');
   assert.equal(policy.policy?.enabled, true);

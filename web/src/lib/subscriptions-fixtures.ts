@@ -1,6 +1,9 @@
 import type { Subscription, SubscriptionValues } from './subscriptions-api.ts';
 export const id = '11111111-1111-4111-8111-111111111111';
 export const values: SubscriptionValues = {
+  contract_kind: 'unknown',
+  effective_date: null,
+  access_end_date: null,
   service: 'サービス',
   plan: null,
   amount: '0',

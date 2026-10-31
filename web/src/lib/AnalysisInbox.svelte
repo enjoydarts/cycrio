@@ -275,7 +275,9 @@
 </section>
 <Modal
   open={!!selected}
-  title={selected?.event.service ?? '契約候補を確認'}
+  title={selected
+    ? (selected.event.service ?? 'サービス名未確認')
+    : '契約候補を確認'}
   {busy}
   onclose={() => (selected = null)}
 >

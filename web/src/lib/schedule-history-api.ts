@@ -49,7 +49,7 @@ export type HistoryEntry = HistorySample & {
 export type HistoryCandidate = {
   rule: ScheduleRule;
   candidate_date: string | null;
-  reason: '' | 'ended' | 'out_of_range';
+  reason: '' | 'ended' | 'out_of_range' | 'fixed_term';
 };
 export type HistoryCounts = Record<
   | 'total'
@@ -75,7 +75,7 @@ export type ScheduleHistoryPreview = HistoryBasis & {
     | 'duplicate_dates'
     | 'no_match'
     | 'too_many';
-  reason: '' | 'ended';
+  reason: '' | 'ended' | 'fixed_term';
   counts: HistoryCounts | null;
   samples: HistorySample[];
   candidates: HistoryCandidate[];
@@ -172,7 +172,7 @@ export function parseScheduleHistoryPreview(
       'too_many',
     ] as const),
     basis =
-      status === 'too_many'
+      status === 'too_many' || v.reason === 'fixed_term'
         ? {
             filter: parseHistoryFilter(v.filter),
             token: choice(v.token, [''] as const),
@@ -183,7 +183,7 @@ export function parseScheduleHistoryPreview(
         : parseHistoryBasis(v),
     as_of = date(v.as_of),
     subscription = parseSubscription(v.subscription),
-    reason = choice(v.reason, ['', 'ended'] as const),
+    reason = choice(v.reason, ['', 'ended', 'fixed_term'] as const),
     timezone = choice(v.timezone, ['Asia/Tokyo'] as const),
     samples = array(v.samples, sample, 5),
     candidates = array(
@@ -192,7 +192,12 @@ export function parseScheduleHistoryPreview(
         const c = record(x),
           rule = parseScheduleRule(c.rule),
           candidate_date = nullable(c.candidate_date, date),
-          reason = choice(c.reason, ['', 'ended', 'out_of_range'] as const);
+          reason = choice(c.reason, [
+            '',
+            'ended',
+            'out_of_range',
+            'fixed_term',
+          ] as const);
         if (
           (candidate_date === null) !== (reason !== '') ||
           (candidate_date && candidate_date < as_of)
@@ -224,8 +229,15 @@ export function parseScheduleHistoryPreview(
     );
   if (
     basis.filter.start_date > as_of ||
-    (reason === 'ended') !== (subscription.status === 'ended') ||
-    candidates.some((c) => (c.reason === 'ended') !== (reason === 'ended'))
+    (reason === 'fixed_term') !==
+      (subscription.contract_kind === 'fixed_term') ||
+    (reason !== 'fixed_term' &&
+      (reason === 'ended') !== (subscription.status === 'ended')) ||
+    candidates.some(
+      (c) =>
+        (c.reason === 'ended') !== (reason === 'ended') ||
+        (c.reason === 'fixed_term') !== (reason === 'fixed_term'),
+    )
   )
     return invalid();
   const counts = nullable(v.counts, (x): HistoryCounts => {
@@ -243,8 +255,9 @@ export function parseScheduleHistoryPreview(
       referenced_refunds: integer(c.referenced_refunds, 0, 1000),
     };
   });
-  if (status === 'too_many') {
+  if (status === 'too_many' || reason === 'fixed_term') {
     if (
+      (reason === 'fixed_term' && status !== 'insufficient') ||
       counts !== null ||
       samples.length ||
       candidates.length ||

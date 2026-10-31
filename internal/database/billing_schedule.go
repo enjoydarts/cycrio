@@ -53,6 +53,10 @@ func (r *BillingScheduleRepository) Preview(ctx context.Context, owner, id strin
 		return billingschedule.Preview{}, e
 	}
 	p := billingschedule.Preview{Subscription: v.Subscription, Rule: normalized, AsOf: v.AsOf, Timezone: v.Timezone, AlgorithmVersion: billingschedule.AlgorithmVersion, Overdue: v.Overdue}
+	if v.Subscription.ContractKind == "fixed_term" {
+		p.Reason = "fixed_term"
+		return p, nil
+	}
 	if v.Subscription.Status == "ended" {
 		p.Reason = "ended"
 		return p, nil
@@ -109,6 +113,9 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	}
 	if s.Version != in.ExpectedVersion {
 		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "version_conflict"}
+	}
+	if s.ContractKind == "fixed_term" {
+		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "fixed_term"}
 	}
 	today := r.today() // Read after all mutation locks, so a waiting preview may expire.
 	if in.ExpectedAsOf != today {

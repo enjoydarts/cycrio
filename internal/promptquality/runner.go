@@ -48,7 +48,7 @@ func Run(ctx context.Context, repo Repository, client Client, resolve Resolver, 
 				if ctx.Err() != nil {
 					return report, errors.New("cancelled")
 				}
-				if report.CompletedCalls >= 128 {
+				if report.CompletedCalls >= MaxPaidCalls {
 					return report, errors.New("call_limit")
 				}
 				current, e := repo.State(ctx)

@@ -20,7 +20,7 @@ func TestMailFullEmailMigrationFifteenPreservesFourteenAndDefaultsBounded(t *tes
 	if _, err := f.repo.Request(ctx, f.owner, f.account, f.in); err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(p)-'full_email_allowed' ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_policy_audit p),(SELECT jsonb_agg(to_jsonb(p)-'automation_id'-'automation_generation'-'automation_version' ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_items p),(SELECT jsonb_agg(p ORDER BY id) FROM ai_calls p),(SELECT jsonb_agg(to_jsonb(p)-'deleted_at'-'deleted_expected_version' ORDER BY id) FROM subscriptions p))`
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(p)-'full_email_allowed' ORDER BY profile_id) FROM mail_processing_policies p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_policy_audit p),(SELECT jsonb_agg(to_jsonb(p)-'automation_id'-'automation_generation'-'automation_version' ORDER BY id) FROM mail_processing_runs p),(SELECT jsonb_agg(p ORDER BY id) FROM mail_processing_items p),(SELECT jsonb_agg(p ORDER BY id) FROM ai_calls p),(SELECT jsonb_agg(to_jsonb(p)-'contract_kind'-'effective_date'-'access_end_date'-'deleted_at'-'deleted_expected_version' ORDER BY id) FROM subscriptions p))`
 	var before, after string
 	if err := f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 		t.Fatal(err)

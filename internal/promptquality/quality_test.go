@@ -22,8 +22,40 @@ func TestCorpusFrozenComposition(t *testing.T) {
 			hold++
 		}
 	}
-	if dev != 24 || hold != 8 {
+	if dev != 32 || hold != 12 {
 		t.Fatalf("composition %d/%d", dev, hold)
+	}
+}
+func TestScoreRecurringMoneyAndUnnamedEvent(t *testing.T) {
+	a, b, currency := "1500.00", "1500", "JPY"
+	gold := ai.Event{EventType: "payment", RecurringAmount: &a, RecurringCurrency: &currency}
+	got := gold
+	got.RecurringAmount = &b
+	score := ScoreEvents([]ai.Event{gold}, []ai.Event{got})
+	if score.TP != 1 || score.KnownCorrect != score.KnownTotal || score.Hallucinated != 0 {
+		t.Fatalf("explicit recurring price decimal equivalence: %+v", score)
+	}
+	got.RecurringAmount = nil
+	if s := ScoreEvents([]ai.Event{gold}, []ai.Event{got}); s.KnownCorrect >= s.KnownTotal {
+		t.Fatal("missing recurring price not penalized")
+	}
+	got = gold
+	got.Service = "Invented brand"
+	if s := ScoreEvents([]ai.Event{gold}, []ai.Event{got}); s.FN != 1 || s.FP != 1 {
+		t.Fatal("invented service accepted", s)
+	}
+}
+func TestCorpusExplicitRecurringKindIsNotScoredAsInvented(t *testing.T) {
+	want := map[string]bool{"d01": true, "d02": true, "d04": true, "d05": true, "d06": true, "d08": true, "d10": true, "d12": true, "h01": true, "h02": true, "r04": true, "r06": true, "r07": true, "r12": true}
+	for _, c := range Corpus() {
+		if !want[c.ID] {
+			continue
+		}
+		event := c.Events[0]
+		event.ContractKind = str("recurring")
+		if s := ScoreEvents(c.Events, []ai.Event{event}); s.Hallucinated != 0 {
+			t.Fatal(c.ID, "explicit recurring contract penalized as hallucination", s)
+		}
 	}
 }
 func TestScoreFactsDecimalMissingAndHallucination(t *testing.T) {
@@ -68,6 +100,24 @@ func TestReportNeverSerializesBodies(t *testing.T) {
 	b, e := json.Marshal(NewReport())
 	if e != nil || strings.Contains(string(b), Corpus()[0].Text) {
 		t.Fatal("body leakage")
+	}
+}
+func TestCorpusGoldMatchesOutputSchemaAndCallBudget(t *testing.T) {
+	if len(Corpus())*len(Variants())*2 != MaxPaidCalls {
+		t.Fatal("corpus exceeds explicitly announced paid budget")
+	}
+	for _, c := range Corpus() {
+		events := c.Events
+		if events == nil {
+			events = []ai.Event{}
+		}
+		b, err := json.Marshal(ai.Extraction{Events: events})
+		if err != nil {
+			t.Fatal(c.ID, err)
+		}
+		if _, err = ai.ValidateExtraction(b); err != nil {
+			t.Fatal(c.ID, "invalid ground truth", err)
+		}
 	}
 }
 func TestSummaryUnknownCostsAndTechnicalErrorsExcluded(t *testing.T) {

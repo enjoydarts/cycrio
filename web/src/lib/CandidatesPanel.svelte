@@ -24,18 +24,19 @@
       'part-CandidatesPanel-candidate-table',
     ]}
   >
-    <thead><tr><th>契約候補</th><th>抽出金額・周期</th><th>確認</th></tr></thead
+    <thead><tr><th>契約候補</th><th>取引金額・周期</th><th>確認</th></tr></thead
     ><tbody>
       {#each page.candidates as candidate (`${candidate.result_id}/${candidate.event_index}`)}
         <tr
           ><td
-            ><strong>{candidate.event.service}</strong><span class="secondary"
+            ><strong>{candidate.event.service ?? 'サービス名未確認'}</strong
+            ><span class="secondary"
               >{candidate.event.plan ?? 'プラン不明'} · {eventNames[
                 candidate.event.event_type
               ]}</span
             ><span class="secondary">{candidate.account_label}</span></td
           >
-          <td data-label="抽出金額・周期"
+          <td data-label="取引金額・周期"
             ><span class="money"
               >{money(candidate.event.amount, candidate.event.currency)}</span
             ><span class="secondary"

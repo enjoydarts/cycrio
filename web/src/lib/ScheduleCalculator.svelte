@@ -109,6 +109,7 @@
   });
   onMount(() => {
     alive = true;
+    if (subscription.contract_kind === 'fixed_term') return;
     controller = createScheduleController(
       api,
       token,
@@ -141,18 +142,22 @@
   }}
 />
 
-<div class="schedule-entry">
-  <Button
-    wrap
-    type="button"
-    onclick={() => {
-      open = true;
-      navigationMessage = '';
-      void controller?.load();
-    }}>次回予定を計算</Button
-  >
-  <ScheduleConditions view={shown} />
-</div>
+{#if subscription.contract_kind === 'fixed_term'}<p class="muted">
+    期間限定契約には請求予定を設定しません。
+  </p>{:else}
+  <div class="schedule-entry">
+    <Button
+      wrap
+      type="button"
+      onclick={() => {
+        open = true;
+        navigationMessage = '';
+        void controller?.load();
+      }}>次回予定を計算</Button
+    >
+    <ScheduleConditions view={shown} />
+  </div>
+{/if}
 <Modal {open} title="次回予定を計算" {busy} onclose={close}>
   <div class="daily schedule">
     <p class="muted">
@@ -338,6 +343,9 @@
       </p>
     {:else if view.reason === 'preview_changed'}<p class="notice" role="alert">
         計算候補が変わりました。もう一度計算し、候補日を確認してください。
+      </p>
+    {:else if view.reason === 'fixed_term'}<p class="notice" role="alert">
+        期間限定契約には次回予定を保存できません。
       </p>
     {:else if view.reason === 'ended'}<p class="notice" role="alert">
         契約は終了済みです。次回予定は保存できません。

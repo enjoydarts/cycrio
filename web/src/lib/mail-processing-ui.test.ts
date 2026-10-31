@@ -8,6 +8,7 @@ import {
   processingPreview,
   processingResult,
 } from './mail-processing-fixtures.ts';
+import { parseProcessingEvent } from './mail-processing-api.ts';
 async function component(name: string) {
   const source = await readFile(
     new URL(`./${name}.svelte`, import.meta.url),
@@ -115,6 +116,94 @@ test('standalone successful zero-event result has no unconfirmed or registration
   }).body;
   assert.match(html, /登録対象の情報はありません/);
   assert.doesNotMatch(html, /未確認|0\s*\/\s*0|確認する/);
+});
+test('actual event preview distinguishes prorated transaction, recurring price, cancellation and access dates', async () => {
+  const event = parseProcessingEvent({
+    service: null,
+    plan: null,
+    event_type: 'cancellation',
+    amount: '1000',
+    currency: 'JPY',
+    recurring_amount: '1500',
+    recurring_currency: 'JPY',
+    contract_kind: 'recurring',
+    effective_date: '2026-10-31',
+    access_end_date: '2026-11-30',
+    billed_at: null,
+    period_start: null,
+    period_end: null,
+    next_billing_at: null,
+    interval_unit: null,
+    interval_count: null,
+  });
+  for (const name of ['EventFields', 'MailProcessingResults']) {
+    const html = render(await component(name), {
+      props:
+        name === 'EventFields'
+          ? { event }
+          : {
+              results: [
+                processingResult({
+                  state: 'succeeded',
+                  events: [event],
+                  error_code: '',
+                }),
+              ],
+              canRetry: false,
+              confirmationScope: '',
+              onRetry: () => {},
+            },
+    }).body;
+    for (const text of [
+      'サービス名未確認',
+      '取引金額',
+      '通常継続料金',
+      '1000',
+      '1500',
+      '効力日',
+      '2026-10-31',
+      '利用終了日',
+      '2026-11-30',
+    ])
+      assert.ok(html.includes(text), `${name}: ${text}`);
+  }
+});
+test('actual candidate panel keeps nameless lifecycle events available for review', async () => {
+  const event = parseProcessingEvent({
+    service: null,
+    plan: null,
+    event_type: 'payment_reminder',
+    amount: null,
+    currency: null,
+    billed_at: null,
+    period_start: null,
+    period_end: null,
+    next_billing_at: null,
+    interval_unit: null,
+    interval_count: null,
+  });
+  const html = render(await component('CandidatesPanel'), {
+    props: {
+      page: {
+        candidates: [
+          {
+            result_id: '11111111-1111-4111-8111-111111111111',
+            event_index: 0,
+            account_id: '11111111-1111-4111-8111-111111111111',
+            account_label: '個人',
+            event,
+            mail_count: 1,
+          },
+        ],
+        total: 1,
+        limit: 20,
+        offset: 0,
+      },
+      onSelect: () => {},
+    },
+  }).body;
+  for (const text of ['サービス名未確認', '支払い督促', '確認する'])
+    assert.ok(html.includes(text), text);
 });
 test('actual public model display identifies external destinations, routing, retention and unknown reference pricing', async () => {
   const Component = await component('MailProcessingModels');

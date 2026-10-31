@@ -101,7 +101,11 @@
           (financialOutcome.state === 'recorded' &&
             !!financialOutcome.entry_id))}
       <section class="section">
-        <h3>{index + 1}. {event.service} · {eventNames[event.event_type]}</h3>
+        <h3>
+          {index + 1}. {event.service ?? 'サービス名未確認'} · {eventNames[
+            event.event_type
+          ]}
+        </h3>
         {#if contractOutcome && ['needs_review', 'failed'].includes(contractOutcome.state) && !registration}<p
             class="notice"
           >

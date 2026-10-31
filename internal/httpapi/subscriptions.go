@@ -22,7 +22,8 @@ func WithSubscriptions(service SubscriptionService) Option {
 	return func(o *handlerOptions) { o.subscriptions = service }
 }
 
-var subscriptionValueKeys = []string{"service", "plan", "amount", "currency", "interval_unit", "interval_count", "next_billing_date", "status"}
+var subscriptionValueKeys = []string{"service", "plan", "amount", "currency", "interval_unit", "interval_count", "next_billing_date", "status", "contract_kind", "effective_date", "access_end_date"}
+var subscriptionLifecycleKeys = []string{"contract_kind", "effective_date", "access_end_date"}
 
 func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, protect protectFunc) {
 	registerCandidates(mux, service, protect)
@@ -70,7 +71,7 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	register("POST /v1/subscriptions", 201, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.CreateInput
 		keys := append(append([]string{}, subscriptionValueKeys...), "request_id", "source_result_id", "source_event_index", "confirmed")
-		if e := readSubscriptionJSON(w, r, &in, keys, "service", "status", "request_id", "confirmed"); e != nil {
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, subscriptionLifecycleKeys, "service", "status", "request_id", "confirmed", "contract_kind"); e != nil {
 			return nil, e
 		}
 		if _, e := subscriptions.NormalizeCreate(in); e != nil {
@@ -83,8 +84,14 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	register("PUT /v1/subscriptions/{id}", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.UpdateInput
 		keys := append(append([]string{}, subscriptionValueKeys...), "expected_version", "confirmed")
-		if e := readSubscriptionJSON(w, r, &in, keys, "service", "status", "expected_version", "confirmed"); e != nil {
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, subscriptionLifecycleKeys, "service", "status", "expected_version", "confirmed", "contract_kind"); e != nil {
 			return nil, e
+		}
+		if in.ContractKind == "" {
+			if in.EffectiveDate != nil || in.AccessEndDate != nil {
+				return nil, subscriptions.ErrInvalid
+			}
+			in.PreserveLifecycle = true
 		}
 		if _, e := subscriptions.NormalizeUpdate(in); e != nil {
 			return nil, e

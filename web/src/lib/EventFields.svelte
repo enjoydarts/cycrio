@@ -7,7 +7,7 @@
 <dl class="field-grid">
   <div>
     <dt>サービス</dt>
-    <dd>{event.service}</dd>
+    <dd>{event.service ?? 'サービス名未確認'}</dd>
   </div>
   <div>
     <dt>プラン</dt>
@@ -18,8 +18,32 @@
     <dd>{eventNames[event.event_type]}</dd>
   </div>
   <div>
-    <dt>抽出金額</dt>
+    <dt>取引金額</dt>
     <dd class="money">{money(event.amount, event.currency)}</dd>
+  </div>
+  <div>
+    <dt>通常継続料金</dt>
+    <dd class="money">
+      {money(event.recurring_amount ?? null, event.recurring_currency ?? null)}
+    </dd>
+  </div>
+  <div>
+    <dt>契約種別</dt>
+    <dd>
+      {event.contract_kind === 'fixed_term'
+        ? '期間限定（自動更新なし）'
+        : event.contract_kind === 'recurring'
+          ? '継続契約'
+          : '不明'}
+    </dd>
+  </div>
+  <div>
+    <dt>効力日</dt>
+    <dd>{event.effective_date ?? '不明'}</dd>
+  </div>
+  <div>
+    <dt>利用終了日</dt>
+    <dd>{event.access_end_date ?? '不明'}</dd>
   </div>
   <div>
     <dt>請求日</dt>

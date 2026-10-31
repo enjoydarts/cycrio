@@ -10,7 +10,7 @@ import (
 
 func TestDryRunDoesNotNeedDatabase(t *testing.T) {
 	var b bytes.Buffer
-	if err := run(nil, &b); err != nil || !strings.Contains(b.String(), "128") || !strings.Contains(b.String(), "dry-run") {
+	if err := run(nil, &b); err != nil || !strings.Contains(b.String(), "176") || !strings.Contains(b.String(), "dry-run") {
 		t.Fatalf("%s %v", b.String(), err)
 	}
 }

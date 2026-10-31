@@ -86,8 +86,8 @@
         }}
         ><option value="">根拠を選択</option>{#each available as source}<option
             value={`${source.result_id}/${source.event_index}`}
-            >{source.original_event.service} · {source.original_event
-              .billed_at ?? '日付不明'} · イベント {source.event_index +
+            >{source.original_event.service ?? 'サービス名未確認'} · {source
+              .original_event.billed_at ?? '日付不明'} · イベント {source.event_index +
               1}</option
           >{/each}</select
       ></label

@@ -122,7 +122,12 @@ export const processingErrorCodes = [
   'provider_unavailable',
 ] as const;
 export type ProcessingEvent = {
-  service: string;
+  service: string | null;
+  recurring_amount?: string | null;
+  recurring_currency?: string | null;
+  contract_kind?: 'recurring' | 'fixed_term' | null;
+  effective_date?: string | null;
+  access_end_date?: string | null;
   plan: string | null;
   event_type:
     | 'invoice'
@@ -131,7 +136,10 @@ export type ProcessingEvent = {
     | 'refund'
     | 'change'
     | 'cancellation'
-    | 'trial';
+    | 'trial'
+    | 'payment_failed'
+    | 'payment_reminder'
+    | 'suspension';
   amount: string | null;
   currency: string | null;
   billed_at: string | null;
@@ -408,7 +416,20 @@ const currencies = new Set(
 export function parseProcessingEvent(value: unknown): ProcessingEvent {
   const v = record(value);
   return {
-    service: text(v.service, 128),
+    service: nullable(v.service, (x) => text(x, 128)),
+    recurring_amount: nullable(v.recurring_amount ?? null, (x) =>
+      typeof x === 'string' && /^(0|[1-9][0-9]{0,17})(\.[0-9]{1,18})?$/.test(x)
+        ? x
+        : invalid(),
+    ),
+    recurring_currency: nullable(v.recurring_currency ?? null, (x) =>
+      typeof x === 'string' && currencies.has(x) ? x : invalid(),
+    ),
+    contract_kind: nullable(v.contract_kind ?? null, (x) =>
+      choice(x, ['recurring', 'fixed_term'] as const),
+    ),
+    effective_date: nullable(v.effective_date ?? null, date),
+    access_end_date: nullable(v.access_end_date ?? null, date),
     plan: nullable(v.plan, (x) => text(x, 128)),
     event_type: choice(v.event_type, [
       'invoice',
@@ -418,6 +439,9 @@ export function parseProcessingEvent(value: unknown): ProcessingEvent {
       'change',
       'cancellation',
       'trial',
+      'payment_failed',
+      'payment_reminder',
+      'suspension',
     ]),
     amount: nullable(v.amount, (x) =>
       typeof x === 'string' && /^(0|[1-9][0-9]{0,17})(\.[0-9]{1,18})?$/.test(x)

@@ -26,7 +26,7 @@ func TestSubscriptionAutomationMigrationFourteenPreservesThirteen(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(x)-'deleted_at'-'deleted_expected_version'-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY id) FROM mail_processing_items x),(SELECT jsonb_agg(x ORDER BY id) FROM ai_calls x))`
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(x)-'contract_kind'-'effective_date'-'access_end_date'-'deleted_at'-'deleted_expected_version'-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY id) FROM mail_processing_items x),(SELECT jsonb_agg(x ORDER BY id) FROM ai_calls x))`
 	var before, after string
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -86,7 +86,7 @@ func TestSubscriptionAutomationMigrationDownRefusesToDiscardNewData(t *testing.T
 					t.Fatal(err)
 				}
 			}
-			const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(x)-'deleted_at'-'deleted_expected_version' ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY owner_id) FROM subscription_automation_preferences x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_automation_preference_audit x),(SELECT jsonb_agg(x ORDER BY result_id) FROM subscription_automation_results x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM subscription_automation_events x))`
+			const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(x)-'contract_kind'-'effective_date'-'access_end_date'-'deleted_at'-'deleted_expected_version' ORDER BY id) FROM subscriptions x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM subscription_sources x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_audit x),(SELECT jsonb_agg(x ORDER BY owner_id) FROM subscription_automation_preferences x),(SELECT jsonb_agg(x ORDER BY id) FROM subscription_automation_preference_audit x),(SELECT jsonb_agg(x ORDER BY result_id) FROM subscription_automation_results x),(SELECT jsonb_agg(x ORDER BY result_id,event_index) FROM subscription_automation_events x))`
 			var before, after string
 			if err := f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 				t.Fatal(err)

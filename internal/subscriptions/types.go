@@ -17,6 +17,9 @@ var (
 )
 
 type Values struct {
+	ContractKind    string  `json:"contract_kind,omitempty"`
+	EffectiveDate   *string `json:"effective_date,omitempty"`
+	AccessEndDate   *string `json:"access_end_date,omitempty"`
 	Service         string  `json:"service"`
 	Plan            *string `json:"plan"`
 	Amount          *string `json:"amount"`
@@ -53,8 +56,11 @@ type CreateInput struct {
 }
 type UpdateInput struct {
 	Values
-	ExpectedVersion int64 `json:"expected_version"`
-	Confirmed       bool  `json:"confirmed"`
+	// Legacy HTTP editors omit the entire lifecycle group. Preserve it under the
+	// same version lock rather than clearing facts they have never displayed.
+	PreserveLifecycle bool  `json:"-"`
+	ExpectedVersion   int64 `json:"expected_version"`
+	Confirmed         bool  `json:"confirmed"`
 }
 type DeleteInput struct {
 	ExpectedVersion int64 `json:"expected_version"`

@@ -82,8 +82,8 @@
     />
   {:else if action === 'dismiss'}
     <p>
-      「{candidate.event
-        .service}」を確認待ちから除外します。登録済みのサブスクは変更しません。
+      「{candidate.event.service ??
+        'サービス名未確認'}」を確認待ちから除外します。登録済みのサブスクは変更しません。
     </p>
     {#if error}<p role="alert" class="notice">{error}</p>{/if}
     <Button wrap type="button" disabled={busy} onclick={dismiss}

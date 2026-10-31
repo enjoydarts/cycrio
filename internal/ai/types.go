@@ -85,15 +85,34 @@ type Extraction struct {
 	Events []Event `json:"events"`
 }
 type Event struct {
-	Service       string  `json:"service"`
-	Plan          *string `json:"plan"`
-	EventType     string  `json:"event_type"`
-	Amount        *string `json:"amount"`
-	Currency      *string `json:"currency"`
-	BilledAt      *string `json:"billed_at"`
-	PeriodStart   *string `json:"period_start"`
-	PeriodEnd     *string `json:"period_end"`
-	NextBillingAt *string `json:"next_billing_at"`
-	IntervalUnit  *string `json:"interval_unit"`
-	IntervalCount *int64  `json:"interval_count"`
+	Service           string  `json:"service"`
+	Plan              *string `json:"plan"`
+	EventType         string  `json:"event_type"`
+	Amount            *string `json:"amount"`
+	Currency          *string `json:"currency"`
+	BilledAt          *string `json:"billed_at"`
+	PeriodStart       *string `json:"period_start"`
+	PeriodEnd         *string `json:"period_end"`
+	NextBillingAt     *string `json:"next_billing_at"`
+	IntervalUnit      *string `json:"interval_unit"`
+	IntervalCount     *int64  `json:"interval_count"`
+	RecurringAmount   *string `json:"recurring_amount"`
+	RecurringCurrency *string `json:"recurring_currency"`
+	EffectiveDate     *string `json:"effective_date"`
+	AccessEndDate     *string `json:"access_end_date"`
+	ContractKind      *string `json:"contract_kind"`
+}
+
+// MarshalJSON preserves the internal string API while exposing an unknown
+// service as null, consistently with the extraction schema.
+func (e Event) MarshalJSON() ([]byte, error) {
+	type eventAlias Event
+	var service *string
+	if e.Service != "" {
+		service = &e.Service
+	}
+	return json.Marshal(struct {
+		eventAlias
+		Service *string `json:"service"`
+	}{eventAlias: eventAlias(e), Service: service})
 }
