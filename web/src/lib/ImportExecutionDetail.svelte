@@ -33,7 +33,9 @@
   <p>
     {processingDate(row.created_at)}（日本時間） · {row.kind === 'automatic'
       ? '自動取り込み'
-      : '手動解析'}
+      : row.kind === 'reanalysis'
+        ? '再解析'
+        : '手動解析'}
   </p>
   <p>{importPeriod(row)}</p>
   <span class="badge">{importStateNames[row.state] ?? '状態を確認'}</span>

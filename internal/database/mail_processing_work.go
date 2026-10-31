@@ -8,6 +8,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
+	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -19,6 +20,7 @@ type lockedProcessing struct {
 	alive, valid                                                                    bool
 	automation                                                                      string
 	generation, automationVersion                                                   int64
+	reanalysis, protected                                                           bool
 }
 
 // Every worker transition locks user -> account -> run -> settings -> policy ->
@@ -58,6 +60,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(mailprocessing.ErrUnavailable)
 	}
 	w.work.FullEmail = request.Input.FullEmail
+	w.reanalysis = request.Reanalysis
 	w.work.Automatic = w.automation != ""
 	w.work.Run, e = scanProcessingRun(tx.QueryRow(ctx, `SELECT `+processingRunColumns+` FROM mail_processing_runs WHERE id=$1`, id))
 	if e != nil {
@@ -75,6 +78,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		}
 	}
 	w.valid = automaticValid && w.userState == "active" && w.accountState == "ready" && w.configVersion == w.accountVersion && (w.automation != "" || state.RuntimeVersion == w.runtimeVersion) && state.Profile != nil && state.Profile.ID == profileID && state.Policy.Enabled && state.Policy.Version == w.policyVersion && (!w.work.FullEmail || state.Policy.FullEmailAllowed) && mailprocessing.StandardProofCurrent(*state.Policy)
+	w.valid = w.valid && (!request.Reanalysis || request.PromptVersion == subscriptionprompts.Version)
 	if w.valid {
 		if e = runtimeProfileReady(ctx, tx, p, true, true); e != nil {
 			if errors.Is(e, airuntime.ErrUnavailable) {
@@ -98,6 +102,11 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		return fail(e)
 	}
 	if w.work.FolderID != "" {
+		if w.reanalysis {
+			if e = tx.QueryRow(ctx, `SELECT `+processingHistoricalDecision+` FROM mail_discovered_messages m WHERE m.id=$1 AND m.owner_id=$2`, w.work.MessageID, w.work.OwnerID).Scan(&w.protected); e != nil {
+				return fail(e)
+			}
+		}
 		var available bool
 		if mailsync.APIProvider(w.work.Credential.Provider) {
 			// Keep the original folder as the source envelope's AAD. Readers
@@ -242,6 +251,22 @@ func rejectProcessing(ctx context.Context, tx pgx.Tx, l mailprocessing.Lease, w 
 	}
 	return nil
 }
+
+func skipProtectedReanalysis(ctx context.Context, tx pgx.Tx, l mailprocessing.Lease, w lockedProcessing) error {
+	if w.reanalysis && w.protected {
+		if _, e := tx.Exec(ctx, `UPDATE mail_processing_items SET state='cancelled',error_code='cancelled',finished_at=clock_timestamp() WHERE id=$1 AND state IN ('queued','running')`, w.work.AttemptID); e != nil {
+			return processingError(e)
+		}
+		if _, e := tx.Exec(ctx, `UPDATE mail_processing_runs SET state=CASE WHEN EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued') THEN 'queued' ELSE 'completed' END,lease_id=NULL,lease_until=NULL,finished_at=CASE WHEN EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued') THEN NULL ELSE clock_timestamp() END WHERE id=$1`, l.RunID); e != nil {
+			return processingError(e)
+		}
+		if e := tx.Commit(ctx); e != nil {
+			return processingError(e)
+		}
+		return mailprocessing.ErrNotFound
+	}
+	return nil
+}
 func (r *MailProcessingRepository) Start(ctx context.Context, l mailprocessing.Lease) (mailprocessing.Work, error) {
 	if !mailprocessing.ValidID(l.LeaseID) {
 		return mailprocessing.Work{}, mailprocessing.ErrInvalid
@@ -255,6 +280,9 @@ func (r *MailProcessingRepository) Start(ctx context.Context, l mailprocessing.L
 		return mailprocessing.Work{}, mailprocessing.ErrNotFound
 	}
 	if e = rejectProcessing(ctx, tx, l, w); e != nil {
+		return mailprocessing.Work{}, e
+	}
+	if e = skipProtectedReanalysis(ctx, tx, l, w); e != nil {
 		return mailprocessing.Work{}, e
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state='running' WHERE id=$1 AND state='queued'`, w.work.AttemptID); e != nil {
@@ -281,6 +309,9 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 		return airuntime.Call{}, mailprocessing.ErrNotFound
 	}
 	if e = rejectProcessing(ctx, tx, l, w); e != nil {
+		return airuntime.Call{}, e
+	}
+	if e = skipProtectedReanalysis(ctx, tx, l, w); e != nil {
 		return airuntime.Call{}, e
 	}
 	if stage == "extraction" {

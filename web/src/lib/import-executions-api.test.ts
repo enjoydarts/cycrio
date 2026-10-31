@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createImportExecutionsAPI } from './import-executions-api.ts';
+import {
+  createImportExecutionsAPI,
+  parseImportExecution,
+} from './import-executions-api.ts';
 import { processingIDs as ids } from './mail-processing-fixtures.ts';
 export const importExecutionFixture = () => ({
   id: `automation:${ids.run}:1`,
@@ -19,6 +22,17 @@ export const importExecutionFixture = () => ({
   failed_count: 90,
   unknown_count: 10,
   active_run_id: ids.run,
+});
+test('reanalysis is an independent execution kind with nullable period and unrestricted population', () => {
+  const row = parseImportExecution({
+    ...importExecutionFixture(),
+    id: `manual:${ids.run}`,
+    kind: 'reanalysis',
+    since: null,
+    before: null,
+  });
+  assert.equal(row.kind, 'reanalysis');
+  assert.equal(row.discovered_count, 12000);
 });
 test('execution history preserves full population and a logical run identifier beyond internal batches', async () => {
   let path = '';

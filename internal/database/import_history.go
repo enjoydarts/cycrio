@@ -20,7 +20,7 @@ const importHistoryCTE = `WITH histories AS (
  FROM mail_automation_scopes s JOIN mail_automations a ON a.id=s.automation_id AND a.owner_id=s.owner_id AND a.account_id=s.account_id
  WHERE s.owner_id=$1 AND s.account_id=$2
  UNION ALL
- SELECT 'manual:'||r.id::text,'manual',r.created_at,NULL::text,NULL::text,r.state,false,false
+ SELECT 'manual:'||r.id::text,CASE WHEN r.request_doc->>'reanalysis'='true' THEN 'reanalysis' ELSE 'manual' END,r.created_at,NULL::text,NULL::text,r.state,false,false
  FROM mail_processing_runs r WHERE r.owner_id=$1 AND r.account_id=$2 AND r.automation_id IS NULL
  AND COALESCE(r.request_doc->'input'->>'history_id','')=''
 ), members AS (
@@ -46,7 +46,7 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
 		return out, processingError(e)
 	}
 	rows, e := tx.Query(ctx, importHistoryCTE+`SELECT h.id,h.kind,h.created_at,h.since,h.before,
- CASE WHEN h.kind='manual' THEN COALESCE(active.state,h.state) ELSE h.state END,h.is_current,h.incremental,
+ CASE WHEN h.kind IN ('manual','reanalysis') THEN COALESCE(active.state,h.state) ELSE h.state END,h.is_current,h.incremental,
  counts.discovered,counts.pending,counts.completed,counts.candidates,registered.count,counts.failed,counts.unknown,active.id
  FROM (SELECT * FROM histories ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) h
  LEFT JOIN LATERAL (SELECT r.id,r.state FROM mail_processing_runs r
@@ -59,11 +59,13 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
  SELECT count(*) AS discovered,
  count(*) FILTER(WHERE latest.state IS NULL OR latest.state IN ('queued','running')) AS pending,
  count(*) FILTER(WHERE latest.state IN ('succeeded','not_related')) AS completed,
- COALESCE(sum((SELECT count(*) FROM jsonb_array_elements(CASE WHEN latest.state='succeeded' THEN latest.events ELSE '[]'::jsonb END) WITH ORDINALITY ev(event,n)
- WHERE NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=$1 AND s.result_id=latest.id AND s.event_index=ev.n-1)
- AND NOT EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=$1 AND d.result_id=latest.id AND d.event_index=ev.n-1))),0) AS candidates,
+ COALESCE(sum((SELECT count(*) FROM jsonb_array_elements(CASE WHEN successful.state='succeeded' THEN successful.events ELSE '[]'::jsonb END) WITH ORDINALITY ev(event,n)
+ WHERE NOT (successful.protected)
+ AND NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=$1 AND s.result_id=successful.id AND s.event_index=ev.n-1)
+ AND NOT EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=$1 AND d.result_id=successful.id AND d.event_index=ev.n-1))),0) AS candidates,
  count(*) FILTER(WHERE latest.state='failed') AS failed,count(*) FILTER(WHERE latest.state='unknown') AS unknown
  FROM members m LEFT JOIN LATERAL(SELECT i.id,i.state,i.events FROM mail_processing_items i WHERE i.owner_id=$1 AND i.account_id=$2 AND i.message_id=m.message_id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true
+ LEFT JOIN LATERAL(SELECT i.id,i.state,i.events,(`+reanalysisPriorDecision+`) AS protected FROM mail_processing_items i WHERE i.owner_id=$1 AND i.account_id=$2 AND i.message_id=m.message_id AND i.state IN ('succeeded','not_related') ORDER BY i.created_at DESC,i.id DESC LIMIT 1) successful ON true
  WHERE m.history_id=h.id
  ) counts CROSS JOIN LATERAL (
  SELECT count(DISTINCT s.subscription_id) FROM subscription_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id

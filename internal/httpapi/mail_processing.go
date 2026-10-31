@@ -73,6 +73,34 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 	register("GET /v1/mail/accounts/{id}/processing-preview", false, 200, func(_ http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		return service.Preview(r.Context(), owner, r.PathValue("id"))
 	})
+	register("POST /v1/mail/accounts/{id}/processing-reanalyze", false, 202, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
+		// Keep transport members flat for the strict JSON inspector.
+		var body struct {
+			ExpectedVersion int64  `json:"expected_version"`
+			RuntimeVersion  int64  `json:"runtime_version"`
+			ProfileID       string `json:"profile_id"`
+			PolicyVersion   int64  `json:"policy_version"`
+			RequestID       string `json:"request_id"`
+			MaxMessages     int    `json:"max_messages"`
+			Confirmed       bool   `json:"confirmed"`
+			FullEmail       bool   `json:"full_email"`
+			Before          string `json:"before"`
+		}
+		if err := readAdminJSON(w, r, &body, "expected_version", "runtime_version", "profile_id", "policy_version", "request_id", "max_messages", "confirmed", "full_email", "before"); err != nil {
+			return nil, err
+		}
+		in := mailprocessing.ReanalysisInput{Input: mailprocessing.Input{ExpectedVersion: body.ExpectedVersion, RuntimeVersion: body.RuntimeVersion, ProfileID: body.ProfileID, PolicyVersion: body.PolicyVersion, RequestID: body.RequestID, MaxMessages: body.MaxMessages, Confirmed: body.Confirmed, FullEmail: body.FullEmail}, Before: body.Before}
+		if !mailprocessing.ValidID(r.PathValue("id")) || !mailprocessing.ValidReanalysis(in) {
+			return nil, mailprocessing.ErrInvalid
+		}
+		reanalysis, ok := service.(interface {
+			Reanalyze(context.Context, string, string, mailprocessing.ReanalysisInput) (mailprocessing.RetryBatch, error)
+		})
+		if !ok {
+			return nil, mailprocessing.ErrUnavailable
+		}
+		return reanalysis.Reanalyze(r.Context(), owner, r.PathValue("id"), in)
+	})
 	register("POST /v1/mail/accounts/{id}/processing-retry-failed", false, 202, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in mailprocessing.Input
 		if e := readAdminJSON(w, r, &in, "expected_version", "runtime_version", "profile_id", "policy_version", "request_id", "max_messages", "confirmed"); e != nil {

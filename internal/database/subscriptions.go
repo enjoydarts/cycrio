@@ -107,6 +107,13 @@ func (r *SubscriptionRepository) Get(ctx context.Context, owner, id string) (sub
 	return s, e
 }
 func sourceSubscription(ctx context.Context, tx pgx.Tx, owner, id, result string, index int) error {
+	var protected bool
+	if e := tx.QueryRow(ctx, `SELECT `+reanalysisPriorDecision+` FROM mail_processing_items i WHERE i.owner_id=$1 AND i.id=$2`, owner, result).Scan(&protected); e != nil {
+		return subscriptionError(e)
+	}
+	if protected {
+		return subscriptions.ErrConflict
+	}
 	var state string
 	var count int
 	e := tx.QueryRow(ctx, `SELECT state,jsonb_array_length(events) FROM mail_processing_items WHERE owner_id=$1 AND id=$2 FOR SHARE`, owner, result).Scan(&state, &count)

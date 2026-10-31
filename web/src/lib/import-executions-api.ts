@@ -17,7 +17,7 @@ import {
 export type ImportExecution = {
   active_run_id: string | null;
   id: string;
-  kind: 'automatic' | 'manual';
+  kind: 'automatic' | 'manual' | 'reanalysis';
   created_at: string;
   since: string | null;
   before: string | null;
@@ -62,7 +62,7 @@ const bool = (v: unknown) => (typeof v === 'boolean' ? v : invalid());
 export function parseImportExecution(value: unknown): ImportExecution {
   const v = record(value),
     id = importHistoryID(v.id),
-    kind = choice(v.kind, ['automatic', 'manual']),
+    kind = choice(v.kind, ['automatic', 'manual', 'reanalysis']),
     since = nullable(v.since, date),
     before = nullable(v.before, date);
   if (

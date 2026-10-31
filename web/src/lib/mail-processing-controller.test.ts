@@ -35,6 +35,9 @@ function setup(
   }[] = [];
   let denied = 0;
   const api: MailProcessingAPI = {
+    reanalyze: async () => {
+      throw Error('not used');
+    },
     preview: async () => {
       calls.push({ operation: 'preview' });
       return processingPreview();

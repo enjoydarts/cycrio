@@ -2,7 +2,9 @@ package mailprocessing
 
 import (
 	"github.com/google/uuid"
+	"regexp"
 	"strings"
+	"time"
 	"unicode"
 	"unicode/utf8"
 )
@@ -17,6 +19,13 @@ func ValidInput(in Input) bool {
 }
 func ValidRetry(in RetryInput) bool {
 	return ValidInput(in.Input) && in.MaxMessages == 1 && ValidID(in.ExpectedResultID)
+}
+
+var reanalysisBefore = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{1,9})?Z$`)
+
+func ValidReanalysis(in ReanalysisInput) bool {
+	before, err := time.Parse(time.RFC3339Nano, in.Before)
+	return ValidInput(in.Input) && in.FullEmail && in.HistoryID == "" && err == nil && reanalysisBefore.MatchString(in.Before) && before.Before(time.Now())
 }
 func ValidPolicy(in PolicyInput) bool {
 	text := func(s string) bool {

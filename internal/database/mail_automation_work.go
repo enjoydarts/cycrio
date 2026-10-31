@@ -235,6 +235,16 @@ func createAutomaticProcessing(ctx context.Context, tx pgx.Tx, owner, account, i
 	if active {
 		return nil
 	}
+	// An operator can reserve the next processing slot while an existing batch
+	// drains. This transaction never waits for that session lock; discovery and
+	// already queued work continue through their ordinary transitions.
+	var available bool
+	if e := tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended('cycrio-reanalysis:'||$1,0))`, account).Scan(&available); e != nil {
+		return processingError(e)
+	}
+	if !available {
+		return nil
+	}
 	preferred := "incremental"
 	if lastLane == preferred {
 		preferred = "historical"

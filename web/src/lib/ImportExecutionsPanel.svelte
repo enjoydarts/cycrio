@@ -46,7 +46,11 @@
           <td class="execution-name"
             ><strong>{processingDate(row.created_at)}</strong><span
               class="secondary"
-              >{row.kind === 'automatic' ? '自動取り込み' : '手動解析'}</span
+              >{row.kind === 'automatic'
+                ? '自動取り込み'
+                : row.kind === 'reanalysis'
+                  ? '再解析'
+                  : '手動解析'}</span
             ><span class="secondary">{importPeriod(row)}</span></td
           >
           <td data-label="状態"

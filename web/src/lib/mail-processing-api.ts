@@ -75,6 +75,7 @@ export type ProcessingRetryInput = ProcessingInput & {
   expected_result_id: string;
   confirm_unknown: boolean;
 };
+export type ProcessingReanalysisInput = ProcessingInput & { before: string };
 export type ProcessingRun = {
   id: string;
   account_id: string;
@@ -645,6 +646,31 @@ export function createMailProcessingAPI(
     }
   };
   return {
+    async reanalyze(
+      id: string,
+      body: ProcessingReanalysisInput,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) {
+      const payload = input(() => {
+        if (body.full_email !== true) return invalid();
+        return { ...inputBody(body), before: timestamp(body.before) };
+      });
+      const v = record(
+        await request(
+          accountPath(id, 'reanalyze'),
+          token,
+          signal,
+          'POST',
+          payload,
+        ),
+      );
+      return {
+        run: parseProcessingRun(v.run, id),
+        accepted_count: integer(v.accepted_count),
+        skipped_count: integer(v.skipped_count),
+      };
+    },
     async retryFailed(
       id: string,
       body: ProcessingInput,

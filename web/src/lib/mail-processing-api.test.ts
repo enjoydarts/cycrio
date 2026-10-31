@@ -16,6 +16,45 @@ import {
   processingResult,
   processingPolicy,
 } from './mail-processing-fixtures.ts';
+test('reanalysis explicitly sends the cutoff and consent and accepts a batch larger than 100', async () => {
+  let sent: RequestInit | undefined,
+    path = '';
+  const api = createMailProcessingAPI('', async (url, init) => {
+    path = String(url);
+    sent = init;
+    return Response.json({
+      run: processingRun({ max_messages: 12000, total_count: 12000 }),
+      accepted_count: 12000,
+      skipped_count: 9,
+    });
+  });
+  const body = {
+    expected_version: 1,
+    runtime_version: 2,
+    profile_id: ids.profile,
+    policy_version: 3,
+    request_id: ids.request,
+    max_messages: 100,
+    confirmed: true,
+    full_email: true,
+    before: '2026-10-31T07:19:58.000Z',
+  };
+  const withSecret = { ...body, secret: 'omit' };
+  const result = await api.reanalyze(ids.account, withSecret, async () => 't');
+  assert.equal(path, `/v1/mail/accounts/${ids.account}/processing-reanalyze`);
+  assert.deepEqual(JSON.parse(String(sent?.body)), body);
+  assert.equal(result.accepted_count, 12000);
+  for (const patch of [
+    { confirmed: false },
+    { full_email: false },
+    { before: '2026-02-30T00:00:00Z' },
+    { before: '' },
+  ])
+    await assert.rejects(
+      api.reanalyze(ids.account, { ...body, ...patch }, async () => 't'),
+      { code: 'invalid_request' },
+    );
+});
 test('public DTO parsers whitelist fields, preserve null pricing and decimal extraction without inventing values', () => {
   const preview = processingPreview();
   const parsed = parseProcessingPreview(

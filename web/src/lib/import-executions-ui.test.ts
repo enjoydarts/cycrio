@@ -4,6 +4,55 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
 import { render } from 'svelte/server';
+test('reanalysis confirmation explains scope, protection and renewed charges before explicit consent', async () => {
+  const source = await readFile(
+    new URL('./ReanalysisConfirmation.svelte', import.meta.url),
+    'utf8',
+  );
+  const { js, warnings } = compile(source, { generate: 'server' });
+  assert.deepEqual(warnings, []);
+  const code = js.code.replace(
+    /(from\s+)(['"])([^'"]+)\2/g,
+    (_m, p, q, path) =>
+      `${p}${q}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${q}`,
+  );
+  const Component = (
+    await import(
+      `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
+    )
+  ).default;
+  const body = render(Component, {
+    props: {
+      view: {
+        account: 'a',
+        before: '2026-10-31T07:19:58Z',
+        preview: null,
+        confirmed: false,
+        uncertain: false,
+        summary: null,
+        status: 'loading',
+        error: null,
+      },
+      onConfirm: () => {},
+      onStart: () => {},
+      onReplay: () => {},
+      onRefresh: () => {},
+    },
+  }).body;
+  for (const text of [
+    '成功・対象外',
+    '確認済み・不要',
+    '元メール',
+    '再度料金',
+    '候補',
+    '通常解析',
+    '全件',
+    '同意',
+  ])
+    assert.ok(body.includes(text), text);
+  assert.match(body, /type="checkbox"/);
+  assert.match(body, /disabled/);
+});
 test('account history lists logical executions with period, mail and contract counts', async () => {
   const source = await readFile(
     new URL('./ImportExecutionsPanel.svelte', import.meta.url),
@@ -176,6 +225,11 @@ test('running manual work and retries remain stoppable from execution details', 
   };
   const body = render(Component, { props }).body;
   assert.match(body, /実行中の処理を停止/);
+  const reanalysis = render(Component, {
+    props: { ...props, row: { ...row, kind: 'reanalysis' } },
+  }).body;
+  assert.match(reanalysis, /再解析/);
+  assert.match(reanalysis, /実行中の処理を停止/);
   const stopped = render(Component, {
     props: {
       ...props,

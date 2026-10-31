@@ -21,6 +21,11 @@
   import MailAutomation from './MailAutomation.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   import Modal from './Modal.svelte';
+  import ReanalysisConfirmation from './ReanalysisConfirmation.svelte';
+  import {
+    createReanalysisController,
+    emptyReanalysisView,
+  } from './reanalysis-controller.ts';
   let {
     account,
     accounts,
@@ -33,6 +38,24 @@
   const session = getAppSession(),
     api = createImportExecutionsAPI(PUBLIC_API_BASE_URL),
     requests: ProcessingRequests = new Map();
+  let reanalysis = $state(emptyReanalysisView());
+  const reanalysisController = createReanalysisController(
+    session.mailProcessingAPI,
+    session.token,
+    (v) => {
+      reanalysis = v;
+      if (v.summary) {
+        reanalysisAccepted = v.summary;
+        reanalysisController.close();
+        refresh();
+      }
+    },
+    denied,
+  );
+  let reanalysisAccepted = $state<{
+    accepted_count: number;
+    skipped_count: number;
+  } | null>(null);
   let view = $state<FeedView<ImportExecutionPage>>({
       page: null,
       status: 'idle',
@@ -61,7 +84,14 @@
     );
   const source = $derived(accounts.find((a) => a.id === account)),
     filter = $derived({ account_id: account, limit: 20, offset }),
-    busy = $derived(retryBusy || settingsBusy || stopBusy);
+    busy = $derived(
+      retryBusy ||
+        settingsBusy ||
+        stopBusy ||
+        reanalysis.status === 'saving' ||
+        reanalysis.status === 'loading' ||
+        reanalysis.uncertain,
+    );
   let disposed = false,
     stopAbort: AbortController | undefined;
   const count = (value: number) => value.toLocaleString('ja-JP');
@@ -76,6 +106,7 @@
     selected = null;
     retryTarget = null;
     settingsOpen = false;
+    reanalysisController.dispose();
     requests.clear();
     session.onDenied();
   }
@@ -109,6 +140,7 @@
       stopAbort?.abort();
       controller?.dispose();
       requests.clear();
+      reanalysisController.dispose();
     };
   });
   $effect(() => {
@@ -173,6 +205,16 @@
             title="5秒ごとに自動更新（日本時間）"
             >最終更新 {updateTime.format(new Date(lastUpdatedAt))}</time
           >{/if}
+        <Button
+          type="button"
+          wrap
+          disabled={busy ||
+            !!view.page?.history.some((row) => row.active_run_id)}
+          onclick={() => {
+            reanalysisAccepted = null;
+            void reanalysisController.open(account);
+          }}>処理済みメールを再解析</Button
+        >
         <Button wrap disabled={busy} onclick={() => (settingsOpen = true)}
           >取り込み設定</Button
         ><Button wrap disabled={busy} onclick={refresh}>更新</Button>
@@ -181,6 +223,10 @@
     {#if accepted}<p class="notice library-content" role="status">
         {count(accepted.accepted_count)} 通の再試行を受け付けました。{#if accepted.skipped_count}取得対象外の
           {count(accepted.skipped_count)} 通はスキップしました。{/if}
+      </p>{/if}
+    {#if reanalysisAccepted}<p class="notice library-content" role="status">
+        {count(reanalysisAccepted.accepted_count)} 通の再解析を受け付けました。処理完了数は履歴で確認できます。保護対象または取得対象外の
+        {count(reanalysisAccepted.skipped_count)} 通はスキップしました。
       </p>{/if}
     {#if view.error}<p class="notice library-content" role="alert">
         {processingErrors[view.error]}<Button wrap onclick={refresh}
@@ -218,6 +264,21 @@
         取り込み履歴を読み込んでいます…
       </p>{/if}
   </LibraryPanel>
+  <Modal
+    open={!!reanalysis.account}
+    title="処理済みメールを再解析"
+    busy={reanalysis.status === 'saving' || reanalysis.status === 'loading'}
+    canClose={() => !reanalysis.uncertain}
+    onclose={() => reanalysisController.close()}
+  >
+    {#if reanalysis.account}<ReanalysisConfirmation
+        view={reanalysis}
+        onConfirm={(value) => reanalysisController.confirm(value)}
+        onStart={() => void reanalysisController.start()}
+        onReplay={() => void reanalysisController.replay()}
+        onRefresh={() => void reanalysisController.refresh()}
+      />{/if}
+  </Modal>
   <Modal
     open={!!selected}
     title="取り込みの詳細"

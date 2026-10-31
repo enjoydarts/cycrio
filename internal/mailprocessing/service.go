@@ -87,6 +87,19 @@ func (s *Service) RetryFailed(ctx context.Context, owner, account string, in Inp
 	v, e := repo.RetryFailed(ctx, owner, account, in)
 	return v, safe(e)
 }
+func (s *Service) Reanalyze(ctx context.Context, owner, account string, in ReanalysisInput) (RetryBatch, error) {
+	if !ValidID(owner) || !ValidID(account) || !ValidReanalysis(in) {
+		return RetryBatch{}, ErrInvalid
+	}
+	repo, ok := s.repo.(interface {
+		Reanalyze(context.Context, string, string, ReanalysisInput) (RetryBatch, error)
+	})
+	if !ok {
+		return RetryBatch{}, ErrUnavailable
+	}
+	v, e := repo.Reanalyze(ctx, owner, account, in)
+	return v, safe(e)
+}
 func (s *Service) ListRuns(ctx context.Context, owner, account string) ([]Run, error) {
 	if !ValidID(owner) || !ValidID(account) {
 		return nil, ErrInvalid

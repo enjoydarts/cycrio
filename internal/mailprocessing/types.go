@@ -126,6 +126,10 @@ type RetryInput struct {
 	ExpectedResultID string `json:"expected_result_id"`
 	ConfirmUnknown   bool   `json:"confirm_unknown"`
 }
+type ReanalysisInput struct {
+	Input
+	Before string `json:"before"`
+}
 type RetryBatch struct {
 	Run           Run `json:"run"`
 	AcceptedCount int `json:"accepted_count"`

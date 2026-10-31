@@ -10,12 +10,13 @@ import (
 // billing cycle do not establish identity, so each event remains independent.
 const candidateCTE = `WITH current_items AS (
  SELECT DISTINCT ON(message_id) * FROM mail_processing_items
- WHERE owner_id=$1 AND ($2='' OR account_id::text=lower($2))
+ WHERE owner_id=$1 AND ($2='' OR account_id::text=lower($2)) AND state IN ('succeeded','not_related')
  ORDER BY message_id,created_at DESC,id DESC
 ), candidates AS (
  SELECT i.id AS result_id,i.account_id,e.ordinality::integer-1 AS event_index,e.event
  FROM current_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) WITH ORDINALITY e(event,ordinality)
  WHERE i.state='succeeded'
+ AND NOT (` + reanalysisPriorDecision + `)
  AND NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=i.owner_id AND s.result_id=i.id AND s.event_index=e.ordinality-1)
  AND NOT EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=i.owner_id AND d.result_id=i.id AND d.event_index=e.ordinality-1)
 ) `

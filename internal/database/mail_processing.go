@@ -7,6 +7,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
+	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -81,6 +82,12 @@ const processingPending = `NOT EXISTS(SELECT 1 FROM mail_processing_items i WHER
 // grants access to a remote reference.
 const processingSourceSelected = `((m.remote_fingerprint IS NULL AND coalesce(f.selected AND f.available AND f.selectable,false)) OR (m.remote_fingerprint IS NOT NULL AND EXISTS(SELECT 1 FROM mail_message_folder_memberships source_membership JOIN mail_account_folders selected_folder ON selected_folder.id=source_membership.folder_id AND selected_folder.account_id=source_membership.account_id WHERE source_membership.owner_id=m.owner_id AND source_membership.account_id=m.account_id AND source_membership.message_id=m.id AND selected_folder.selected AND selected_folder.available AND selected_folder.selectable)))`
 
+const processingHistoricalDecision = `EXISTS(SELECT 1 FROM mail_processing_items old WHERE old.owner_id=m.owner_id AND old.message_id=m.id AND (EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=old.owner_id AND s.result_id=old.id) OR EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=old.owner_id AND d.result_id=old.id)))`
+
+// Only reanalysis results suppress events based on earlier message-level decisions.
+// Ordinary extraction continues to honor its independent event decisions.
+const reanalysisPriorDecision = `EXISTS(SELECT 1 FROM mail_processing_runs run WHERE run.id=i.run_id AND run.request_doc->>'reanalysis'='true') AND EXISTS(SELECT 1 FROM mail_processing_items old WHERE old.owner_id=i.owner_id AND old.message_id=i.message_id AND old.id<>i.id AND (EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=old.owner_id AND s.result_id=old.id) OR EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=old.owner_id AND d.result_id=old.id)))`
+
 func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lock bool) (mailprocessing.Preview, error) {
 	out := mailprocessing.Preview{AccountID: account}
 	var state string
@@ -147,6 +154,9 @@ func (r *MailProcessingRepository) Preview(ctx context.Context, owner, account s
 }
 
 type processingRequest struct {
+	Reanalysis       bool                 `json:"reanalysis,omitempty"`
+	Before           string               `json:"before,omitempty"`
+	PromptVersion    string               `json:"prompt_version,omitempty"`
 	RetryAll         bool                 `json:"retry_all,omitempty"`
 	Input            mailprocessing.Input `json:"input"`
 	MessageID        string               `json:"message_id"`
@@ -164,8 +174,18 @@ func (r *MailProcessingRepository) Retry(ctx context.Context, owner, account, me
 	return r.request(ctx, owner, account, processingRequest{Input: in.Input, MessageID: message, ExpectedResultID: in.ExpectedResultID, ConfirmUnknown: in.ConfirmUnknown})
 }
 func (r *MailProcessingRepository) RetryFailed(ctx context.Context, owner, account string, in mailprocessing.Input) (mailprocessing.RetryBatch, error) {
+	return r.retryBatch(ctx, owner, account, processingRequest{Input: in, RetryAll: true})
+}
+func (r *MailProcessingRepository) Reanalyze(ctx context.Context, owner, account string, in mailprocessing.ReanalysisInput) (mailprocessing.RetryBatch, error) {
+	if !mailprocessing.ValidReanalysis(in) {
+		return mailprocessing.RetryBatch{}, mailprocessing.ErrInvalid
+	}
+	return r.retryBatch(ctx, owner, account, processingRequest{Input: in.Input, Reanalysis: true, Before: in.Before, PromptVersion: subscriptionprompts.Version})
+}
+func (r *MailProcessingRepository) retryBatch(ctx context.Context, owner, account string, request processingRequest) (mailprocessing.RetryBatch, error) {
+	in := request.Input
 	var out mailprocessing.RetryBatch
-	if _, e := r.request(ctx, owner, account, processingRequest{Input: in, RetryAll: true}); e != nil {
+	if _, e := r.request(ctx, owner, account, request); e != nil {
 		return out, e
 	}
 	var raw []byte
@@ -194,7 +214,9 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	existing, e := scanProcessingRun(tx.QueryRow(ctx, `SELECT `+processingRunColumns+` FROM mail_processing_runs WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID))
 	if e == nil {
 		var same bool
-		if e = tx.QueryRow(ctx, `SELECT account_id=$2 AND request_doc=$3::jsonb FROM mail_processing_runs WHERE id=$1`, existing.ID, account, raw).Scan(&same); e != nil {
+		// Prompt identity belongs to the deployment, not the client's idempotency
+		// document. Replay its frozen receipt even when new code has a new prompt.
+		if e = tx.QueryRow(ctx, `SELECT account_id=$2 AND CASE WHEN $4 THEN request_doc-'prompt_version'=$3::jsonb-'prompt_version' ELSE request_doc=$3::jsonb END FROM mail_processing_runs WHERE id=$1`, existing.ID, account, raw, request.Reanalysis).Scan(&same); e != nil {
 			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
 		}
 		if !same {
@@ -226,6 +248,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		return mailprocessing.Run{}, processingError(e)
 	}
 	ids := []string{}
+	skipped := 0
 	if request.MessageID != "" {
 		var latest, state string
 		e = tx.QueryRow(ctx, `SELECT id,state FROM mail_processing_items WHERE message_id=$1 AND owner_id=$2 AND account_id=$3 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY created_at DESC,id DESC LIMIT 1`, request.MessageID, owner, account).Scan(&latest, &state)
@@ -246,6 +269,30 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
 		}
 		ids = append(ids, request.MessageID)
+	} else if request.Reanalysis {
+		rows, err := tx.Query(ctx, `SELECT m.id, `+processingSourceSelected+` AND NOT (`+processingHistoricalDecision+`) FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id JOIN LATERAL(SELECT state,finished_at FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND latest.state IN ('succeeded','not_related') AND latest.finished_at<$3::timestamptz ORDER BY m.created_at,m.id`, owner, account, request.Before)
+		if err != nil {
+			return mailprocessing.Run{}, processingError(err)
+		}
+		for rows.Next() {
+			var id string
+			var eligible bool
+			if err = rows.Scan(&id, &eligible); err != nil {
+				rows.Close()
+				return mailprocessing.Run{}, processingError(err)
+			}
+			if eligible {
+				ids = append(ids, id)
+			} else {
+				skipped++
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return mailprocessing.Run{}, processingError(err)
+		}
+		in.MaxMessages = len(ids)
 	} else if request.RetryAll {
 		rows, e := tx.Query(ctx, importHistoryCTE+`SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed' AND `+processingSourceSelected+` ORDER BY m.created_at,m.id`, owner, account, in.HistoryID)
 		if e != nil {
@@ -291,7 +338,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	if e != nil {
 		return mailprocessing.Run{}, e
 	}
-	if request.RetryAll {
+	if request.RetryAll || request.Reanalysis {
 		// Snapshot all selected failures in one statement so the HTTP deadline
 		// does not turn the number of round trips into an implicit page limit.
 		if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state) SELECT gen_random_uuid(),$1,$2,$3,message_id,'queued' FROM unnest($4::uuid[]) AS message_id`, owner, account, run.ID, ids); e != nil {
@@ -305,17 +352,19 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		}
 	}
 	action := "processing_requested"
-	if request.MessageID != "" || request.RetryAll {
+	if request.MessageID != "" || request.RetryAll || request.Reanalysis {
 		action = "processing_retried"
 	}
 	if e = auditProcessing(ctx, tx, owner, account, run.ID, action); e != nil {
 		return mailprocessing.Run{}, e
 	}
-	if request.RetryAll {
-		batch := mailprocessing.RetryBatch{Run: run, AcceptedCount: len(ids)}
+	if request.RetryAll || request.Reanalysis {
+		batch := mailprocessing.RetryBatch{Run: run, AcceptedCount: len(ids), SkippedCount: skipped}
 		// Queued selected messages no longer count as failures; any current
 		// failures left behind are outside the connection's selected source.
-		e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM mail_discovered_messages m JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed'`, owner, account, in.HistoryID).Scan(&batch.SkippedCount)
+		if !request.Reanalysis {
+			e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM mail_discovered_messages m JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed'`, owner, account, in.HistoryID).Scan(&batch.SkippedCount)
+		}
 		if e != nil {
 			return mailprocessing.Run{}, processingError(e)
 		}
