@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { goto, beforeNavigate } from '$app/navigation';
@@ -27,7 +30,6 @@
     type OverviewReport,
   } from './overview-api.ts';
   import type { FeedView } from './daily-controller.ts';
-  import { money } from './daily-text.ts';
   import { processingErrors } from './mail-processing-text.ts';
   import Modal from './Modal.svelte';
   import SubscriptionForm from './SubscriptionForm.svelte';
@@ -188,6 +190,23 @@
     search = filter.q;
     void controller?.load(filter);
   });
+  $effect(() => {
+    if (
+      view.status === 'ready' &&
+      view.page &&
+      !view.page.subscriptions.length &&
+      filter.offset > 0 &&
+      !selected &&
+      !frozen
+    )
+      void goto(
+        link({
+          offset:
+            Math.max(0, Math.ceil(view.page.total / filter.limit) - 1) *
+            filter.limit,
+        }),
+      );
+  });
 </script>
 
 <svelte:window
@@ -203,8 +222,11 @@
     title={account ? `${account.label} のサブスク` : 'サブスクリプション'}
     eyebrow="MY LIBRARY"
     description="メールから見つけたサブスクを、ひとつに。"
-    >{#snippet action()}<a class="primary button" href={importURL}
-        >＋ メールから取り込む</a
+    >{#snippet action()}<ActionLink
+        wrap
+        variant="primary"
+        class={['primary button']}
+        href={importURL}>＋ メールから取り込む</ActionLink
       >{/snippet}</LibraryHeader
   >
   {#if navigationMessage && frozen}<p class="notice" role="status">
@@ -218,14 +240,6 @@
         <p>接続したメールをまとめて表示</p>
       </div>
       <div class="metric">
-        <span>今月の支払実績</span
-        >{#each overview.billing_month.currencies as currency}<strong
-            class="payment"
-            >{money(currency.payment_amount, currency.currency)}</strong
-          >{:else}<strong>支払記録なし</strong>{/each}
-        <p>{overview.billing_month.month} · 保存済みの支払い · 日本時間</p>
-      </div>
-      <div class="metric">
         <span>確認が必要なメール</span><strong class="attention"
           >{overview.attention_messages}<small>件</small></strong
         >
@@ -235,7 +249,9 @@
   <LibraryPanel>
     <div class="panel-heading">
       <nav class="library-tabs" aria-label="サブスクの状態">
-        {#each [['all', 'すべて'], ['active', '利用中'], ['ended', '終了済み'], ['unknown', '状態不明']] as [value, label]}<a
+        {#each [['all', 'すべて'], ['active', '利用中'], ['ended', '終了済み'], ['unknown', '状態不明']] as [value, label]}<ActionLink
+            wrap
+            variant="tab"
             href={link({
               status: value as SubscriptionFilter['status'],
               offset: 0,
@@ -247,16 +263,17 @@
                     ? 'total'
                     : (value as 'active' | 'ended' | 'unknown')
                 ]}</span
-              >{/if}</a
+              >{/if}</ActionLink
           >{/each}
       </nav>
-      <button
-        class="manual"
+      <Button
+        wrap
+        class={['manual', 'part-Subscriptions-manual']}
         disabled={frozen}
         onclick={() => {
           adding = true;
           selected = null;
-        }}>手動で追加</button
+        }}>手動で追加</Button
       >
     </div>
     <form
@@ -272,7 +289,7 @@
           placeholder="サービス名やプランを検索"
           bind:value={search}
         /></label
-      ><button type="submit">検索</button><label
+      ><Button wrap type="submit">検索</Button><label
         ><span class="sr">並び順</span><select
           value={filter.sort}
           onchange={(event) =>
@@ -288,16 +305,20 @@
         ></label
       >
       <div class="view-switch" aria-label="表示方法">
-        <button
+        <Button
+          wrap
+          variant="tab"
           type="button"
           aria-label="一覧表示"
           aria-pressed={layout === 'list'}
-          onclick={() => (layout = 'list')}>☰</button
-        ><button
+          onclick={() => (layout = 'list')}>☰</Button
+        ><Button
+          wrap
+          variant="tab"
           type="button"
           aria-label="カード表示"
           aria-pressed={layout === 'cards'}
-          onclick={() => (layout = 'cards')}>▦</button
+          onclick={() => (layout = 'cards')}>▦</Button
         >
       </div>
     </form>
@@ -305,7 +326,7 @@
         サブスクを読み込んでいます…
       </p>{:else if view.error}<div class="empty" role="alert">
         <p>{processingErrors[view.error]}</p>
-        <button onclick={refresh}>再読み込み</button>
+        <Button wrap onclick={refresh}>再読み込み</Button>
       </div>{:else if view.page}{#if view.page.subscriptions.length}<SubscriptionListPanel
           items={view.page.subscriptions}
           {layout}
@@ -320,14 +341,15 @@
           <p>
             サービス名や状態を変更するか、メールから契約情報を取り込めます。
           </p>
-          <a
-            class="button"
+          <ActionLink
+            wrap
+            class={['button']}
             href={filter.q || filter.status !== 'all'
               ? link({ q: '', status: 'all', offset: 0 })
               : importURL}
             >{filter.q || filter.status !== 'all'
               ? '条件を解除する'
-              : 'メールから取り込む'}</a
+              : 'メールから取り込む'}</ActionLink
           >
         </div>{/if}
       <footer class="list-footer">
@@ -346,9 +368,10 @@
       </footer>{/if}
   </LibraryPanel>
   <div class="footnote">
-    <a href="/subscriptions/summary">支払・返金明細の月次集計</a><button
+    <Button
+      wrap
       disabled={view.status === 'loading' || frozen}
-      onclick={refresh}>一覧を更新</button
+      onclick={refresh}>一覧を更新</Button
     >
   </div>
 </section>
@@ -358,15 +381,19 @@
   busy={frozen}
   onclose={() => navigation.stay()}
   ><p>この画面を離れると、保持している下書きは破棄されます。</p>
-  <div class="actions">
-    <button type="button" disabled={frozen} onclick={() => navigation.stay()}
-      >編集を続ける</button
-    ><button
+  <ActionGroup class={['actions', 'part-Subscriptions-actions']}>
+    <Button
+      wrap
       type="button"
       disabled={frozen}
-      onclick={() => navigation.discardAndLeave()}>破棄して移動</button
+      onclick={() => navigation.stay()}>編集を続ける</Button
+    ><Button
+      wrap
+      type="button"
+      disabled={frozen}
+      onclick={() => navigation.discardAndLeave()}>破棄して移動</Button
     >
-  </div></Modal
+  </ActionGroup></Modal
 >
 <SubscriptionDrawer open={selected !== null} busy={frozen} onclose={close}
   >{#if selected}{#key selected}<SubscriptionDetail
@@ -377,6 +404,12 @@
         {billingDrafts}
         onFrozen={editorState}
         onSaved={refresh}
+        onDeleted={() => {
+          selected = null;
+          frozen = false;
+          dirty = false;
+          refresh();
+        }}
       />{/key}{#if dirty}<p class="draft-note">
         入力は下書きとして保持されます。
       </p>{/if}{/if}</SubscriptionDrawer
@@ -408,7 +441,7 @@
   }
   .summary {
     display: grid;
-    grid-template-columns: 1fr 1.3fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     border: 1px solid var(--color-border);
     border-radius: 12px;
     background: var(--color-surface);
@@ -434,9 +467,6 @@
     margin: 12px 0 9px;
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
-  }
-  .metric .payment {
-    font-size: 24px;
   }
   .metric small {
     font-size: 12px;
@@ -468,7 +498,7 @@
     min-width: 0;
     overflow: auto;
   }
-  nav a {
+  nav :global(.ui-tab) {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -479,7 +509,7 @@
     border-bottom: 2px solid transparent;
     font-size: 12px;
   }
-  nav a[aria-current] {
+  nav :global(.ui-tab[aria-current]) {
     color: var(--color-action);
     border-color: var(--color-action);
   }
@@ -489,7 +519,7 @@
     padding: 2px 5px;
     border-radius: 5px;
   }
-  .manual {
+  :global(.part-Subscriptions-manual) {
     border: 0;
     background: transparent;
     font-size: 11px;
@@ -510,24 +540,9 @@
   .search input {
     width: 100%;
   }
-  .library-toolbar input,
-  .library-toolbar select,
-  .library-toolbar button {
-    font-size: 11px;
-    min-height: 36px;
-  }
   .view-switch {
     display: flex;
     margin-left: auto;
-  }
-  .view-switch button {
-    border-radius: 0;
-    min-width: 34px;
-    font-size: 16px;
-  }
-  .view-switch button[aria-pressed='true'] {
-    color: var(--color-action);
-    background: var(--color-surface-soft);
   }
   .list-footer {
     display: flex;
@@ -550,12 +565,6 @@
     margin-top: 18px;
     font-size: 11px;
     color: var(--color-muted);
-  }
-  .footnote a {
-    color: inherit;
-  }
-  .footnote button {
-    font-size: 11px;
   }
   .empty {
     text-align: center;
@@ -583,7 +592,7 @@
     .summary {
       padding: 18px 0;
       margin-bottom: 22px;
-      grid-template-columns: 1fr 1.1fr 1fr;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .metric {
       padding: 0 12px;
@@ -591,8 +600,7 @@
     .metric > span {
       font-size: 9px;
     }
-    .metric strong,
-    .metric .payment {
+    .metric strong {
       font-size: 19px;
     }
     .metric p {
@@ -605,11 +613,11 @@
     nav {
       gap: 15px;
     }
-    nav a {
+    nav :global(.ui-tab) {
       font-size: 10px;
       padding: 16px 0;
     }
-    .manual {
+    :global(.part-Subscriptions-manual) {
       font-size: 10px;
     }
     .library-toolbar {

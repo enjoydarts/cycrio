@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api.ts';
   import type { MailProcessingAPI } from './mail-processing-api.ts';
@@ -39,11 +41,12 @@
       <p class="eyebrow">MAIL ANALYSIS POLICY</p>
       <h3>メール解析の送信条件</h3>
     </div>
-    <button
+    <Button
+      wrap
       id="processing-policy-refresh"
       type="button"
       disabled={busy}
-      onclick={() => controller?.refresh()}>現在の条件を確認</button
+      onclick={() => controller?.refresh()}>現在の条件を確認</Button
     >
   </div>
   <p class="help">
@@ -188,21 +191,24 @@
       <p class="help">
         許可するには両方の保持条件と確認が必要です。モデル構成を変えた場合は、新しい構成で確認し直してください。
       </p>
-      <div class="actions">
-        <button
+      <ActionGroup class={['actions', 'part-MailProcessingPolicy-actions']}>
+        <Button
+          wrap
+          variant="primary"
           id="processing-policy-save"
-          class="primary"
+          class={['primary']}
           type="submit"
           disabled={busy || view.conflict || !validPolicyForm(view.form)}
-          >入力した送信条件を保存</button
-        ><button
+          >入力した送信条件を保存</Button
+        ><Button
+          wrap
           id="processing-policy-discard"
           type="button"
           disabled={view.status === 'saving'}
           onclick={() => controller?.discard()}
-          >入力を破棄して最新条件を確認</button
+          >入力を破棄して最新条件を確認</Button
         >
-      </div>
+      </ActionGroup>
     </form>
   {/if}
   <div class="stop">
@@ -210,11 +216,12 @@
     <p class="help">
       保存済みの条件を使って新しい送信を停止します。編集中の入力は保持します。すでに外部へ送信した処理は取り消せません。
     </p>
-    <button
+    <Button
+      wrap
       id="processing-policy-stop"
       type="button"
       disabled={busy || !view.current?.policy?.enabled}
-      onclick={() => controller?.stop()}>保存済みの送信許可を停止する</button
+      onclick={() => controller?.stop()}>保存済みの送信許可を停止する</Button
     >
   </div>
   <div aria-live="polite" aria-atomic="true">
@@ -243,7 +250,7 @@
     font-size: 0.9rem;
   }
   .heading,
-  .actions {
+  :global(.part-MailProcessingPolicy-actions) {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -332,33 +339,7 @@
     accent-color: var(--color-action);
     margin-top: 0.25rem;
   }
-  button {
-    min-height: 2.8rem;
-    max-width: 100%;
-    padding: 0.6rem 0.9rem;
-    border: 1px solid var(--color-action);
-    border-radius: 0.5rem;
-    background: var(--color-surface);
-    color: var(--color-action);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1.6;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-  .primary {
-    background: var(--color-action);
-    color: var(--color-on-action);
-  }
-  button:focus-visible,
-  input:focus-visible {
-    outline: 2px solid var(--color-action);
-    outline-offset: 2px;
-  }
-  .actions {
+  :global(.part-MailProcessingPolicy-actions) {
     justify-content: flex-start;
     margin-top: 1rem;
   }
@@ -382,7 +363,7 @@
     }
   }
   @media (max-width: 400px) {
-    .actions {
+    :global(.part-MailProcessingPolicy-actions) {
       flex-direction: column;
       align-items: stretch;
     }

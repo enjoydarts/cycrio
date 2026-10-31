@@ -4,7 +4,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/enjoydarts/cycrio/internal/billing"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 )
 
@@ -19,7 +18,6 @@ type Window struct {
 	WindowEnd   string    `json:"window_end"`
 	Timezone    string    `json:"timezone"`
 	GeneratedAt time.Time `json:"generated_at"`
-	Month       string    `json:"-"`
 }
 type Counts struct {
 	Total    int `json:"total"`
@@ -48,9 +46,8 @@ type Connection struct {
 }
 type Report struct {
 	Window
-	Subscriptions     Counts          `json:"subscriptions"`
-	AttentionMessages int             `json:"attention_messages"`
-	Upcoming          []Upcoming      `json:"upcoming"`
-	Connections       []Connection    `json:"connections"`
-	BillingMonth      billing.Summary `json:"billing_month"`
+	Subscriptions     Counts       `json:"subscriptions"`
+	AttentionMessages int          `json:"attention_messages"`
+	Upcoming          []Upcoming   `json:"upcoming"`
+	Connections       []Connection `json:"connections"`
 }

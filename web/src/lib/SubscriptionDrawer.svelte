@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { Snippet } from 'svelte';
   let {
     open,
@@ -45,11 +46,13 @@
 >
   <header>
     <h2 id={titleId} bind:this={heading} tabindex="-1">サブスクの詳細</h2>
-    <button
+    <Button
+      wrap
+      variant="icon"
       type="button"
       disabled={busy}
       aria-label="詳細を閉じる"
-      onclick={onclose}>×</button
+      onclick={onclose}>×</Button
     >
   </header>
   <div class="body">{@render children()}</div>
@@ -86,19 +89,6 @@
     font-size: 18px;
     margin: 0;
     overflow-wrap: anywhere;
-  }
-  button {
-    display: grid;
-    place-items: center;
-    flex-shrink: 0;
-    background: var(--color-surface);
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    color: inherit;
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 24px;
-    cursor: pointer;
   }
   .body {
     padding: 24px;

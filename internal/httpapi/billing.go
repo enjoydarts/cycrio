@@ -19,7 +19,6 @@ type BillingService interface {
 	AttachSource(context.Context, string, string, string, billing.SourceInput) (billing.Entry, error)
 	DetachSource(context.Context, string, string, string, billing.SourceInput) (billing.Entry, error)
 	Duplicates(context.Context, string, string, billing.DuplicateFilter) (billing.DuplicatePage, error)
-	Summary(context.Context, string, string, *string) (billing.Summary, error)
 }
 
 func WithBilling(service BillingService) Option {
@@ -121,28 +120,7 @@ func registerBilling(mux *http.ServeMux, service BillingService, protect protect
 		normalizeBillingPage(&page.Page)
 		return page, e
 	})
-	register("GET /v1/billing-summary", 200, true, func(_ http.ResponseWriter, r *http.Request, owner string) (any, error) {
-		q, e := applicationQuery(r.URL.RawQuery, "month", "subscription_id")
-		if e != nil {
-			return nil, billing.ErrInvalid
-		}
-		if _, _, e = billing.MonthBounds(q.Get("month")); e != nil {
-			return nil, e
-		}
-		var contract *string
-		if q.Has("subscription_id") {
-			s := q.Get("subscription_id")
-			if !billing.ValidID(s) {
-				return nil, billing.ErrInvalid
-			}
-			contract = &s
-		}
-		out, e := service.Summary(r.Context(), owner, q.Get("month"), contract)
-		if out.Currencies == nil {
-			out.Currencies = []billing.CurrencySummary{}
-		}
-		return out, e
-	})
+
 }
 func normalizeBilling(s *billing.Entry) {
 	if s.Sources == nil {

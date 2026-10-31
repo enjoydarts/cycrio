@@ -84,21 +84,3 @@ type DuplicatePage struct {
 	Page
 	Token string `json:"token"`
 }
-type CurrencySummary struct {
-	Currency      string `json:"currency"`
-	PaymentAmount string `json:"payment_amount"`
-	RefundAmount  string `json:"refund_amount"`
-	NetAmount     string `json:"net_amount"`
-	PaymentCount  int    `json:"payment_count"`
-	RefundCount   int    `json:"refund_count"`
-}
-type Summary struct {
-	Month          string            `json:"month"`
-	StartDate      string            `json:"start_date"`
-	EndDate        string            `json:"end_date"`
-	Timezone       string            `json:"timezone"`
-	SubscriptionID *string           `json:"subscription_id"`
-	Currencies     []CurrencySummary `json:"currencies"`
-	InvoiceCount   int               `json:"invoice_count"`
-	VoidedCount    int               `json:"voided_count"`
-}

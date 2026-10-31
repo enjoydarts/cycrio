@@ -6,14 +6,14 @@ import (
 )
 
 func TestPeriodUsesOneTokyoDayAndThirtyCalendarDays(t *testing.T) {
-	for _, test := range []struct{ now, day, end, month string }{
-		{"2024-02-29T14:59:59Z", "2024-02-29", "2024-03-30", "2024-02"},
-		{"2024-02-29T15:00:00Z", "2024-03-01", "2024-03-31", "2024-03"},
-		{"2026-12-31T15:00:00Z", "2027-01-01", "2027-01-31", "2027-01"},
+	for _, test := range []struct{ now, day, end string }{
+		{"2024-02-29T14:59:59Z", "2024-02-29", "2024-03-30"},
+		{"2024-02-29T15:00:00Z", "2024-03-01", "2024-03-31"},
+		{"2026-12-31T15:00:00Z", "2027-01-01", "2027-01-31"},
 	} {
 		now, _ := time.Parse(time.RFC3339, test.now)
 		period, err := Period(now)
-		if err != nil || period.AsOf != test.day || period.WindowEnd != test.end || period.Month != test.month || period.Timezone != "Asia/Tokyo" || !period.GeneratedAt.Equal(now) {
+		if err != nil || period.AsOf != test.day || period.WindowEnd != test.end || period.Timezone != "Asia/Tokyo" || !period.GeneratedAt.Equal(now) {
 			t.Fatal("incorrect overview period", period, err)
 		}
 	}

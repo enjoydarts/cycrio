@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { HistoryEditorView } from './schedule-history-controller.ts';
   import type {
     HistoryFilter,
@@ -70,12 +71,16 @@
 </script>
 
 <section class="schedule-history" aria-label="支払履歴から周期候補を確認">
-  <button
+  <Button
+    wrap
     type="button"
-    class="schedule-history-toggle"
+    class={[
+      'schedule-history-toggle',
+      'part-ScheduleHistory-schedule-history-toggle',
+    ]}
     aria-expanded={view.expanded}
     {disabled}
-    onclick={() => onToggle(!view.expanded)}>支払履歴から候補を確認</button
+    onclick={() => onToggle(!view.expanded)}>支払履歴から候補を確認</Button
   >
   {#if view.expanded}
     <p class="muted">
@@ -113,11 +118,12 @@
           ></label
         >
       </div>
-      <button
+      <Button
+        wrap
         type="button"
         disabled={!validFilter || view.loading}
         onclick={onFetch}
-        >{view.loading ? '候補を確認しています…' : '候補を確認する'}</button
+        >{view.loading ? '候補を確認しています…' : '候補を確認する'}</Button
       >
     </fieldset>
     {#if view.loading}<p role="status">支払履歴を確認しています…</p>{/if}
@@ -194,14 +200,15 @@
                     ? '月末固定'
                     : '日付指定'}）を、この候補の周期・基準日・日付指定方法で置き換えます。
                 </p>{/if}
-              <button
+              <Button
+                wrap
                 type="button"
                 disabled={disabled ||
                   conflict ||
                   !!result.reason ||
                   !candidate.candidate_date ||
                   !!candidate.reason}
-                onclick={() => onAdopt(index)}>この候補を入力する</button
+                onclick={() => onAdopt(index)}>この候補を入力する</Button
               >
             </article>
           {/each}

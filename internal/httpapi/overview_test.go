@@ -47,6 +47,9 @@ func TestOverviewHTTPUsesAuthenticatedOwnerForEitherRoleAndNormalizesArrays(t *t
 				t.Fatal("nil overview array", key)
 			}
 		}
+		if _, exists := body["billing_month"]; exists {
+			t.Fatal("overview must not expose global billing totals", w.Body.String())
+		}
 	}
 }
 func TestOverviewHTTPRejectsOwnerQueriesBodiesAndMissingAccess(t *testing.T) {

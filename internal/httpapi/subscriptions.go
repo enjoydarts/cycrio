@@ -15,6 +15,7 @@ type SubscriptionService interface {
 	Create(context.Context, string, subscriptions.CreateInput) (subscriptions.Subscription, error)
 	Update(context.Context, string, string, subscriptions.UpdateInput) (subscriptions.Subscription, error)
 	AttachSource(context.Context, string, string, subscriptions.SourceInput) (subscriptions.Subscription, error)
+	Delete(context.Context, string, string, subscriptions.DeleteInput) error
 }
 
 func WithSubscriptions(service SubscriptionService) Option {
@@ -24,6 +25,7 @@ func WithSubscriptions(service SubscriptionService) Option {
 var subscriptionValueKeys = []string{"service", "plan", "amount", "currency", "interval_unit", "interval_count", "next_billing_date", "status"}
 
 func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, protect protectFunc) {
+	registerCandidates(mux, service, protect)
 	register := func(pattern string, status int, query bool, callback func(http.ResponseWriter, *http.Request, string) (any, error)) {
 		mux.HandleFunc(pattern, protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
 			if !query && (r.URL.RawQuery != "" || r.URL.ForceQuery) {
@@ -103,6 +105,18 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 		s, e := service.AttachSource(r.Context(), owner, r.PathValue("id"), in)
 		normalizeSubscription(&s)
 		return s, e
+	})
+	register("POST /v1/subscriptions/{id}/delete", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
+		var in subscriptions.DeleteInput
+		keys := []string{"expected_version", "confirmed"}
+		if e := readSubscriptionJSON(w, r, &in, keys, keys...); e != nil {
+			return nil, e
+		}
+		if !in.Confirmed || in.ExpectedVersion < 1 {
+			return nil, subscriptions.ErrInvalid
+		}
+		e := service.Delete(r.Context(), owner, r.PathValue("id"), in)
+		return map[string]bool{"deleted": true}, e
 	})
 }
 func normalizeSubscription(s *subscriptions.Subscription) {

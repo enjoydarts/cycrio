@@ -109,6 +109,7 @@ test('double click sends one request and uncertain retry keeps exact nonce/body'
   c.confirm(true);
   await Promise.all([c.start(), c.start()]);
   assert.equal(attempts, 1);
+  assert.equal((sent[0] as { auto_register: boolean }).auto_register, false);
   assert.equal(c.state().uncertain, true);
   c.edit({ since: '2024-01-01' });
   await c.replay();

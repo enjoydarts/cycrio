@@ -1,10 +1,39 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
-import { render } from 'svelte/server';
 const source = (name: string) =>
   readFile(new URL(`./${name}`, import.meta.url), 'utf8').catch(() => '');
+test('subscription detail routes accept UUIDs and leave removed summary URLs unmatched', async () => {
+  const routes = await readdir(
+    new URL('../routes/subscriptions/', import.meta.url),
+  );
+  assert.ok(routes.includes('[id=uuid]'));
+  assert.ok(!routes.includes('[id]'));
+  const kitRoot = new URL('../../', import.meta.resolve('@sveltejs/kit/vite'));
+  const { load_vite_config, extract_svelte_config } = await import(
+    new URL('core/config/index.js', kitRoot).href
+  );
+  const { default: createManifest } = await import(
+    new URL('core/sync/create_manifest_data/index.js', kitRoot).href
+  );
+  const { load_and_validate_params } = await import(
+    new URL('core/params.js', kitRoot).href
+  );
+  const vite = await load_vite_config();
+  const manifest = createManifest(extract_svelte_config(vite), vite.root);
+  assert.equal(manifest.params, 'src/params.ts');
+  const params = await load_and_validate_params({
+    routes: manifest.routes,
+    params_path: manifest.params,
+    root: vite.root,
+  });
+  const match = params.uuid;
+  assert.equal(match('summary'), false);
+  assert.equal(match('11111111-1111-4111-8111-111111111111'), true);
+  assert.equal(match('invalid'), false);
+});
 test('billing history accepts a parent draft store and reports unsaved editor state across detail lifetimes', async () => {
   const history = await source('BillingHistory.svelte');
   assert.match(history, /drafts\?: BillingDrafts/);
@@ -12,23 +41,28 @@ test('billing history accepts a parent draft store and reports unsaved editor st
   assert.match(history, /onDirty/);
   assert.match(await source('BillingEditor.svelte'), /onDirty\(next.dirty\)/);
 });
-test('billing history is a detail tab and monthly summary remains under subscriptions navigation', async () => {
+test('billing history stays in detail while standalone monthly summaries are removed', async () => {
   const detail = await source('SubscriptionDetail.svelte');
   assert.match(detail, /BillingHistory/);
   assert.match(detail, /tab=history/);
   assert.match(detail, /概要/);
   assert.match(detail, /請求・支払い履歴/);
-  assert.match(
+  assert.doesNotMatch(
     await source('Subscriptions.svelte'),
     /href="\/subscriptions\/summary"/,
   );
-  assert.match(
+  assert.equal(
     await readFile(
       new URL('../routes/subscriptions/summary/+page.svelte', import.meta.url),
       'utf8',
     ).catch(() => ''),
-    /BillingSummary/,
+    '',
   );
+  for (const name of ['AppShell.svelte', 'BillingHistory.svelte'])
+    assert.doesNotMatch(
+      await source(name),
+      /subscriptions\/summary|月次集計|支払・返金/,
+    );
 });
 test('registered AI event offers explicit history navigation preserving event zero without writing', async () => {
   const detail = await source('AnalysisDetail.svelte');
@@ -42,8 +76,6 @@ test('billing components compile accessibly and mutations stay in controllers', 
     'BillingEditor',
     'BillingSources',
     'BillingTable',
-    'BillingSummary',
-    'BillingSummaryTable',
   ]) {
     const code = await source(`${name}.svelte`);
     assert.ok(code.length, name);
@@ -67,72 +99,4 @@ test('billing components compile accessibly and mutations stay in controllers', 
   assert.match(editor, /内容を確認しました/);
   assert.match(editor, /別の取引/);
   assert.match(editor, /同じ要求で再確認/);
-});
-test('summary server rendering distinguishes no records, zero and negative exact totals with currency separation', async () => {
-  const code = compile(await source('BillingSummaryTable.svelte'), {
-    generate: 'server',
-  }).js.code.replace(
-    /(from\s+|import\s*)(['"])(svelte[^'"]+)\2/g,
-    (_m, p, q, path) => `${p}${q}${import.meta.resolve(path)}${q}`,
-  );
-  const Component = (
-    await import(
-      `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`
-    )
-  ).default;
-  const summary = {
-    month: '2026-10',
-    start_date: '2026-10-01',
-    end_date: '2026-11-01',
-    timezone: 'Asia/Tokyo',
-    subscription_id: null,
-    currencies: [],
-    invoice_count: 1,
-    voided_count: 2,
-  };
-  const empty = render(Component, { props: { summary } }).body;
-  assert.match(empty, /集計対象の支払い・返金はありません/);
-  assert.match(
-    empty,
-    /<p[^>]*class="[^"]*\blibrary-content\b[^"]*"[^>]*>集計対象の支払い・返金はありません。<\/p>/,
-  );
-  const big = '1000000000000000000000000.000000000001';
-  const html = render(Component, {
-    props: {
-      summary: {
-        ...summary,
-        currencies: [
-          {
-            currency: 'JPY',
-            payment_amount: big,
-            refund_amount: '0',
-            net_amount: big,
-            payment_count: 2,
-            refund_count: 0,
-          },
-          {
-            currency: 'USD',
-            payment_amount: '0',
-            refund_amount: '1.5',
-            net_amount: '-1.5',
-            payment_count: 0,
-            refund_count: 1,
-          },
-        ],
-      },
-    },
-  }).body;
-  for (const text of [
-    big,
-    'JPY',
-    'USD',
-    '-1.5',
-    '請求',
-    '無効',
-    '支払い',
-    '返金',
-    '差引',
-  ])
-    assert.ok(html.includes(text), text);
-  assert.doesNotMatch(html, /NaN|Infinity/);
 });

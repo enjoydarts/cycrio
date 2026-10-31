@@ -101,7 +101,7 @@ test('attention uses server-wide state and total rather than a related-only clie
   assert.match(url, /review=attention/);
   assert.equal(result.total, 123);
 });
-test('an extracted transaction is not prefilled as the contract price or an active contract', async () => {
+test('an extracted charge is offered as a price proposal for explicit owner confirmation', async () => {
   const module = await import('./subscriptions-controller.ts');
   assert.equal(typeof module.subscriptionFromEvent, 'function');
   const event = {
@@ -115,7 +115,13 @@ test('an extracted transaction is not prefilled as the contract price or an acti
     next_billing_at: null,
   };
   const values = module.subscriptionFromEvent(event as never);
-  assert.equal(values.amount, null);
-  assert.equal(values.currency, null);
+  assert.equal(values.amount, '1200');
+  assert.equal(values.currency, 'JPY');
   assert.equal(values.status, 'unknown');
+  const refund = module.subscriptionFromEvent({
+    ...event,
+    event_type: 'refund',
+  } as never);
+  assert.equal(refund.amount, null);
+  assert.equal(refund.currency, null);
 });

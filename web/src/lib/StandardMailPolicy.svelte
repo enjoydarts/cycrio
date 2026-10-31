@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onDestroy } from 'svelte';
   import type {
     PolicyState,
@@ -167,8 +169,10 @@
             ? '本文全体の送信を許可済み'
             : '従来範囲のみ許可済み'
           : '停止中・未許可'}</strong
-      >{#if policyState.policy?.enabled}<button disabled={busy} onclick={stop}
-          >送信許可を停止</button
+      >{#if policyState.policy?.enabled}<Button
+          wrap
+          disabled={busy}
+          onclick={stop}>送信許可を停止</Button
         >{/if}
     </div>
     {#if saved}<p role="status">
@@ -184,19 +188,20 @@
       </p>{:else if alreadyPermitted && !reviewing}<p>
         現在の有効版について、確認した条件で本文送信を許可しています。解析画面で送信条件を確認して開始できます。
       </p>
-      <button
+      <Button
+        wrap
         disabled={busy}
         onclick={() => {
           reviewing = true;
           adopt();
-        }}>送信条件を見直す</button
+        }}>送信条件を見直す</Button
       >{:else if form}
       {#if conflict}<div class="setup-feedback" role="status">
           <p>
             モデル・規約・保存状態が変わりました。入力と編集開始時の版を保持しています。最新条件を確認し直してください。
           </p>
-          <button disabled={busy} onclick={adopt}
-            >最新の条件で確認し直す（入力を破棄）</button
+          <Button wrap disabled={busy} onclick={adopt}
+            >最新の条件で確認し直す（入力を破棄）</Button
           >
         </div>{/if}
       <form
@@ -332,18 +337,25 @@
         <p class="muted">
           同意はこの操作で新しく確認します。過去のチェック状態は引き継ぎません。料金が不明でも、条件を確認して許可できます。
         </p>
-        <div class="setup-actions">
-          <button type="submit" class="primary" disabled={busy || !valid}
-            >確認した条件で本文送信を許可</button
-          ><button type="button" disabled={busy} onclick={adopt}
-            >確認をやり直す</button
+        <ActionGroup
+          class={['setup-actions', 'part-StandardMailPolicy-setup-actions']}
+        >
+          <Button
+            wrap
+            variant="primary"
+            type="submit"
+            class={['primary']}
+            disabled={busy || !valid}>確認した条件で本文送信を許可</Button
+          ><Button wrap type="button" disabled={busy} onclick={adopt}
+            >確認をやり直す</Button
           >
-        </div>
+        </ActionGroup>
       </form>
       {#if policyState.policy && !policyState.policy.standard_proof && !customSecondary}<details
           class="setup-details"
         >
-          <summary>既存の個別条件を編集</summary><button
+          <summary>既存の個別条件を編集</summary><Button
+            wrap
             disabled={busy}
             onclick={() => {
               legacyCustom = true;
@@ -355,7 +367,7 @@
                 primary_confirmed: false,
                 secondary_confirmed: false,
               });
-            }}>個別条件の入力へ切り替える</button
+            }}>個別条件の入力へ切り替える</Button
           >
         </details>{/if}
     {/if}

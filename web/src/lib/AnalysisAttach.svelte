@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -20,7 +22,7 @@
     onBackToResults,
     onBusyChange = () => {},
   }: {
-    result: AnalysisResult;
+    result: Pick<AnalysisResult, 'id'>;
     index: number;
     onSaved: (s: Subscription) => void;
     onBackToResults: () => void;
@@ -155,12 +157,12 @@
   >
     <label class="search"
       >サブスクを検索<input disabled={saving} bind:value={query} /></label
-    ><button disabled={saving}>検索</button>
+    ><Button wrap disabled={saving}>検索</Button>
   </form>
   {#if view.status === 'loading'}<p role="status">
       検索中…
     </p>{:else if view.error}<p role="alert">{processingErrors[view.error]}</p>
-    <button onclick={() => load(offset)}>再読み込み</button
+    <Button wrap onclick={() => load(offset)}>再読み込み</Button
     >{:else if view.page}<ul class="compact-list">
       {#each view.page.subscriptions as s}<li>
           <label class="check"
@@ -187,37 +189,40 @@
           >
         </li>{:else}<li>一致するサブスクがありません。</li>{/each}
     </ul>
-    <div class="pager">
+    <ActionGroup class={['pager', 'part-AnalysisAttach-pager']}>
       <span>全 {view.page.total} 件</span>
-      <div class="actions">
-        <button
+      <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
+        <Button
+          wrap
           disabled={!offset || saving}
-          onclick={() => load(Math.max(0, offset - 20))}>前へ</button
-        ><button
+          onclick={() => load(Math.max(0, offset - 20))}>前へ</Button
+        ><Button
+          wrap
           disabled={offset + 20 >= view.page.total || saving}
-          onclick={() => load(offset + 20)}>次へ</button
+          onclick={() => load(offset + 20)}>次へ</Button
         >
-      </div>
-    </div>{/if}
+      </ActionGroup>
+    </ActionGroup>{/if}
   {#if conflict}<div class="notice" role="alert">
       <p>
         別の操作で契約または紐付けが更新されました。選択を残しています。最新の契約を確認してください。
       </p>
       {#if latest}<p>最新のサービス名: {latest.service}</p>
-        <button
+        <Button
+          wrap
           disabled={saving}
           onclick={() => {
             selected = latest;
             latest = null;
             conflict = false;
             confirmed = false;
-          }}>最新の契約を選択し直す</button
+          }}>最新の契約を選択し直す</Button
         >{/if}
-      <div class="actions">
-        <button type="button" disabled={saving} onclick={onBackToResults}
-          >解析結果の一覧に戻って登録状況を更新</button
+      <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
+        <Button wrap type="button" disabled={saving} onclick={onBackToResults}
+          >解析結果の一覧に戻って登録状況を更新</Button
         >
-      </div>
+      </ActionGroup>
     </div>{/if}
   {#if selected}<p class="notice">
       「{selected.service}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。
@@ -230,9 +235,11 @@
       onchange={(e) => (confirmed = e.currentTarget.checked)}
     />紐付け先と元の抽出情報を確認しました</label
   >
-  {#if error}<p class="notice error" role="alert">{error}</p>{/if}<button
-    class="primary"
+  {#if error}<p class="notice error" role="alert">{error}</p>{/if}<Button
+    wrap
+    variant="primary"
+    class={['primary']}
     disabled={!selected || !confirmed || saving || conflict}
-    onclick={attach}>確認したサブスクへ紐付ける</button
+    onclick={attach}>確認したサブスクへ紐付ける</Button
   >
 </div>

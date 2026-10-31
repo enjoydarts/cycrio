@@ -8,14 +8,13 @@ import {
   createOverviewController,
 } from './overview-api.ts';
 
-test('overview keeps unknown and zero amounts separate from currency-specific actuals', () => {
-  const report = parseOverview(overviewFixture());
+test('overview keeps unknown and zero upcoming amounts without requiring monthly payment totals', () => {
+  const value = overviewFixture();
+  delete (value as Record<string, unknown>).billing_month;
+  const report = parseOverview(value);
   assert.equal(report.upcoming[0].amount, null);
   assert.equal(report.upcoming[1].amount, '0');
-  assert.equal(
-    report.billing_month.currencies[1].payment_amount,
-    '123456789012345678901234.123456789012',
-  );
+  assert.equal(Object.hasOwn(report, 'billing_month'), false);
   assert.equal(report.subscriptions.upcoming, 2);
   assert.equal(report.timezone, 'Asia/Tokyo');
 });
@@ -24,8 +23,6 @@ test('overview rejects inconsistent totals, periods, ownership shapes and duplic
     (v: any) => v.subscriptions.total++,
     (v: any) => v.subscriptions.upcoming++,
     (v: any) => (v.window_end = '2024-04-01'),
-    (v: any) => (v.billing_month.month = '2024-02'),
-    (v: any) => (v.billing_month.subscription_id = v.upcoming[0].id),
     (v: any) => (v.upcoming[0].next_billing_date = '2024-02-29'),
     (v: any) => (v.upcoming[0].status = 'ended'),
     (v: any) => (v.upcoming[0].amount = '0'),

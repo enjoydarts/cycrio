@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api.ts';
   import type { MailAPI, MailAccount, ProbeError } from './mail-api.ts';
@@ -68,7 +70,7 @@
   const returnTarget = $derived(
     returnTo === null
       ? account
-        ? `/analysis?setup_account=${account.id}&account_id=${account.id}`
+        ? `/analysis?tab=history&setup_account=${account.id}&account_id=${account.id}`
         : null
       : safeAnalysisReturn(returnTo),
   );
@@ -237,29 +239,36 @@
       title="メール連携"
       description="接続情報と、対象のフォルダーを管理します。"
       >{#snippet action()}
-        <button
-          class="primary"
+        <Button
+          wrap
+          variant="primary"
+          class={['primary']}
           disabled={busy || view.accounts.length >= 10 || view.uncertain}
           onclick={() => {
             query = '';
             editing = false;
             controller?.newAccount();
-          }}>＋ メールを接続</button
+          }}>＋ メールを接続</Button
         >
       {/snippet}</LibraryHeader
     >
     <LibraryPanel>
       <div class="mail-list-heading library-toolbar">
-        <span>登録済み {view.accounts.length} 件</span><button
+        <span>登録済み {view.accounts.length} 件</span><Button
+          wrap
           id="mail-refresh"
-          class="mail-button"
+          class={['mail-button', 'part-MailAccounts-mail-button']}
           disabled={busy}
-          onclick={() => controller?.refresh()}>更新</button
+          onclick={() => controller?.refresh()}>更新</Button
         >
       </div>
       {#if oauthResult === 'connected'}<p class="mail-feedback" role="status">
           メールの認証が完了しました。接続を確認して対象フォルダーを選んでください。
-          <a class="mail-button" href="/import">取り込みを続ける</a>
+          <ActionLink
+            wrap
+            class={['mail-button', 'part-MailAccounts-mail-button']}
+            href="/import">取り込みを続ける</ActionLink
+          >
         </p>{:else if oauthResult === 'failed'}<p
           class="mail-feedback"
           role="alert"
@@ -285,15 +294,16 @@
                     ).length} フォルダー</span
                   >
                 </div>
-                <span class="mail-badge">{states[row.state]}</span><button
-                  class="mail-button"
+                <span class="mail-badge">{states[row.state]}</span><Button
+                  wrap
+                  class={['mail-button', 'part-MailAccounts-mail-button']}
                   aria-label={`${row.label}の接続設定`}
                   disabled={busy}
                   onclick={() => {
                     query = '';
                     editing = false;
                     controller?.select(row.id);
-                  }}>接続を編集</button
+                  }}>接続を編集</Button
                 >
               </div>
             </li>{/each}
@@ -316,8 +326,10 @@
         {#if returnTarget}<div class="mail-return">
             {#if returnLocked}<span class="mail-button" aria-disabled="true"
                 >解析へ戻って条件を確認</span
-              >{:else}<a class="mail-button" href={returnTarget}
-                >解析へ戻って条件を確認</a
+              >{:else}<ActionLink
+                wrap
+                class={['mail-button', 'part-MailAccounts-mail-button']}
+                href={returnTarget}>解析へ戻って条件を確認</ActionLink
               >{/if}
           </div>{/if}
       </div>
@@ -330,15 +342,19 @@
       </p>{:else if view.accounts.length >= 10}<p role="alert">
         接続できるメールは10件までです。
       </p>{/if}
-    {#if view.status === 'error'}<button
-        class="mail-button"
+    {#if view.status === 'error'}<Button
+        wrap
+        class={['mail-button', 'part-MailAccounts-mail-button']}
         onclick={async () => {
           await controller?.refresh();
           if (controller?.state().status === 'ready') controller.newAccount();
-        }}>再試行</button
+        }}>再試行</Button
       >{/if}
-    <button class="mail-button" disabled={busy} onclick={closeConnection}
-      >戻る</button
+    <Button
+      wrap
+      class={['mail-button', 'part-MailAccounts-mail-button']}
+      disabled={busy}
+      onclick={closeConnection}>戻る</Button
     >
   {/if}
   <Modal
@@ -354,17 +370,19 @@
         <div class="mail-feedback" role="alert">
           <p>保存していない入力があります。入力を破棄して閉じますか？</p>
           <div class="mail-actions">
-            <button
-              class="mail-button"
+            <Button
+              wrap
+              class={['mail-button', 'part-MailAccounts-mail-button']}
               disabled={busy || view.uncertain}
-              onclick={discardConnection}>入力を破棄して閉じる</button
+              onclick={discardConnection}>入力を破棄して閉じる</Button
             >
-            <button
-              class="mail-button"
+            <Button
+              wrap
+              class={['mail-button', 'part-MailAccounts-mail-button']}
               disabled={busy || view.uncertain}
               onclick={() => {
                 confirmClose = false;
-              }}>編集を続ける</button
+              }}>編集を続ける</Button
             >
           </div>
         </div>
@@ -517,27 +535,34 @@
                 </p>{/if}
             {/if}
             <div class="mail-actions">
-              <button
+              <Button
+                wrap
                 type="submit"
-                class="mail-button mail-primary"
+                class={[
+                  'mail-button mail-primary',
+                  'part-MailAccounts-mail-button',
+                  'part-MailAccounts-mail-primary',
+                ]}
                 disabled={busy || view.uncertain || (oauth && !oauthReady)}
                 >{oauth
                   ? `${providerNames[view.form.provider]} で認証する`
-                  : '接続情報を保存'}</button
-              ><button
+                  : '接続情報を保存'}</Button
+              ><Button
+                wrap
                 id="mail-discard"
                 type="button"
-                class="mail-button"
+                class={['mail-button', 'part-MailAccounts-mail-button']}
                 disabled={busy}
-                onclick={() => controller?.discard()}>入力を破棄</button
+                onclick={() => controller?.discard()}>入力を破棄</Button
               >
             </div>
           </form>
-        {:else}<button
-            class="mail-button"
+        {:else}<Button
+            wrap
+            class={['mail-button', 'part-MailAccounts-mail-button']}
             onclick={() => {
               editing = true;
-            }}>接続情報を編集</button
+            }}>接続情報を編集</Button
           >{/if}
         {#if account}
           <section class="mail-step" aria-label="接続確認">
@@ -554,8 +579,9 @@
                     : '接続確認はまだ実行されていません'}</strong
                 ><span>最終確認: {date(account.checked_at)}（日本時間）</span>
               </p>
-              <button
-                class="mail-button"
+              <Button
+                wrap
+                class={['mail-button', 'part-MailAccounts-mail-button']}
                 disabled={busy ||
                   account.state === 'disconnected' ||
                   probePending(account.latest_probe) ||
@@ -564,7 +590,7 @@
                 onclick={() => controller?.requestProbe()}
                 >{view.uncertain
                   ? '同じ接続確認を再送する'
-                  : '接続を確認する'}</button
+                  : '接続を確認する'}</Button
               >
             </div>
             {#if account.latest_probe?.error_code || account.last_error}<p
@@ -630,21 +656,27 @@
                     : '接続確認に成功すると、フォルダー一覧を表示します。'}
                 </p>{/each}
             </div>
-            <button
-              class="mail-button mail-primary"
+            <Button
+              wrap
+              class={[
+                'mail-button mail-primary',
+                'part-MailAccounts-mail-button',
+                'part-MailAccounts-mail-primary',
+              ]}
               disabled={busy ||
                 view.uncertain ||
                 account.state !== 'ready' ||
                 view.form.credentialsDirty ||
                 probePending(account.latest_probe)}
               onclick={() => controller?.saveFolders()}
-              >フォルダー選択を保存</button
+              >フォルダー選択を保存</Button
             >
-            {#if account.state === 'ready' && account.folders.some((f) => f.selected) && !view.form.credentialsDirty && !view.form.foldersDirty}<a
-                class="mail-button"
+            {#if account.state === 'ready' && account.folders.some((f) => f.selected) && !view.form.credentialsDirty && !view.form.foldersDirty}<ActionLink
+                wrap
+                class={['mail-button', 'part-MailAccounts-mail-button']}
                 href={returnTarget ??
-                  `/analysis?setup_account=${account.id}&account_id=${account.id}`}
-                >このアカウントの自動処理を設定</a
+                  `/analysis?tab=history&setup_account=${account.id}&account_id=${account.id}`}
+                >このアカウントの自動処理を設定</ActionLink
               >{/if}
           </section>
           {#if syncAPI}<details class="mail-step">
@@ -680,22 +712,25 @@
                 />このアカウントの連携解除を確認しました</label
               >
               <div class="mail-actions">
-                <button
-                  class="mail-button"
+                <Button
+                  wrap
+                  class={['mail-button', 'part-MailAccounts-mail-button']}
                   disabled={busy}
                   onclick={() => controller?.disconnect()}
-                  >確認した連携を解除する</button
-                ><button
-                  class="mail-button"
+                  >確認した連携を解除する</Button
+                ><Button
+                  wrap
+                  class={['mail-button', 'part-MailAccounts-mail-button']}
                   disabled={busy}
                   onclick={() => controller?.confirmDisconnect(false)}
-                  >キャンセル</button
+                  >キャンセル</Button
                 >
-              </div>{:else}<button
-                class="mail-button"
+              </div>{:else}<Button
+                wrap
+                class={['mail-button', 'part-MailAccounts-mail-button']}
                 disabled={busy || account.state === 'disconnected'}
                 onclick={() => controller?.confirmDisconnect(true)}
-                >連携を解除する</button
+                >連携を解除する</Button
               >{/if}
           </details>
         {/if}
@@ -750,9 +785,6 @@
   .mail-return {
     margin-top: 1.5rem;
   }
-  .mail-return a {
-    text-decoration: none;
-  }
   .mail-return [aria-disabled='true'] {
     opacity: 0.55;
   }
@@ -769,9 +801,6 @@
     color: var(--color-muted);
     border-bottom: 1px solid var(--color-border);
     padding-bottom: 8px;
-  }
-  .mail-list-heading .mail-button {
-    border-color: transparent;
   }
   .mail-section-heading {
     margin-bottom: 1rem;
@@ -867,29 +896,9 @@
     justify-content: flex-start;
     margin-top: 1.2rem;
   }
-  .mail-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 2.8rem;
-    max-width: 100%;
-    border: 1px solid var(--color-action);
-    border-radius: 0.5rem;
-    padding: 0.65rem 1rem;
-    background: var(--color-surface);
-    color: var(--color-action);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1.6;
-    cursor: pointer;
-  }
-  .mail-primary {
+  :global(.part-MailAccounts-mail-primary) {
     background: var(--color-action);
     color: var(--color-on-action);
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
   }
   .mail-step {
     margin-top: 1.75rem;

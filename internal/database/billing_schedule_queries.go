@@ -31,7 +31,7 @@ func scheduleSubscription(ctx context.Context, tx pgx.Tx, owner, id string, lock
 	if lock {
 		suffix = " FOR UPDATE"
 	}
-	s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2`+suffix, owner, id))
+	s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`+suffix, owner, id))
 	if e == nil {
 		e = fillSubscription(ctx, tx, owner, &s)
 	}

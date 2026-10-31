@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { getAppSession } from './app-context.ts';
   import type { MailAccount } from './mail-api.ts';
@@ -25,16 +28,27 @@
     returnTo = '/analysis',
     initialAccount = '',
     initialMaximum = '',
+    failedOnly = false,
+    retryHistory = null,
   }: {
     accounts: MailAccount[];
     active?: boolean;
     retry?: AnalysisResult | null;
     requests: ProcessingRequests;
-    onAccepted: () => void;
+    onAccepted: (summary?: {
+      accepted_count: number;
+      skipped_count: number;
+    }) => void;
     onBusyChange?: (busy: boolean) => void;
     returnTo?: string;
     initialAccount?: string;
     initialMaximum?: string;
+    failedOnly?: boolean;
+    retryHistory?: {
+      id: string;
+      failed_count: number;
+      unknown_count: number;
+    } | null;
   } = $props();
   const session = getAppSession(),
     token = session.token;
@@ -96,12 +110,14 @@
       token,
       (next) => {
         view = next;
-        onBusyChange(next.status === 'saving');
+        onBusyChange(next.status === 'saving' || next.uncertain);
       },
       session.onDenied,
       () => crypto.randomUUID(),
       requests,
       true,
+      failedOnly,
+      retryHistory?.id ?? '',
     );
     selected =
       retry?.account_id ??
@@ -128,13 +144,20 @@
         view.form.confirmed,
         unknownConfirmed,
       );
-    else await controller?.start();
+    else {
+      if (failedOnly)
+        controller?.edit({
+          max_messages: '100',
+          confirmed: view.form.confirmed,
+        });
+      await controller?.start();
+    }
     if (
       controller?.state().status === 'ready' &&
       controller.state().runs.length &&
       !controller.state().uncertain
     )
-      onAccepted();
+      onAccepted(controller.state().retrySummary);
   }
 </script>
 
@@ -145,12 +168,17 @@
   </p>
   {#if !accounts.length && !retry}<div class="empty">
       <p>メールアカウントがありません。接続と同期を行ってから解析できます。</p>
-      <a class="button" href="/settings/mail">メールを連携する</a>
+      <ActionLink wrap class={['button']} href="/settings/mail"
+        >メールを連携する</ActionLink
+      >
     </div>{:else}
     <label class="section"
       >メールアカウント<select
         aria-label="メールアカウント"
-        disabled={view.status === 'saving' || view.uncertain || !!retry}
+        disabled={view.status === 'saving' ||
+          view.uncertain ||
+          !!retry ||
+          failedOnly}
         value={selected}
         onchange={(e) => {
           selectionTouched = true;
@@ -166,8 +194,9 @@
     >
     {#if view.preview}{@const p = view.preview}
       <p class="notice">
-        未解析 {p.pending_count} 件 · 失敗 {p.failed_count} 件 · 結果不明 {p.unknown_count}
-        件
+        {#if retryHistory}この履歴の失敗 {retryHistory.failed_count} 通 · 結果不明
+          {retryHistory.unknown_count} 通（再試行対象外）{:else}未解析 {p.pending_count}
+          件 · 失敗 {p.failed_count} 件 · 結果不明 {p.unknown_count} 件{/if}
       </p>
       <MailProcessingModels
         primary={p.primary}
@@ -189,7 +218,12 @@
         void submit();
       }}
     >
-      {#if retry}<p class="notice">
+      {#if failedOnly}<p class="notice">
+          {retryHistory
+            ? 'この取り込み履歴'
+            : 'この接続'}で失敗したメールをまとめて再解析します。件数にかかわらず全件が対象です。結果不明・処理中のメールは含みません。取得対象から外れたメールはスキップします。
+        </p>
+      {:else if retry}<p class="notice">
           このメールだけを現在の条件で再解析します。別の操作で結果が更新されている場合は、最新の結果を確認してからやり直してください。
         </p>{:else}<label class="section"
           >手動で今回だけ解析する件数（1〜100件）<input
@@ -236,20 +270,27 @@
       <p class="muted">
         一次判定の後、必要なメールを二次抽出へ送信します。停止しても送信済みの処理には料金が発生する場合があります。
       </p>
-      <div class="actions">
-        <button
-          class="primary"
+      <ActionGroup class={['actions', 'part-AnalysisStart-actions']}>
+        <Button
+          wrap
+          variant="primary"
+          class={['primary']}
           type="submit"
           disabled={!canSend ||
             !view.form.confirmed ||
-            (retry
-              ? retry.state === 'unknown' && !unknownConfirmed
-              : !validProcessingMaximum(view.form.max_messages) ||
-                !view.preview?.pending_count)}
-          >{retry
-            ? '確認した条件で1件を再解析'
-            : '確認した条件で解析を開始'}</button
-        ><button
+            (failedOnly
+              ? !view.preview?.failed_count
+              : retry
+                ? retry.state === 'unknown' && !unknownConfirmed
+                : !validProcessingMaximum(view.form.max_messages) ||
+                  !view.preview?.pending_count)}
+          >{failedOnly
+            ? '失敗したメールをまとめて再試行'
+            : retry
+              ? '確認した条件で1件を再解析'
+              : '確認した条件で解析を開始'}</Button
+        ><Button
+          wrap
           type="button"
           disabled={busy || view.uncertain || !selected}
           onclick={async () => {
@@ -261,13 +302,14 @@
             } finally {
               reviewing = false;
             }
-          }}>入力を破棄して最新条件を確認</button
-        ><button
+          }}>入力を破棄して最新条件を確認</Button
+        ><Button
+          wrap
           type="button"
           disabled={busy || !selected}
-          onclick={() => controller?.refresh()}>条件を更新</button
+          onclick={() => controller?.refresh()}>条件を更新</Button
         >
-      </div>
+      </ActionGroup>
     </form>
     {#if view.error}<p role="alert" class="notice error">
         {processingErrors[view.error]}
@@ -277,8 +319,8 @@
           受付状況を確認できません。解析条件と要求 ID
           を保持しています。新しい解析要求を作らず同じ要求で確認できます。
         </p>
-        <button disabled={busy} onclick={() => submit(true)}
-          >同じ解析要求を再送</button
+        <Button wrap disabled={busy} onclick={() => submit(true)}
+          >同じ解析要求を再送</Button
         >
       </div>{/if}
   {/if}

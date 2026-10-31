@@ -5,7 +5,6 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/enjoydarts/cycrio/internal/billing"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/overview"
 )
@@ -49,9 +48,6 @@ func registerOverview(mux *http.ServeMux, service OverviewService, protect prote
 			if report.Connections[i].BlockedReasons == nil {
 				report.Connections[i].BlockedReasons = []string{}
 			}
-		}
-		if report.BillingMonth.Currencies == nil {
-			report.BillingMonth.Currencies = []billing.CurrencySummary{}
 		}
 		writeJSON(w, 200, report)
 	}))

@@ -80,23 +80,6 @@ export type BillingSourceInput = {
   source_event_index: number;
   confirmed: boolean;
 };
-export type BillingSummary = {
-  month: string;
-  start_date: string;
-  end_date: string;
-  timezone: 'Asia/Tokyo';
-  subscription_id: string | null;
-  currencies: {
-    currency: string;
-    payment_amount: string;
-    refund_amount: string;
-    net_amount: string;
-    payment_count: number;
-    refund_count: number;
-  }[];
-  invoice_count: number;
-  voided_count: number;
-};
 const reasons = [
   'version_conflict',
   'possible_duplicate',
@@ -172,50 +155,6 @@ export function parseBillingEntry(value: unknown): BillingEntry {
     sources,
     created_at: timestamp(v.created_at),
     updated_at: timestamp(v.updated_at),
-  };
-}
-export function parseBillingSummary(value: unknown): BillingSummary {
-  const v = record(value),
-    month = billingMonth(v.month),
-    start_date = date(v.start_date),
-    end_date = v.end_date === '10000-01-01' ? v.end_date : date(v.end_date);
-  const [year, part] = month.split('-').map(Number),
-    nextMonth =
-      part === 12
-        ? `${String(year + 1).padStart(4, '0')}-01-01`
-        : `${String(year).padStart(4, '0')}-${String(part + 1).padStart(2, '0')}-01`;
-  if (start_date !== `${month}-01` || end_date !== nextMonth) return invalid();
-  const sum = (x: unknown, signed = false) =>
-    typeof x === 'string' &&
-    (signed ? /^-?\d+(\.\d{1,12})?$/ : /^\d+(\.\d{1,12})?$/).test(x)
-      ? x
-      : invalid();
-  const currencies = array(
-    v.currencies,
-    (item) => {
-      const c = record(item);
-      return {
-        currency: billingCurrency(c.currency),
-        payment_amount: sum(c.payment_amount),
-        refund_amount: sum(c.refund_amount),
-        net_amount: sum(c.net_amount, true),
-        payment_count: integer(c.payment_count),
-        refund_count: integer(c.refund_count),
-      };
-    },
-    Number.MAX_SAFE_INTEGER,
-  );
-  if (new Set(currencies.map((c) => c.currency)).size !== currencies.length)
-    return invalid();
-  return {
-    month,
-    start_date,
-    end_date,
-    timezone: choice(v.timezone, ['Asia/Tokyo']),
-    subscription_id: nullable(v.subscription_id, uuid),
-    currencies,
-    invoice_count: integer(v.invoice_count),
-    voided_count: integer(v.voided_count),
   };
 }
 const decimalKey = (value: string) => {
@@ -511,26 +450,6 @@ export function createBillingAPI(base: string, fetcher: typeof fetch = fetch) {
         )
           return invalid();
       return { ...result, token: fingerprint(body.token) };
-    },
-    async summary(
-      month: string,
-      sid: string | null,
-      token: TokenProvider,
-      signal?: AbortSignal,
-    ): Promise<BillingSummary> {
-      const query = input(
-          () =>
-            new URLSearchParams({
-              month: billingMonth(month),
-              ...(sid !== null ? { subscription_id: uuid(sid) } : {}),
-            }),
-        ),
-        result = parseBillingSummary(
-          await request(`/v1/billing-summary?${query}`, token, signal),
-        );
-      return result.month === month && result.subscription_id === sid
-        ? result
-        : invalid();
     },
   };
 }

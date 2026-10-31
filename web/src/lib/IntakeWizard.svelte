@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { page } from '$app/state';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -107,7 +109,9 @@
     description="メールを選んで、サブスクを見つけましょう。"
   >
     {#snippet action()}
-      <a class="button" href="/subscriptions">ライブラリに戻る</a>
+      <ActionLink wrap class={['button']} href="/subscriptions"
+        >ライブラリに戻る</ActionLink
+      >
     {/snippet}
   </LibraryHeader>
   <LibraryPanel>
@@ -120,25 +124,27 @@
           </li>{/each}
       </ol>
       {#if view.mail.error}<p class="notice" role="alert">
-          メールの状態を確認できませんでした。入力は保持しています。<button
+          メールの状態を確認できませんでした。入力は保持しています。<Button
+            wrap
             disabled={locked}
-            onclick={() => controller?.refresh()}>再読み込み</button
+            onclick={() => controller?.refresh()}>再読み込み</Button
           >
         </p>{/if}
       {#if view.issue}<div class="notice" role="status">
           <p>{issues[view.issue]}</p>
-          {#if view.issue === 'confirm_switch'}<button
+          {#if view.issue === 'confirm_switch'}<Button
+              wrap
               onclick={() => {
                 if (controller?.choose(pendingChoice, true)) pendingChoice = '';
-              }}>選択を破棄して切り替える</button
+              }}>選択を破棄して切り替える</Button
             >{/if}
         </div>{/if}
       {#if view.folderUncertain}<div class="notice" role="alert">
           <p>
             フォルダ選択の保存結果を確認できません。保存済みの状態を読み直してから進んでください。
           </p>
-          <button onclick={() => controller?.adoptStoredFolders()}
-            >保存済みの選択を確認して採用</button
+          <Button wrap onclick={() => controller?.adoptStoredFolders()}
+            >保存済みの選択を確認して採用</Button
           >
         </div>{/if}
       {#if view.mail.uncertain}<p class="notice" role="status">
@@ -146,14 +152,15 @@
         </p>{/if}
       {#if leaveTo}<div class="notice" role="alert">
           <p>編集中のフォルダ選択・取り込み条件を破棄して移動しますか？</p>
-          <button
+          <Button
+            wrap
             disabled={locked}
             onclick={() => {
               if (locked) return;
               allowLeave = true;
               void goto(leaveTo);
-            }}>破棄して移動</button
-          ><button onclick={() => (leaveTo = '')}>編集を続ける</button>
+            }}>破棄して移動</Button
+          ><Button wrap onclick={() => (leaveTo = '')}>編集を続ける</Button>
         </div>{/if}
       {#if view.step === 1}
         <section class="stage">
@@ -163,8 +170,10 @@
               メールを読み込んでいます…
             </p>{/if}
           <div class="accounts">
-            {#each view.mail.accounts as a}<button
-                class:selected={view.mail.selected === a.id}
+            {#each view.mail.accounts as a}<Button
+                wrap
+                class={[{ selected: view.mail.selected === a.id }]}
+                variant="tab"
                 disabled={locked}
                 aria-pressed={view.mail.selected === a.id}
                 onclick={() => {
@@ -187,13 +196,14 @@
                   ></span
                 ><span aria-hidden="true"
                   >{view.mail.selected === a.id ? '✓' : '→'}</span
-                ></button
+                ></Button
               >{/each}
           </div>
-          <button
-            class="add"
+          <Button
+            wrap
+            class={['add', 'part-IntakeWizard-add']}
             disabled={locked || connecting}
-            onclick={() => (connecting = true)}>＋ メールを追加する</button
+            onclick={() => (connecting = true)}>＋ メールを追加する</Button
           >
           {#if !view.mail.accounts.length && view.mail.status === 'ready'}<p>
               Gmail・Google Workspace・Outlook.com・Fastmail・IMAP
@@ -212,13 +222,14 @@
                   ? '接続を確認しています…'
                   : '接続確認を行うとフォルダを取得できます。'}
               </p>
-              <button
+              <Button
+                wrap
                 disabled={view.mail.status === 'saving' ||
                   probePending(account.latest_probe)}
                 onclick={() => controller?.probe()}
                 >{view.mail.uncertain
                   ? '同じ要求で受付を確認'
-                  : '接続を確認'}</button
+                  : '接続を確認'}</Button
               ><a
                 href={'/settings/mail?return_to=' +
                   encodeURIComponent('/import?account_id=' + account.id)}
@@ -280,25 +291,30 @@
       {#if view.accepted}<div class="notice" role="status">
           <h2>取り込みを受け付けました</h2>
           <p>メールの探索・解析・登録は順次進みます。</p>
-          <a
-            class="button primary"
+          <ActionLink
+            wrap
+            variant="primary"
+            class={['button primary']}
             href={'/analysis?tab=history&account_id=' + view.accepted}
-            >取り込み履歴を見る</a
+            >取り込み履歴を見る</ActionLink
           >
         </div>{/if}
       <footer>
         <span
-          >{#if view.step > 1}<button
+          >{#if view.step > 1}<Button
+              wrap
               disabled={locked}
-              onclick={() => controller?.back()}>戻る</button
+              onclick={() => controller?.back()}>戻る</Button
             >{/if}</span
-        >{#if view.step < 3}<button
-            class="primary"
+        >{#if view.step < 3}<Button
+            wrap
+            variant="primary"
+            class={['primary']}
             disabled={locked || connecting || !account}
             onclick={() => controller?.next()}
             >{view.step === 1
               ? 'フォルダを選ぶ →'
-              : '取り込み条件を確認 →'}</button
+              : '取り込み条件を確認 →'}</Button
           >{/if}
       </footer>
     </div>
@@ -363,24 +379,15 @@
     gap: 0.75rem;
     margin: 1.5rem 0;
   }
-  .accounts button {
+  .accounts :global(.ui-action) {
     display: flex;
     gap: 1rem;
     align-items: center;
     text-align: left;
     width: 100%;
-    padding: 1.1rem;
-    border-radius: 0.75rem;
-    color: var(--color-text);
   }
-  .accounts button.selected {
-    border-color: var(--color-action);
-    background: var(--color-surface-soft);
-  }
-  .accounts button > span:nth-child(2) {
+  .accounts :global(.ui-action > span:nth-child(2)) {
     flex: 1;
-    min-width: 0;
-    overflow-wrap: anywhere;
   }
   .accounts small {
     display: block;
@@ -394,7 +401,7 @@
     font-size: 1.4rem;
     color: var(--color-action);
   }
-  .add {
+  :global(.part-IntakeWizard-add) {
     width: 100%;
     border-style: dashed;
     padding: 1rem;
@@ -450,12 +457,8 @@
     .steps {
       margin: 1rem 0;
     }
-    .accounts button {
-      padding: 0.8rem;
+    .accounts :global(.ui-action) {
       gap: 0.6rem;
-    }
-    footer button {
-      font-size: 0.8rem;
     }
   }
 </style>

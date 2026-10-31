@@ -33,7 +33,7 @@ func TestSubscriptionAutomationFeedReflectsManualResolution(t *testing.T) {
 				} else {
 					automaticFailureTrigger(t, f)
 				}
-				if _, err := r.RegisterDue(ctx, 20); err != nil {
+				if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 					t.Fatal(err)
 				}
 				if ledger == "failed" {
@@ -106,7 +106,7 @@ func TestSubscriptionAutomationManualBillingSourceHasIndependentProvenance(t *te
 			if _, err := r.SaveAutomation(ctx, f.owner, autoregistration.PreferenceInput{Enabled: true}); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := r.RegisterDue(ctx, 20); err != nil {
+			if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 				t.Fatal(err)
 			}
 			page, err := r.List(ctx, f.owner, subscriptions.Filter{Limit: 20})

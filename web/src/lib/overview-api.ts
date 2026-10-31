@@ -12,7 +12,6 @@ import {
   timestamp,
   uuid,
 } from './daily-api.ts';
-import { parseBillingSummary, type BillingSummary } from './billing-api.ts';
 import { parseValues, type SubscriptionValues } from './subscriptions-api.ts';
 import { createFeed, type FeedView } from './daily-controller.ts';
 
@@ -50,7 +49,6 @@ export type OverviewReport = {
   attention_messages: number;
   upcoming: UpcomingSubscription[];
   connections: OverviewConnection[];
-  billing_month: BillingSummary;
 };
 export function parseOverview(value: unknown): OverviewReport {
   const v = record(value),
@@ -139,12 +137,6 @@ export function parseOverview(value: unknown): OverviewReport {
   );
   if (new Set(connections.map((x) => x.id)).size !== connections.length)
     return invalid();
-  const billing_month = parseBillingSummary(v.billing_month);
-  if (
-    billing_month.month !== as_of.slice(0, 7) ||
-    billing_month.subscription_id !== null
-  )
-    return invalid();
   return {
     as_of,
     window_end,
@@ -154,7 +146,6 @@ export function parseOverview(value: unknown): OverviewReport {
     attention_messages: integer(v.attention_messages),
     upcoming,
     connections,
-    billing_month,
   };
 }
 export function createOverviewAPI(base: string, fetcher: typeof fetch = fetch) {

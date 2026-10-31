@@ -1,5 +1,8 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import Button from './Button.svelte';
+  import ActionLink from './ActionLink.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import { onMount, tick } from 'svelte';
   import { page } from '$app/state';
   import { beforeNavigate, goto } from '$app/navigation';
   import {
@@ -8,6 +11,11 @@
   } from './draft-navigation.ts';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
+  import { getWorkspace } from './workspace-context.ts';
+  import {
+    createSubscriptionDelete,
+    type DeleteView,
+  } from './subscription-delete.ts';
   import {
     createSubscriptionsAPI,
     type Subscription,
@@ -38,6 +46,7 @@
     billingDrafts = new Map(),
     onFrozen = () => {},
     onSaved = () => {},
+    onDeleted = () => {},
   }: {
     id: string;
     embedded?: boolean;
@@ -48,8 +57,10 @@
       state: Pick<EditorView, 'status' | 'uncertain' | 'dirty'>,
     ) => void;
     onSaved?: () => void;
+    onDeleted?: () => void;
   } = $props();
   const session = getAppSession(),
+    workspace = getWorkspace(),
     token = session.token,
     api = createSubscriptionsAPI(PUBLIC_API_BASE_URL);
   let view = $state<FeedView<Subscription>>({
@@ -65,6 +76,56 @@
     dirty = $state(false),
     childFrozen = $state(false);
   let leaveTo = $state('');
+  let deleting = $state(false);
+  let deleted = $state(false);
+  let deleteView = $state<DeleteView>({
+    busy: false,
+    uncertain: false,
+    locked: false,
+    error: null,
+  });
+  let deleteController: ReturnType<typeof createSubscriptionDelete> | undefined;
+  function openDelete() {
+    if (!view.page || frozen || childFrozen || deleteView.locked) return;
+    const subscription = view.page;
+    deleteView = { busy: false, uncertain: false, locked: false, error: null };
+    deleteController = createSubscriptionDelete(
+      api,
+      token,
+      id,
+      subscription.version,
+      (next) => {
+        deleteView = next;
+        onFrozen({
+          status: next.locked ? 'saving' : 'ready',
+          uncertain: next.uncertain,
+          dirty,
+        });
+      },
+      async () => {
+        deleted = true;
+        await tick();
+        deleting = false;
+        drafts.delete(id);
+        scheduleDrafts.delete(id);
+        for (const [key, draft] of billingDrafts)
+          if (draft.subscription_id === id) billingDrafts.delete(key);
+        dirty = false;
+        onFrozen({ status: 'ready', uncertain: false, dirty: false });
+        void workspace?.refresh();
+        if (embedded) onDeleted();
+        else void goto(`/subscriptions${sourceQuery}`);
+      },
+      () => {
+        deleting = false;
+        drafts.clear();
+        scheduleDrafts.clear();
+        billingDrafts.clear();
+        session.onDenied();
+      },
+    );
+    deleting = true;
+  }
   const hasUnsaved = () =>
     dirty ||
     hasDraftChanges(
@@ -74,7 +135,7 @@
     );
   const navigation = createDraftNavigation(
     hasUnsaved,
-    () => frozen || childFrozen,
+    () => deleteView.locked || frozen || childFrozen,
     () => {
       drafts.clear();
       scheduleDrafts.clear();
@@ -138,7 +199,12 @@
 
 <svelte:window
   onbeforeunload={(event) => {
-    if (frozen || childFrozen || (!embedded && hasUnsaved())) {
+    if (
+      deleteView.locked ||
+      frozen ||
+      childFrozen ||
+      (!embedded && hasUnsaved())
+    ) {
       event.preventDefault();
       event.returnValue = '';
     }
@@ -146,11 +212,12 @@
 />
 
 {#snippet detailBody()}
-  {#if view.status === 'loading'}<p role="status" class="notice">
+  {#if deleted}<p role="status" class="notice">削除しました。</p>
+  {:else if view.status === 'loading'}<p role="status" class="notice">
       読み込んでいます…
     </p>{:else if view.error}<div class="notice" role="alert">
       <p>{processingErrors[view.error]}</p>
-      <button onclick={() => controller?.load(id)}>再読み込み</button>
+      <Button wrap onclick={() => controller?.load(id)}>再読み込み</Button>
     </div>{:else if view.page}{@const s = view.page}
     {#if embedded}<header class="titlebar">
         <div>
@@ -158,32 +225,48 @@
           <h1>{s.service}</h1>
           <p>{s.plan ?? 'プラン不明'}</p>
         </div>
-        <button
-          class="primary"
-          disabled={frozen || childFrozen}
-          onclick={() => {
-            editing = true;
-            localTab = 'edit';
-          }}>契約を編集</button
+        <ActionGroup
+          ><Button
+            wrap
+            variant="primary"
+            type="button"
+            class={['primary']}
+            disabled={frozen || childFrozen}
+            onclick={() => {
+              editing = true;
+              localTab = 'edit';
+            }}>契約を編集</Button
+          ><Button
+            wrap
+            type="button"
+            disabled={frozen || childFrozen || deleteView.locked}
+            onclick={openDelete}>削除</Button
+          ></ActionGroup
         >
       </header>{/if}
     <nav class={embedded ? 'tabs' : 'library-tabs'} aria-label="サブスクの詳細">
-      {#if embedded}{#each [['overview', '契約情報'], ['history', '請求履歴'], ['schedule', '請求予定'], ['sources', '取得元'], ['edit', '編集']] as [value, label]}<button
+      {#if embedded}{#each [['overview', '契約情報'], ['history', '請求履歴'], ['schedule', '請求予定'], ['sources', '取得元'], ['edit', '編集']] as [value, label]}<Button
+            wrap
+            variant="tab"
             type="button"
             disabled={frozen || childFrozen}
             aria-current={tab === value ? 'page' : undefined}
-            onclick={() => (localTab = value)}>{label}</button
+            onclick={() => (localTab = value)}>{label}</Button
           >{/each}{:else}
-        <a
+        <ActionLink
+          wrap
+          variant="tab"
           href={`/subscriptions/${id}${sourceQuery}`}
           aria-current={page.url.searchParams.get('tab') !== 'history'
             ? 'page'
-            : undefined}>概要</a
-        ><a
+            : undefined}>概要</ActionLink
+        ><ActionLink
+          wrap
+          variant="tab"
           href={`/subscriptions/${id}?tab=history${sourceQuery ? `&${sourceQuery.slice(1)}` : ''}`}
           aria-current={page.url.searchParams.get('tab') === 'history'
             ? 'page'
-            : undefined}>請求・支払い履歴</a
+            : undefined}>請求・支払い履歴</ActionLink
         >
       {/if}
     </nav>
@@ -319,16 +402,26 @@
       eyebrow="MY LIBRARY"
     >
       {#snippet action()}
-        <a class="button" href={`/subscriptions${sourceQuery}`}
-          >← サブスク一覧</a
+        <ActionLink
+          wrap
+          class={['button']}
+          href={`/subscriptions${sourceQuery}`}>← サブスク一覧</ActionLink
         >
-        {#if view.status === 'ready' && view.page}<button
-            class="primary"
+        {#if view.status === 'ready' && view.page}<Button
+            wrap
+            variant="primary"
+            type="button"
+            class={['primary']}
             disabled={frozen || childFrozen}
             onclick={() => {
               editing = true;
               localTab = 'edit';
-            }}>契約を編集</button
+            }}>契約を編集</Button
+          ><Button
+            wrap
+            type="button"
+            disabled={frozen || childFrozen || deleteView.locked}
+            onclick={openDelete}>削除</Button
           >{/if}
       {/snippet}
     </LibraryHeader>
@@ -337,23 +430,77 @@
     >
   {/if}
 </section>
+<Modal
+  open={deleting}
+  title="Cycrioから削除"
+  busy={deleteView.locked}
+  onclose={() => {
+    if (!deleteView.locked) deleting = false;
+  }}
+>
+  <p>
+    「{view.page
+      ?.service}」をCycrioから削除します。サービス自体の解約は行いません。
+  </p>
+  <p>
+    過去の支払い・返金履歴は残ります。サブスク一覧と今後の請求予定からは表示されなくなります。
+  </p>
+  <p>このサブスクの未保存編集は破棄されます。</p>
+  {#if deleteView.error}<p class="notice" role="alert">
+      {processingErrors[deleteView.error]}
+    </p>{/if}
+  {#if deleteView.uncertain}<p class="notice" role="status">
+      削除の受付状況が不明です。この画面で同じ要求を再確認してください。
+    </p>{/if}
+  <ActionGroup>
+    <Button
+      wrap
+      type="button"
+      disabled={deleteView.locked}
+      onclick={() => (deleting = false)}>キャンセル</Button
+    >
+    {#if deleteView.error === 'conflict'}
+      <Button
+        wrap
+        type="button"
+        onclick={() => {
+          deleting = false;
+          void controller?.load(id);
+        }}>最新の契約を読み込む</Button
+      >
+    {:else}
+      <Button
+        wrap
+        type="button"
+        disabled={deleteView.busy ||
+          (!!deleteView.error && !deleteView.uncertain)}
+        onclick={() => deleteController?.submit()}
+        >{deleteView.uncertain
+          ? '同じ要求で削除を確認'
+          : 'Cycrioから削除する'}</Button
+      >
+    {/if}
+  </ActionGroup>
+</Modal>
 {#if !embedded}<Modal
     open={!!leaveTo}
     title="未保存の編集があります"
     busy={frozen || childFrozen}
     onclose={() => navigation.stay()}
     ><p>この画面を離れると、保持している下書きは破棄されます。</p>
-    <div class="actions">
-      <button
+    <ActionGroup class={['actions', 'part-SubscriptionDetail-actions']}>
+      <Button
+        wrap
         type="button"
         disabled={frozen || childFrozen}
-        onclick={() => navigation.stay()}>編集を続ける</button
-      ><button
+        onclick={() => navigation.stay()}>編集を続ける</Button
+      ><Button
+        wrap
         type="button"
         disabled={frozen || childFrozen}
-        onclick={() => navigation.discardAndLeave()}>破棄して移動</button
+        onclick={() => navigation.discardAndLeave()}>破棄して移動</Button
       >
-    </div></Modal
+    </ActionGroup></Modal
   >{/if}
 
 <style>
@@ -372,20 +519,6 @@
     display: flex;
     gap: 14px;
     overflow: auto;
-  }
-  .tabs button {
-    background: none;
-    border: 0;
-    border-radius: 0;
-    padding: 12px 0;
-    white-space: nowrap;
-    font-size: 12px;
-    color: var(--color-muted);
-    border-bottom: 2px solid transparent;
-  }
-  .tabs button[aria-current] {
-    color: var(--color-action);
-    border-color: var(--color-action);
   }
   .embedded h2 {
     font-size: 15px;

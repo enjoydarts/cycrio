@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -102,22 +104,25 @@
     </p>{:else if view.error}<p class="notice" role="alert">
       {processingErrors[view.error]}
     </p>
-    <button onclick={() => controller?.load(filter)}>再読み込み</button>{/if}
+    <Button wrap onclick={() => controller?.load(filter)}>再読み込み</Button
+    >{/if}
   {#if view.page}<AnalysisHistoryPanel
       page={view.page}
       {saving}
       onCancel={cancel}
     />
-    <div class="pager">
+    <ActionGroup class={['pager', 'part-AnalysisBatchHistory-pager']}>
       <span>全 {view.page.total} 件</span>
-      <div class="actions">
-        {#if offset > 0}<button
+      <ActionGroup class={['actions', 'part-AnalysisBatchHistory-actions']}>
+        {#if offset > 0}<Button
+            wrap
             disabled={!!saving}
-            onclick={() => (offset = Math.max(0, offset - 20))}>前へ</button
-          >{/if}{#if offset + 20 < view.page.total}<button
+            onclick={() => (offset = Math.max(0, offset - 20))}>前へ</Button
+          >{/if}{#if offset + 20 < view.page.total}<Button
+            wrap
             disabled={!!saving}
-            onclick={() => (offset += 20)}>次へ</button
+            onclick={() => (offset += 20)}>次へ</Button
           >{/if}
-      </div>
-    </div>{/if}
+      </ActionGroup>
+    </ActionGroup>{/if}
 </div>

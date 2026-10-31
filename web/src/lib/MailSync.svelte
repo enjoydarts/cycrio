@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api.ts';
   import type { MailAccount, ProbeError } from './mail-api.ts';
@@ -129,11 +130,12 @@
       <p class="sync-eyebrow">MANUAL ID SYNC</p>
       <h4>メールIDの手動同期</h4>
     </div>
-    <button
+    <Button
+      wrap
       id="sync-refresh"
       type="button"
       disabled={busy}
-      onclick={() => controller?.refresh()}>同期履歴を更新</button
+      onclick={() => controller?.refresh()}>同期履歴を更新</Button
     >
   </div>
   <p class="sync-help">
@@ -205,17 +207,19 @@
         '未入力'} 件
     </p>
     <div class="sync-actions">
-      <button
+      <Button
+        wrap
         id="sync-start"
-        class="sync-primary"
+        class={['sync-primary', 'part-MailSync-sync-primary']}
         type="submit"
         disabled={!canStart}
-        onclick={() => controller?.start()}>入力した条件で同期を開始</button
-      ><button
+        onclick={() => controller?.start()}>入力した条件で同期を開始</Button
+      ><Button
+        wrap
         id="sync-discard"
         type="button"
         disabled={view.status === 'saving' || view.uncertain}
-        onclick={() => controller?.discard()}>同期条件を破棄</button
+        onclick={() => controller?.discard()}>同期条件を破棄</Button
       >
     </div>
   </form>
@@ -231,11 +235,12 @@
     {#if view.uncertain}<p class="sync-feedback">
         開始要求が受け付けられたか確認できません。履歴を確認し、必要なら同じ要求を再送してください。条件と要求IDは保持しています。
       </p>
-      <button
+      <Button
+        wrap
         id="sync-retry"
         type="button"
         disabled={busy}
-        onclick={() => controller?.retry()}>同じ要求を再送</button
+        onclick={() => controller?.retry()}>同じ要求を再送</Button
       >{/if}
   </div>
   <div class="sync-history-heading">
@@ -273,10 +278,11 @@
         {#if run.error_code}<p class="sync-help">
             {reasons[run.error_code]}
           </p>{/if}
-        {#if syncActive(run)}<button
+        {#if syncActive(run)}<Button
+            wrap
             type="button"
             disabled={view.status === 'saving'}
-            onclick={() => controller?.cancel(run.id)}>同期を停止</button
+            onclick={() => controller?.cancel(run.id)}>同期を停止</Button
           >{/if}
       </li>
     {:else}<li class="sync-empty">
@@ -370,31 +376,9 @@
     color: var(--color-text);
     background: var(--color-surface);
   }
-  button {
-    min-height: 2.8rem;
-    max-width: 100%;
-    padding: 0.65rem 1rem;
-    border: 1px solid var(--color-action);
-    border-radius: 0.5rem;
-    background: var(--color-surface);
-    color: var(--color-action);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1.6;
-    cursor: pointer;
-  }
-  .sync-primary {
+  :global(.part-MailSync-sync-primary) {
     background: var(--color-action);
     color: var(--color-on-action);
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-  button:focus-visible,
-  input:focus-visible {
-    outline: 2px solid var(--color-action);
-    outline-offset: 2px;
   }
   .sync-actions {
     justify-content: flex-start;

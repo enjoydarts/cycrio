@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -217,7 +218,7 @@ test('actual refresh and discard handlers have separate semantics', async () => 
       return;
     }
     const node = value as Record<string, unknown>;
-    if (node.name === 'button') buttons.push(node);
+    if (node.name === 'Button') buttons.push(node);
     Object.values(node).forEach(visit);
   }
   visit(parse(source, { modern: true }));
@@ -265,7 +266,7 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
     'utf8',
   );
   const syncCode = compile(syncSource, { generate: 'server' }).js.code.replace(
-    /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+    /(from\s+|^import\s+)(['"])([^'"]+)\2/gm,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
@@ -285,7 +286,7 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
     const resolved = componentCode
       .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
       .replace(
-        /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+        /(from\s+|^import\s+)(['"])([^'"]+)\2/gm,
         (_m, prefix, quote, path) =>
           `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
       );
@@ -296,9 +297,9 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
   const headerURL = await compiledURL('LibraryHeader');
   const panelURL = await compiledURL('LibraryPanel');
   const code = js.code.replace(
-    /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+    /(from\s+|^import\s+)(['"])([^'"]+)\2/gm,
     (_m, prefix, quote, path) =>
-      `${prefix}${quote}${path === './LibraryHeader.svelte' ? headerURL : path === './LibraryPanel.svelte' ? panelURL : path === './Modal.svelte' ? modalURL : path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
+      `${prefix}${quote}${path === './LibraryHeader.svelte' ? headerURL : path === './LibraryPanel.svelte' ? panelURL : path === './Modal.svelte' ? modalURL : path === './MailProcessing.svelte' ? processingURL : path === './MailSync.svelte' ? syncURL : path.startsWith('.') ? new URL(/\.(ts|svelte)$/.test(path) ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
   const Component = (
     await import(
@@ -342,7 +343,7 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
     }).body;
     if (oauthResult === 'connected') {
       assert.match(
-        resultHTML,
+        resultHTML.replace(/<!--[\s\S]*?-->/g, ''),
         /href="\/import"[^>]*>\s*取り込みを続ける\s*<\/a>/,
       );
       assert.match(resultHTML, /接続を確認して対象フォルダーを選んでください/);

@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile, access } from 'node:fs/promises';
@@ -125,7 +126,7 @@ async function componentURL(name: string): Promise<string> {
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await componentURL(match[1]);
   const code = js.code.replace(
-    /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+    /(^import[^\n]*?from\s+|^import\s+)(['"])([^'"]+)\2/gm,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
   );
@@ -169,17 +170,19 @@ test('single rail keeps library navigation and a bottom settings link without ne
   for (const href of [
     '/subscriptions',
     '/analysis?tab=attention',
-    '/subscriptions/summary',
-    '/analysis?tab=history',
     '/import?connect=true',
   ]) {
     assert.ok(analysis.includes(`href="${href}"`));
   }
-  assert.match(analysis, /aria-label="確認が必要なメール"/);
+  assert.doesNotMatch(
+    analysis,
+    /href="\/analysis\?tab=history"|subscriptions\/summary|支払・返金/,
+  );
+  assert.match(analysis, /aria-label="確認が必要な契約候補"/);
   assert.match(analysis, /aria-controls="workspace-sidebar"/);
   assert.doesNotMatch(analysis, /確認が必要なメール[^<]*0/);
 });
-test('query navigation selects attention and history without selecting subscription summary', async () => {
+test('query navigation selects attention and history and subscription routes', async () => {
   const Component = await component('AppShell');
   const props = {
     user: { id: 'owner', role: 'user' },
@@ -187,9 +190,9 @@ test('query navigation selects attention and history without selecting subscript
     children: createRawSnippet(() => ({ render: () => '<p>本文</p>' })),
   };
   for (const [pathname, search, href] of [
+    ['/analysis', '', '/analysis?tab=attention'],
     ['/analysis', '?tab=attention', '/analysis?tab=attention'],
-    ['/analysis', '?tab=history', '/analysis?tab=history'],
-    ['/subscriptions/summary', '', '/subscriptions/summary'],
+    ['/subscriptions', '', '/subscriptions'],
   ]) {
     const html = render(Component, {
       props: { ...props, pathname, search },

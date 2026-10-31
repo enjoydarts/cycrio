@@ -21,6 +21,7 @@ type PendingProcessingRequest = {
   account: string;
   input: ProcessingInput | ProcessingRetryInput;
   message: string | null;
+  failedOnly?: boolean;
 };
 export type ProcessingRequests = Map<string, PendingProcessingRequest>;
 export type ProcessingView = {
@@ -34,6 +35,7 @@ export type ProcessingView = {
   status:
     'idle' | 'loading' | 'saving' | 'ready' | 'error' | 'denied' | 'disposed';
   error: ErrorCode | null;
+  retrySummary?: { accepted_count: number; skipped_count: number };
 };
 const blank = (basis: ProcessingBasis | null = null): ProcessingForm => ({
   max_messages: '',
@@ -78,6 +80,8 @@ export function createMailProcessingController(
   randomUUID: () => string = () => crypto.randomUUID(),
   pending: ProcessingRequests = new Map(),
   feedOnly = false,
+  failedOnly = false,
+  historyID = '',
 ) {
   let view = emptyProcessingView(),
     generation = 0,
@@ -164,15 +168,20 @@ export function createMailProcessingController(
     publish({ status: 'saving', error: null });
     let terminal = false;
     try {
-      const run = request.message
-        ? await api.retry(
-            request.account,
-            request.message,
-            request.input as ProcessingRetryInput,
-            token,
-            signal,
-          )
-        : await api.start(request.account, request.input, token, signal);
+      const batch = request.failedOnly
+        ? await api.retryFailed(request.account, request.input, token, signal)
+        : null;
+      const run = batch
+        ? batch.run
+        : request.message
+          ? await api.retry(
+              request.account,
+              request.message,
+              request.input as ProcessingRetryInput,
+              token,
+              signal,
+            )
+          : await api.start(request.account, request.input, token, signal);
       if (current(seq)) {
         pending.delete(request.account);
         terminal = !processingActive(run);
@@ -181,6 +190,12 @@ export function createMailProcessingController(
           status: 'ready',
           uncertain: false,
           form: { ...view.form, confirmed: false },
+          retrySummary: batch
+            ? {
+                accepted_count: batch.accepted_count,
+                skipped_count: batch.skipped_count,
+              }
+            : undefined,
         });
       }
     } catch (error) {
@@ -265,14 +280,16 @@ export function createMailProcessingController(
         !mayStart() ||
         !validProcessingMaximum(view.form.max_messages) ||
         !view.form.confirmed ||
-        !view.preview?.pending_count
+        !(failedOnly ? view.preview?.failed_count : view.preview?.pending_count)
       )
         return;
       await submit({
         account: view.account!,
         message: null,
+        failedOnly,
         input: {
           ...view.form.basis!,
+          ...(failedOnly && historyID ? { history_id: historyID } : {}),
           full_email: true,
           request_id: randomUUID(),
           max_messages: Number(view.form.max_messages),

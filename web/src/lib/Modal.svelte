@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { Snippet } from 'svelte';
   let {
     open,
@@ -58,13 +59,15 @@
 >
   <header>
     <h2 id={titleId} bind:this={heading} tabindex="-1">{title}</h2>
-    <button
+    <Button
+      wrap
+      variant="icon"
       type="button"
       disabled={busy}
       aria-label="閉じる"
       onclick={() => {
         if (!busy && canClose()) onclose();
-      }}><span aria-hidden="true">×</span></button
+      }}><span aria-hidden="true">×</span></Button
     >
   </header>
   {@render children()}
@@ -100,18 +103,6 @@
     font-size: 18px;
     margin: 0;
     overflow-wrap: anywhere;
-  }
-  button {
-    display: grid;
-    place-items: center;
-    min-width: 44px;
-    min-height: 44px;
-    flex-shrink: 0;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: var(--color-text);
-    font-size: 24px;
   }
   @media (max-width: 500px) {
     dialog {

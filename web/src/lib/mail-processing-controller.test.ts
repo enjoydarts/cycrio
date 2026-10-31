@@ -26,6 +26,8 @@ const deferred = <T>() => {
 function setup(
   patch: Partial<MailProcessingAPI> = {},
   pending: ProcessingRequests = new Map(),
+  failedOnly = false,
+  historyID = '',
 ) {
   const calls: {
     operation: string;
@@ -46,6 +48,14 @@ function setup(
     retry: async (_id, _message, input) => {
       calls.push({ operation: 'retry', input });
       return processingRun();
+    },
+    retryFailed: async (_id, input) => {
+      calls.push({ operation: 'retry-failed', input });
+      return {
+        run: processingRun({ max_messages: 1051, total_count: 1051 }),
+        accepted_count: 1051,
+        skipped_count: 0,
+      };
     },
     cancel: async () => {
       calls.push({ operation: 'cancel' });
@@ -71,10 +81,46 @@ function setup(
     },
     () => ids.request,
     pending,
+    false,
+    failedOnly,
+    historyID,
   );
   controller.setAccount(ids.account);
   return { controller, calls, pending, denied: () => denied };
 }
+test('bulk failed mode uses failed population and replays the same request after response loss', async () => {
+  const bodies: unknown[] = [];
+  const s = setup(
+    {
+      preview: async () =>
+        processingPreview({ pending_count: 0, failed_count: 1051 }),
+      retryFailed: async (_id, input) => {
+        bodies.push(input);
+        if (bodies.length === 1) throw new ApiError('dependency_unavailable');
+        return {
+          run: processingRun({ max_messages: 1051, total_count: 1051 }),
+          accepted_count: 1051,
+          skipped_count: 0,
+        };
+      },
+    },
+    new Map(),
+    true,
+    `automation:${ids.run}:2`,
+  );
+  await s.controller.refresh();
+  s.controller.edit({ max_messages: '100', confirmed: true });
+  await s.controller.start();
+  assert.equal(bodies.length, 1);
+  assert.equal(
+    (bodies[0] as { history_id: string }).history_id,
+    `automation:${ids.run}:2`,
+  );
+  assert.equal(s.controller.state().uncertain, true);
+  await s.controller.replay();
+  assert.deepEqual(bodies[1], bodies[0]);
+  assert.equal(s.controller.state().runs[0].total_count, 1051);
+});
 test('explicit selected result and run work beyond legacy latest100/latest20 collections', async () => {
   const s = setup({ results: async () => [], runs: async () => [] });
   await s.controller.refresh();

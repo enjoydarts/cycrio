@@ -56,6 +56,10 @@ type UpdateInput struct {
 	ExpectedVersion int64 `json:"expected_version"`
 	Confirmed       bool  `json:"confirmed"`
 }
+type DeleteInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+	Confirmed       bool  `json:"confirmed"`
+}
 type SourceInput struct {
 	ExpectedVersion  int64  `json:"expected_version"`
 	SourceResultID   string `json:"source_result_id"`

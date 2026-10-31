@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -17,7 +18,7 @@ test('compact price form emits valid currency and decimal patterns in actual HTM
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
     .replace(
-      /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+      /(from\s+|import\s+)(['"])([^'"]+)\2/g,
       (_m, prefix, quote, path) =>
         `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
     );
@@ -85,7 +86,7 @@ async function setupComponentURL(name: string): Promise<string> {
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
     .replace(
-      /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+      /(from\s+|import\s+)(['"])([^'"]+)\2/g,
       (_m, prefix, quote, path) =>
         `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
     );

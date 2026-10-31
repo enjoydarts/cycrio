@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -18,7 +19,7 @@ async function component(name: string) {
   for (const match of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${match[1]}.svelte`] = await componentURL(match[1]);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${quote}`,
   );
@@ -36,7 +37,7 @@ async function componentURL(name: string) {
   const { js, warnings } = compile(source, { generate: 'server' });
   assert.deepEqual(warnings, []);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import type { CurrentUser, TokenProvider } from './api.ts';
   import type { MailAPI } from './mail-api.ts';
@@ -46,7 +48,8 @@
   });
   let mobile = $state(false),
     menuOpen = $state(false);
-  let sidebar: HTMLElement, menuButton: HTMLButtonElement;
+  let sidebar: HTMLElement;
+  let menuButton = $state<HTMLButtonElement>();
   let lastNavigation: string | undefined;
   let lastRefreshKey: string | undefined;
   const navigation = [
@@ -62,40 +65,30 @@
       title: '確認が必要',
       icon: 'M12 3 2 21h20L12 3z M12 9v5 M12 17v1',
     },
-    {
-      key: 'billing',
-      href: '/subscriptions/summary',
-      title: '支払・返金',
-      icon: 'M5 3h14v18l-3-2-4 2-4-2-3 2V3z M8 8h8 M8 12h5',
-    },
-    {
-      key: 'history',
-      href: '/analysis?tab=history',
-      title: '取り込み履歴',
-      icon: 'M4 11a8 8 0 1 1 2 7 M4 4v7h7 M12 7v5l3 2',
-    },
   ];
   const selected = $derived(
     pathname.startsWith('/settings') ||
       pathname === '/admin' ||
       pathname === '/mail'
       ? 'settings'
-      : pathname === '/subscriptions/summary'
-        ? 'billing'
-        : pathname.startsWith('/analysis')
-          ? new URLSearchParams(search).get('tab') === 'attention'
-            ? 'attention'
-            : 'history'
-          : pathname.startsWith('/subscriptions')
-            ? 'subscriptions'
-            : '',
+      : pathname.startsWith('/analysis')
+        ? new URLSearchParams(search).get('tab') === 'history' ||
+          new URLSearchParams(search).has('setup_account')
+          ? 'history'
+          : 'attention'
+        : pathname.startsWith('/subscriptions')
+          ? 'subscriptions'
+          : '',
   );
   const current = $derived(
     selected === 'settings'
       ? '設定'
       : pathname === '/import'
         ? 'メールから取り込む'
-        : (navigation.find((item) => item.key === selected)?.title ?? 'ホーム'),
+        : selected === 'history'
+          ? '取り込み履歴'
+          : (navigation.find((item) => item.key === selected)?.title ??
+            'ホーム'),
   );
   const accountID = $derived(new URLSearchParams(search).get('account_id'));
   const overview = $derived(
@@ -201,11 +194,12 @@
 <svelte:window onkeydown={keyboard} />
 <a class="skip-link" href="#app-main">本文に移動</a>
 <div class="application">
-  {#if mobile && menuOpen}<button
-      class="sidebar-shade"
+  {#if mobile && menuOpen}<Button
+      variant="overlay"
+      class={['sidebar-shade', 'part-AppShell-sidebar-shade']}
       aria-label="メニューを閉じる"
       onclick={() => closeMenu()}
-    ></button>{/if}
+    ></Button>{/if}
   <aside
     id="workspace-sidebar"
     class="sidebar"
@@ -233,13 +227,15 @@
       <p class="rail-label">ライブラリ</p>
       <nav aria-label="メイン">
         {#each navigation as item}
-          <a
+          <ActionLink
+            wrap
+            class={[{ active: selected === item.key }]}
+            variant="nav"
             href={item.href}
             onclick={() => closeMenu(false)}
-            class:active={selected === item.key}
             aria-current={selected === item.key ? 'page' : undefined}
             aria-label={item.key === 'attention'
-              ? '確認が必要なメール'
+              ? '確認が必要な契約候補'
               : undefined}
           >
             <svg
@@ -260,24 +256,27 @@
               >{/if}
             {#if overview && item.key === 'attention'}<span
                 class="nav-count attention"
-                aria-label={`${overview.attention_messages}通のメール`}
+                aria-label={`${overview.attention_messages}件の確認待ち候補`}
                 >{overview.attention_messages}</span
               >{/if}
-          </a>
+          </ActionLink>
         {/each}
       </nav>
       <div class="sources">
         <p class="rail-label">接続したメール</p>
         {#if workspaceView.accounts.status === 'ready' && workspaceView.accounts.value}
           {#each workspaceView.accounts.value as account (account.id)}
-            <a
-              class="source-link"
+            <ActionLink
+              wrap
+              variant="nav"
+              class={[
+                'source-link',
+                'part-AppShell-source-link',
+                { active: selected === 'history' && accountID === account.id },
+              ]}
               onclick={() => closeMenu(false)}
-              class:active={selected === 'subscriptions' &&
-                accountID === account.id}
-              href={`/subscriptions?account_id=${account.id}`}
-              aria-current={selected === 'subscriptions' &&
-              accountID === account.id
+              href={`/analysis?tab=history&account_id=${account.id}`}
+              aria-current={selected === 'history' && accountID === account.id
                 ? 'location'
                 : undefined}
             >
@@ -304,12 +303,14 @@
                       ? '切断済み'
                       : '接続未確認'}
               ></span>
-            </a>
+            </ActionLink>
           {:else}<p class="rail-note">メールはまだ接続されていません</p>{/each}
         {:else if workspaceView.accounts.status === 'error'}
           <p class="rail-note" role="status">接続を取得できませんでした</p>
-          <button class="rail-retry" onclick={() => controller?.refresh()}
-            >再試行</button
+          <Button
+            wrap
+            class={['rail-retry', 'part-AppShell-rail-retry']}
+            onclick={() => controller?.refresh()}>再試行</Button
           >
         {:else if workspaceView.accounts.status === 'loading'}<p
             class="rail-note"
@@ -326,41 +327,52 @@
       </div>
     </div>
     <div class="rail-bottom">
-      <a
-        class="settings-link"
-        class:active={selected === 'settings'}
+      <ActionLink
+        wrap
+        variant="nav"
+        class={[
+          'settings-link',
+          'part-AppShell-settings-link',
+          { active: selected === 'settings' },
+        ]}
         href="/settings"
         onclick={() => closeMenu(false)}
         aria-current={selected === 'settings' ? 'page' : undefined}
-        ><span aria-hidden="true">⚙</span>設定</a
+        ><span aria-hidden="true">⚙</span>設定</ActionLink
       >
       <div class="account">
         <span class="avatar" aria-hidden="true">個</span>
-        <div>
-          個人アカウント<small
+        <div class="account-copy">
+          <span class="account-name">個人アカウント</span><small
             >{user.role === 'platform_admin' ? '管理者' : '一般ユーザー'}</small
           >
         </div>
-        <button aria-label="ログアウト" onclick={signOut}>↪</button>
+        <Button wrap variant="icon" aria-label="ログアウト" onclick={signOut}
+          >↪</Button
+        >
       </div>
     </div>
   </aside>
   <div class="application-content" inert={mobile && menuOpen}>
     <header class="topbar">
       <div class="breadcrumb">
-        <button
-          class="mobile-menu"
-          bind:this={menuButton}
+        <Button
+          wrap
+          variant="icon"
+          class={['mobile-menu', 'part-AppShell-mobile-menu']}
+          bind:element={menuButton}
           aria-label="メニューを開く"
           aria-controls="workspace-sidebar"
           aria-expanded={menuOpen}
-          onclick={openMenu}>☰</button
+          onclick={openMenu}>☰</Button
         ><span class="desktop-crumb"
           >ライブラリ<span aria-hidden="true"> / </span></span
         ><strong>{current}</strong>
       </div>
-      <button
-        class="theme-button"
+      <Button
+        wrap
+        variant="icon"
+        class={['theme-button', 'part-AppShell-theme-button']}
         aria-label="表示テーマを切り替える"
         title="表示テーマを切り替える"
         onclick={toggleTheme}
@@ -373,7 +385,7 @@
           stroke-width="1.6"
           aria-hidden="true"
           ><path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z" /></svg
-        ></button
+        ></Button
       >
     </header>
     <main id="app-main" tabindex="-1">{@render children()}</main>
@@ -433,9 +445,9 @@
     display: grid;
     gap: 5px;
   }
-  nav a,
-  .settings-link,
-  .source-link {
+  nav :global(.ui-nav),
+  :global(.part-AppShell-settings-link),
+  :global(.part-AppShell-source-link) {
     display: flex;
     align-items: center;
     gap: 11px;
@@ -446,14 +458,14 @@
     text-decoration: none;
     font-size: 13px;
   }
-  nav a:hover,
-  .settings-link:hover,
-  .source-link:hover {
+  nav :global(.ui-nav:hover),
+  :global(.part-AppShell-settings-link):hover,
+  :global(.part-AppShell-source-link):hover {
     background: #ffffff0d;
     color: #fff;
   }
-  nav a.active,
-  .settings-link.active {
+  nav :global(.ui-nav.active),
+  :global(.part-AppShell-settings-link.active) {
     background: var(--color-rail-selected);
     color: var(--color-rail-accent);
     font-weight: 650;
@@ -476,7 +488,7 @@
   .sources {
     margin-top: 30px;
   }
-  .source-link.active {
+  :global(.part-AppShell-source-link.active) {
     background: #ffffff0d;
     color: #fff;
   }
@@ -537,7 +549,7 @@
     font-size: 11px;
     padding-inline: 14px;
   }
-  .rail-retry {
+  :global(.part-AppShell-rail-retry) {
     color: var(--color-rail-accent);
     padding-inline: 14px;
   }
@@ -548,11 +560,19 @@
   }
   .account {
     border-top: 1px solid #ffffff14;
-    padding: 17px 11px 0;
-    display: flex;
-    gap: 9px;
+    padding: 17px 8px 0;
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr) 44px;
+    gap: 8px;
     align-items: center;
     font-size: 12px;
+  }
+  .account-copy {
+    min-width: 0;
+    white-space: nowrap;
+  }
+  .account-name {
+    display: block;
   }
   .account small {
     display: block;
@@ -568,17 +588,6 @@
     place-items: center;
     color: var(--color-rail-accent);
     font-size: 11px;
-  }
-  .account button {
-    margin-left: auto;
-    color: var(--color-rail-text);
-    font-size: 22px;
-    min-width: 36px;
-  }
-  button {
-    border: 0;
-    background: transparent;
-    color: inherit;
   }
   .application-content {
     min-width: 0;
@@ -607,17 +616,11 @@
     color: var(--color-text);
     font-weight: 500;
   }
-  .theme-button {
+  :global(.part-AppShell-theme-button) {
     display: grid;
     place-items: center;
-    min-width: 44px;
-    color: var(--color-muted);
-    border-radius: 7px;
   }
-  .theme-button:hover {
-    background: var(--brand-background);
-  }
-  .mobile-menu {
+  :global(.part-AppShell-mobile-menu) {
     display: none;
   }
   main {
@@ -638,7 +641,7 @@
   .skip-link:focus {
     transform: none;
   }
-  .sidebar-shade {
+  :global(.part-AppShell-sidebar-shade) {
     position: fixed;
     inset: 0;
     z-index: 20;
@@ -656,6 +659,14 @@
     }
     .topbar {
       padding-inline: 25px;
+    }
+  }
+  @media (min-width: 701px) and (max-width: 1150px) {
+    .account {
+      grid-template-columns: minmax(0, 1fr) 44px;
+    }
+    .account .avatar {
+      display: none;
     }
   }
   @media (max-width: 850px) {
@@ -692,7 +703,7 @@
     .sidebar.open {
       transform: translateX(0);
     }
-    .mobile-menu {
+    :global(.part-AppShell-mobile-menu) {
       display: grid;
       place-items: center;
       min-width: 44px;

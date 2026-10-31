@@ -28,6 +28,10 @@ type subscriptionFixture struct {
 }
 
 func (f *subscriptionFixture) record(owner string) { f.calls++; f.owner = owner }
+func (f *subscriptionFixture) Delete(_ context.Context, owner, id string, in subscriptions.DeleteInput) error {
+	f.record(owner)
+	return f.err
+}
 func (f *subscriptionFixture) AnalysisMessages(_ context.Context, owner string, in subscriptions.MessageFilter) (subscriptions.MessagePage, error) {
 	f.record(owner)
 	return subscriptions.MessagePage{Limit: in.Limit, Offset: in.Offset}, f.err
@@ -89,6 +93,7 @@ var subscriptionRoutes = []struct {
 	{"POST", "/v1/subscriptions", subscriptionCreateBody, 201},
 	{"PUT", "/v1/subscriptions/" + subscriptionUUID, subscriptionUpdateBody, 200},
 	{"POST", "/v1/subscriptions/" + subscriptionUUID + "/sources", subscriptionSourceBody, 200},
+	{"POST", "/v1/subscriptions/" + subscriptionUUID + "/delete", `{"expected_version":1,"confirmed":true}`, 200},
 	{"GET", "/v1/analysis/results", "", 200}, {"GET", "/v1/analysis/runs", "", 200},
 }
 

@@ -9,12 +9,8 @@ import {
 import {
   createBillingEditor,
   blankBilling,
-  currentBillingMonth,
   createBillingFeed,
-  createBillingSummaryController,
 } from './billing-controller.ts';
-import { subscription } from './subscriptions-fixtures.ts';
-import type { SubscriptionsAPI } from './subscriptions-api.ts';
 const sid = '11111111-1111-4111-8111-111111111111',
   eid = '22222222-2222-4222-8222-222222222222',
   rid = '66666666-6666-4666-8666-666666666666';
@@ -49,9 +45,6 @@ const api = (patch: Partial<BillingAPI> = {}): BillingAPI => ({
   attach: async () => entry(),
   detach: async () => entry(),
   duplicates: async () => ({ ...page(), token: 'a'.repeat(64) }),
-  summary: async () => {
-    throw new Error('unused');
-  },
   ...patch,
 });
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -63,7 +56,7 @@ function deferred<T>() {
   });
   return { promise, resolve, reject };
 }
-test('billing manual draft starts without invented facts and JST month crosses UTC boundary', () => {
+test('billing manual draft starts without invented facts', () => {
   assert.deepEqual(blankBilling(), {
     kind: '',
     occurred_on: '',
@@ -72,14 +65,6 @@ test('billing manual draft starts without invented facts and JST month crosses U
     refund_of_id: null,
     state: 'active',
   });
-  assert.equal(
-    currentBillingMonth(new Date('2026-09-30T15:00:00Z')),
-    '2026-10',
-  );
-  assert.equal(
-    currentBillingMonth(new Date('2026-09-30T14:59:59Z')),
-    '2026-09',
-  );
 });
 test('create freezes exact body and UUID after loss; replay works even if preview is unavailable and suppresses double submit', async () => {
   const bodies: unknown[] = [];
@@ -858,75 +843,6 @@ test('uncertain source create reconciles the frozen source before replay; found 
     );
   }
 });
-test('summary loads a selected contract directly by ID independently of paginated search including ended contracts', async () => {
-  const calls: unknown[] = [];
-  const contracts = {
-    get: async (id: string) => {
-      calls.push(id);
-      return { ...subscription(), status: 'ended' as const };
-    },
-    list: async (filter: unknown) => {
-      calls.push(filter);
-      return { subscriptions: [], total: 0, limit: 20, offset: 100 };
-    },
-  } as unknown as SubscriptionsAPI;
-  const summary = {
-    month: '2026-10',
-    start_date: '2026-10-01',
-    end_date: '2026-11-01',
-    timezone: 'Asia/Tokyo' as const,
-    subscription_id: sid,
-    currencies: [],
-    invoice_count: 0,
-    voided_count: 0,
-  };
-  const c = createBillingSummaryController(
-    api({ summary: async () => summary }),
-    contracts,
-    async () => 't',
-    () => {},
-    () => {},
-  );
-  await c.load({ month: '2026-10', subscription_id: sid });
-  await c.search('ended', 100);
-  assert.equal(c.state().selected?.status, 'ended');
-  assert.equal(calls[0], sid);
-  assert.equal((calls[1] as { status: string }).status, 'all');
-  assert.equal(c.state().summary?.subscription_id, sid);
-  await c.load({ month: '2026-10', subscription_id: null });
-  assert.equal(c.state().selected, null);
-});
-test('summary newest URL filters win and denied picker clears all private summary and selection fields', async () => {
-  const resolve: ((value: never) => void)[] = [];
-  const contracts = {
-    list: async () => {
-      throw new ApiError('access_denied');
-    },
-  } as unknown as SubscriptionsAPI;
-  const c = createBillingSummaryController(
-    api({
-      summary: async () =>
-        new Promise((resolvePromise) => resolve.push(resolvePromise)),
-    }),
-    contracts,
-    async () => 't',
-    () => {},
-    () => {},
-  );
-  const old = c.load({ month: '2026-09', subscription_id: null }),
-    latest = c.load({ month: '2026-10', subscription_id: null });
-  resolve[1]({ month: '2026-10' } as never);
-  await latest;
-  resolve[0]({ month: '2026-09' } as never);
-  await old;
-  assert.equal(c.state().summary?.month, '2026-10');
-  await c.search('private', 0);
-  assert.equal(c.state().summary, null);
-  assert.equal(c.state().selected, null);
-  assert.equal(c.state().contracts, null);
-  assert.equal(c.state().query, '');
-  assert.equal(c.state().status, 'denied');
-});
 test('every billing write cancels auxiliary reads and keeps its lock until the current request settles', async (t) => {
   for (const operation of [
     'create',
@@ -1089,132 +1005,4 @@ test('current write and source preflight authorization refusals still purge ever
         assert.equal(store.size, 0);
         assert.equal(denials, 1);
       });
-});
-test('summary paired reads observe each current authorization failure regardless of response order', async (t) => {
-  type Summary = Awaited<ReturnType<BillingAPI['summary']>>;
-  const summary: Summary = {
-    month: '2026-10',
-    start_date: '2026-10-01',
-    end_date: '2026-11-01',
-    timezone: 'Asia/Tokyo',
-    subscription_id: sid,
-    currencies: [],
-    invoice_count: 0,
-    voided_count: 0,
-  };
-  for (const first of ['summary', 'selected'] as const)
-    for (const a of [
-      'success',
-      'unavailable',
-      'authentication_required',
-      'access_denied',
-    ] as const)
-      for (const b of [
-        'success',
-        'unavailable',
-        'authentication_required',
-        'access_denied',
-      ] as const)
-        await t.test(`${first} first: ${a}, then ${b}`, async () => {
-          const sum = deferred<Summary>(),
-            selected = deferred<ReturnType<typeof subscription>>();
-          let denials = 0;
-          const c = createBillingSummaryController(
-            api({ summary: async () => sum.promise }),
-            {
-              get: async () => selected.promise,
-              list: async () => ({
-                subscriptions: [subscription()],
-                total: 1,
-                limit: 20,
-                offset: 0,
-              }),
-            } as unknown as SubscriptionsAPI,
-            async () => 't',
-            () => {},
-            () => {
-              denials++;
-            },
-          );
-          await c.search('private filter');
-          const loading = c.load({ month: '2026-10', subscription_id: sid });
-          const settle = (side: 'summary' | 'selected', outcome: typeof a) => {
-            if (outcome === 'success') {
-              if (side === 'summary') sum.resolve(summary);
-              else selected.resolve(subscription());
-            } else
-              (side === 'summary' ? sum : selected).reject(
-                new ApiError(
-                  outcome === 'unavailable'
-                    ? 'dependency_unavailable'
-                    : outcome,
-                ),
-              );
-          };
-          settle(first, a);
-          await tick();
-          settle(first === 'summary' ? 'selected' : 'summary', b);
-          await loading;
-          await tick();
-          const refused = [a, b].some(
-            (value) =>
-              value === 'authentication_required' || value === 'access_denied',
-          );
-          assert.equal(
-            c.state().status,
-            refused
-              ? 'denied'
-              : a === 'success' && b === 'success'
-                ? 'ready'
-                : 'error',
-          );
-          assert.equal(denials, refused ? 1 : 0);
-          if (refused) {
-            assert.equal(c.state().contracts, null);
-            assert.equal(c.state().summary, null);
-            assert.equal(c.state().selected, null);
-            assert.equal(c.state().query, '');
-          }
-        });
-});
-test('superseded or disposed paired reads cannot apply late authorization failures to a new summary scope', async (t) => {
-  for (const disposed of [false, true])
-    await t.test(disposed ? 'disposed' : 'newer filter', async () => {
-      const oldSummary = deferred<Awaited<ReturnType<BillingAPI['summary']>>>(),
-        oldSelected = deferred<ReturnType<typeof subscription>>();
-      let denials = 0;
-      const current = {
-        month: '2026-11',
-        start_date: '2026-11-01',
-        end_date: '2026-12-01',
-        timezone: 'Asia/Tokyo' as const,
-        subscription_id: null,
-        currencies: [],
-        invoice_count: 0,
-        voided_count: 0,
-      };
-      const c = createBillingSummaryController(
-        api({
-          summary: async (month) =>
-            month === '2026-10' ? oldSummary.promise : current,
-        }),
-        { get: async () => oldSelected.promise } as unknown as SubscriptionsAPI,
-        async () => 't',
-        () => {},
-        () => {
-          denials++;
-        },
-      );
-      const loading = c.load({ month: '2026-10', subscription_id: sid });
-      oldSummary.reject(new ApiError('dependency_unavailable'));
-      await tick();
-      if (disposed) c.dispose();
-      else await c.load({ month: '2026-11', subscription_id: null });
-      oldSelected.reject(new ApiError('access_denied'));
-      await loading;
-      await tick();
-      assert.equal(denials, 0);
-      assert.equal(c.state().status, disposed ? 'disposed' : 'ready');
-      assert.equal(c.state().summary?.month, disposed ? undefined : '2026-11');
-    });
 });

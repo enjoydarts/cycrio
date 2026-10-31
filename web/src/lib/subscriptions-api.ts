@@ -171,6 +171,22 @@ export function createSubscriptionsAPI(
     path = (id: string) => `/v1/subscriptions/${input(() => uuid(id))}`;
   const confirm = (v: boolean) => (v === true ? true : invalid());
   return {
+    async delete(
+      id: string,
+      v: { expected_version: number; confirmed: boolean },
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<{ deleted: true }> {
+      const body = input(() => ({
+        expected_version: integer(v.expected_version, 1),
+        confirmed: confirm(v.confirmed),
+      }));
+      const result = record(
+        await request(`${path(id)}/delete`, token, signal, 'POST', body),
+      );
+      if (result.deleted !== true) return invalid();
+      return { deleted: true };
+    },
     async list(
       filter: SubscriptionFilter,
       token: TokenProvider,

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -163,10 +165,12 @@
 <section class="automation" aria-label="メールの自動処理">
   {#if !account}<h2>メールを連携して始める</h2>
     <p>初回は過去1年分を取り込み、その後は新着メールを自動で確認します。</p>
-    <a
-      class="button primary"
+    <ActionLink
+      wrap
+      variant="primary"
+      class={['button primary']}
       href={automationSetupLink('/settings/mail', returnTo, '')}
-      >メールを連携する</a
+      >メールを連携する</ActionLink
     >
   {:else}
     <header>
@@ -174,14 +178,17 @@
         <h2>メールの自動処理</h2>
         <p>{account.label} · 新着を5分ごとに確認</p>
       </div>
-      {#if s?.id && (s.state === 'enabled' || s.state === 'needs_confirmation')}<button
+      {#if s?.id && (s.state === 'enabled' || s.state === 'needs_confirmation')}<Button
+          wrap
           disabled={frozen}
-          onclick={() => controller?.stop()}>自動処理を停止</button
+          onclick={() => controller?.stop()}>自動処理を停止</Button
         >
-      {:else if s?.state === 'stopped' && s.ready}<button
-          class="primary"
+      {:else if s?.state === 'stopped' && s.ready}<Button
+          wrap
+          variant="primary"
+          class={['primary']}
           disabled={frozen || !!view.readError}
-          onclick={() => controller?.resume()}>自動処理を再開</button
+          onclick={() => controller?.resume()}>自動処理を再開</Button
         >{/if}
     </header>
     {#if s}
@@ -231,7 +238,7 @@
         </dl>
         <p class="muted">
           {s.progress.historical_complete
-            ? '初回期間のメール探索は完了しました。解析・登録は順次進みます。'
+            ? '初回期間のメール探索は完了しました。解析結果は確認待ちに追加されます。'
             : '初回期間のメールを順次探しています。探索が終わるまで総件数は確定しません。'}
         </p>
         <p class="muted">
@@ -240,7 +247,7 @@
             : 'まだありません'}（日本時間）
         </p>
         {#if s.state === 'enabled'}<p class="muted">
-            アプリを閉じても取り込み・解析・登録は続きます。
+            アプリを閉じても取り込み・解析は続きます。サブスクへの登録には承認が必要です。
           </p>{:else if s.state === 'stopped'}<p class="muted">
             この接続の取り込み・解析は停止中です。{blockedLabels[s.reason] ??
               ''} 再開すると進捗を引き継ぎます。
@@ -254,8 +261,8 @@
             ? '操作は受け付けられました。最新状態を再取得できませんでした。'
             : '最新状態を取得できませんでした。'}表示済みの進捗と入力を保持しています。
         </p>
-        <button disabled={view.busy} onclick={() => controller?.refresh()}
-          >最新状態を再読み込み</button
+        <Button wrap disabled={view.busy} onclick={() => controller?.refresh()}
+          >最新状態を再読み込み</Button
         >
       </div>{/if}
     {#if view.error && !view.uncertain}<p role="alert">
@@ -265,8 +272,8 @@
         <p>
           受付状況を確認できません。同じ条件・同じ要求で再確認してください。確認が終わるまで条件の変更と別操作を停止しています。
         </p>
-        <button disabled={view.busy} onclick={() => controller?.replay()}
-          >同じ要求で受付を確認</button
+        <Button wrap disabled={view.busy} onclick={() => controller?.replay()}
+          >同じ要求で受付を確認</Button
         >
       </div>{/if}
     {#if view.acknowledged && !view.readError}<p role="status">
@@ -325,7 +332,7 @@
           </p>
           <p>
             選択した期間の全件を順次取り込み、本文全体を AI
-            に送信します。新着メールも継続して送信し、サブスクと支払・請求履歴を自動で登録します。
+            に送信します。新着メールも継続して解析し、見つかった契約情報を「確認が必要」に追加します。サブスクへの登録には、あなたの承認が必要です。
           </p>
           <details>
             <summary>モデル・配信先・保持条件・参考料金を確認</summary
@@ -338,20 +345,18 @@
             />
           </details>
           <p>
-            自動登録は、あなたのメール接続に共通の設定です。この接続に加え、他の接続を含む保存済みの解析結果も登録対象になります。{view
-              .preferences?.enabled
-              ? '現在、自動登録は有効です。'
-              : '開始時に自動登録を有効にします。'}
+            メール本文は保持しません。抽出された契約候補を確認し、新規登録・既存契約への紐付け・除外を選べます。
           </p>
           {#if view.conflict}<div class="notice" role="alert">
               <p>
                 条件が変わりました。入力と確認開始時の版を保持しています。最新の条件を採用してから確認し直してください。
               </p>
-              <button
+              <Button
+                wrap
                 type="button"
                 disabled={frozen}
                 onclick={() => controller?.adopt()}
-                >最新の条件を採用して確認し直す</button
+                >最新の条件を採用して確認し直す</Button
               >
             </div>{/if}
           <label class="check"
@@ -364,10 +369,12 @@
                 !view.preview?.full_email_allowed ||
                 !!view.readError}
               onchange={(e) => controller?.confirm(e.currentTarget.checked)}
-            />期間・本文全体の継続送信・保持条件・参考料金と自動登録の対象を確認しました</label
+            />期間・本文全体の継続送信・保持条件・参考料金を確認しました</label
           >
-          <button
-            class="primary"
+          <Button
+            wrap
+            variant="primary"
+            class={['primary']}
             type="submit"
             disabled={frozen ||
               !view.confirmed ||
@@ -376,7 +383,7 @@
               !view.preview?.full_email_allowed ||
               !!view.readError ||
               !validAutomationRange(draft.since, draft.through)}
-            >{view.busy ? '受付を確認中…' : '自動処理を開始'}</button
+            >{view.busy ? '受付を確認中…' : '自動処理を開始'}</Button
           >
         </form>{/if}
     {:else if s?.id}<details>
@@ -385,20 +392,14 @@
           {s.scope?.since} から {s.scope?.before} より前（日本時間） · 本文全体 ·
           新着確認5分ごと
         </p>
-        <p>
-          保存済み結果の自動登録（あなたの接続に共通）：{view.preferences
-            ?.enabled
-            ? '有効'
-            : view.preferences
-              ? '停止中'
-              : '確認できません'}
-        </p>
-        <button
+        <p>抽出された契約候補は、確認・承認してからサブスクへ登録します。</p>
+        <Button
+          wrap
           disabled={frozen}
           onclick={() => {
             reviewing = true;
             controller?.adopt();
-          }}>条件を見直す</button
+          }}>条件を見直す</Button
         >
       </details>{/if}
   {/if}

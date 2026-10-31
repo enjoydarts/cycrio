@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -19,7 +20,7 @@ async function componentURL(name: string): Promise<string> {
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
     .replace(
-      /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+      /(^import[^\n]*?from\s+|^import\s+)(['"])([^'"]+)\2/gm,
       (_m, p, q, path) =>
         `${p}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
     );
@@ -30,7 +31,7 @@ const ready = () => ({
   status: 'ready' as const,
   error: null,
 });
-test('home HTML separates saved dates, unknown charges, review count and actual monthly payments', async () => {
+test('home HTML shows saved dates, unknown charges and review count without monthly payment totals', async () => {
   const Component = (await import(await componentURL('OverviewPanel'))).default;
   const html = render(Component, { props: { view: ready() } }).body;
   for (const text of [
@@ -39,10 +40,7 @@ test('home HTML separates saved dates, unknown charges, review count and actual 
     '金額不明',
     '0 JPY',
     '状態不明',
-    '支払・返金実績',
     'JPY',
-    'USD',
-    '123456789012345678901234.123456789012',
   ])
     assert.ok(html.includes(text), text);
   assert.match(html, /href="\/analysis\?tab=attention"/);
@@ -53,7 +51,7 @@ test('home HTML separates saved dates, unknown charges, review count and actual 
   );
   assert.doesNotMatch(
     html,
-    /href="\/settings\/(?:ai|usage|credentials)|月額合計|請求確定額/,
+    /href="\/settings\/(?:ai|usage|credentials)|月額合計|請求確定額|支払・返金実績|subscriptions\/summary|123456789012345678901234/,
   );
 });
 test('home loading or failed reads do not leave stale figures visible as fresh data', async () => {

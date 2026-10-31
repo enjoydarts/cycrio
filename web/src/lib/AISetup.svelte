@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import { page } from '$app/state';
@@ -269,9 +272,10 @@
             </p>{/if}
         </details>
       </div>
-      <button
+      <Button
+        wrap
         disabled={locked || (priceDirty && priceModelID !== model.id)}
-        onclick={() => (priceModelID = model.id)}>料金を編集</button
+        onclick={() => (priceModelID = model.id)}>料金を編集</Button
       >
     {:else}<p>モデルを選択してください。</p>{/if}
   </div>
@@ -286,9 +290,10 @@
     description="モデルの選択から本文送信の許可まで、順に確認します。"
   >
     {#snippet action()}
-      <button
+      <Button
+        wrap
         disabled={locked || priceDirty}
-        onclick={() => controller?.refresh()}>状態を更新</button
+        onclick={() => controller?.refresh()}>状態を更新</Button
       >
     {/snippet}
   </LibraryHeader>
@@ -303,9 +308,10 @@
             >{/if}
           {#if view.partialSaved}<p>
               モデル・価格の選択は保存済みです。実行設定は未完了です。入力と元の保存基準を保持しています。
-            </p>{/if}<button
+            </p>{/if}<Button
+            wrap
             disabled={busy || view.requestUncertain}
-            onclick={() => controller?.refresh()}>最新状態を確認</button
+            onclick={() => controller?.refresh()}>最新状態を確認</Button
           >
         </div>{/if}{#if view.success}<p class="setup-feedback">
           {view.success}
@@ -317,13 +323,14 @@
             <p>
               配信先情報をまとめて確認できませんでした。最新の状態を読み直してください。
             </p>
-            <button
+            <Button
+              wrap
               disabled={busy ||
                 view.routeLoading ||
                 pending ||
                 view.requestUncertain}
               onclick={() => controller?.refresh()}
-              >配信先の状態を読み直す</button
+              >配信先の状態を読み直す</Button
             >
           </div>{/if}
         {#if missingKey}<div class="setup-feedback">
@@ -339,10 +346,11 @@
               モデル選択または API
               キーが、保存した実行設定の版から更新されています。最新のキーを使うにはモデルと実行設定を保存し直してください。
             </p>
-            <button
+            <Button
+              wrap
               disabled={locked || priceDirty}
               onclick={() => show('models')}
-              >モデルと実行設定を保存し直す</button
+              >モデルと実行設定を保存し直す</Button
             >
           </div>{/if}
         {#if view.runtime?.active && !view.runtime.active_ready}<p
@@ -359,10 +367,12 @@
         hidden={operationOpen}
         aria-label="AI 準備のステップ"
       >
-        {#each [{ id: 'models', title: '1 モデル・料金' }, { id: 'test', title: '2 接続確認' }, { id: 'permission', title: '3 送信許可' }] as item}<button
+        {#each [{ id: 'models', title: '1 モデル・料金' }, { id: 'test', title: '2 接続確認' }, { id: 'permission', title: '3 送信許可' }] as item}<Button
+            wrap
+            variant="tab"
             disabled={locked || priceDirty}
             aria-current={pane === item.id ? 'step' : undefined}
-            onclick={() => show(item.id as SetupStage)}>{item.title}</button
+            onclick={() => show(item.id as SetupStage)}>{item.title}</Button
           >{/each}
       </nav>
       <div class="workflow library-content" hidden={operationOpen}>
@@ -410,14 +420,15 @@
                     ? '無料の配信先情報を更新しています…'
                     : '配信先情報を更新してから、新しいモデル設定を保存してください。'}
                 </p>
-                <button
+                <Button
+                  wrap
                   disabled={busy ||
                     view.routeLoading ||
                     pending ||
                     view.requestUncertain ||
                     !view.routes?.key_available}
                   onclick={() => controller?.refreshRoutes()}
-                  >配信先情報を無料で更新</button
+                  >配信先情報を無料で更新</Button
                 >{#if view.routes?.snapshot}<p class="muted">
                     取得（日本時間）：{datetime(
                       view.routes.snapshot.captured_at,
@@ -457,14 +468,15 @@
             <p class="muted">
               {secondaryOptions.length} 件の選択可能なモデル。既知の価格と配信先の名称による表示順で、最安値を保証するものではありません。
             </p>
-            {#if provider === 'openrouter' && !route && view.routes?.fresh}<button
+            {#if provider === 'openrouter' && !route && view.routes?.fresh}<Button
+                wrap
                 disabled={busy ||
                   view.routeLoading ||
                   pending ||
                   view.requestUncertain ||
                   !view.routes?.key_available}
                 onclick={() => controller?.refreshRoutes()}
-                >配信先情報を無料で更新</button
+                >配信先情報を無料で更新</Button
               >{/if}
           </details>
           {#if secondary && secondary.provider !== provider}<p
@@ -488,14 +500,15 @@
                       view.routes.snapshot.captured_at,
                     )}
                   </p>{/if}
-                <button
+                <Button
+                  wrap
                   disabled={busy ||
                     view.routeLoading ||
                     pending ||
                     view.requestUncertain ||
                     !view.routes?.key_available}
                   onclick={() => controller?.refreshRoutes()}
-                  >配信先情報を無料で更新</button
+                  >配信先情報を無料で更新</Button
                 >
                 <label
                   >適合する配信先<select
@@ -569,25 +582,29 @@
             <p class="muted">
               通常の解析では本文全体を送信します。入力基準は旧方式・接続テスト用で、全文の上限やモデルの文脈容量の保証ではありません。基準を変更した場合は、配信先情報も更新して適合を確認してください。
             </p>
-            {#if secondary?.provider === 'openrouter' && (view.routeLimits?.max_input_bytes !== selection.max_input_bytes || view.routeLimits?.max_output_tokens !== selection.max_output_tokens)}<button
+            {#if secondary?.provider === 'openrouter' && (view.routeLimits?.max_input_bytes !== selection.max_input_bytes || view.routeLimits?.max_output_tokens !== selection.max_output_tokens)}<Button
+                wrap
                 disabled={locked ||
                   view.routeLoading ||
                   !view.routes?.key_available}
                 onclick={() => controller?.refreshRoutes()}
-                >この上限で配信先を無料で確認</button
+                >この上限で配信先を無料で確認</Button
               >{/if}
           </details>
-          <div class="setup-actions">
-            <button
-              class="primary"
+          <ActionGroup class={['setup-actions', 'part-AISetup-setup-actions']}>
+            <Button
+              wrap
+              variant="primary"
+              class={['primary']}
               disabled={!canSaveSetup(view, provider) || priceDirty}
-              onclick={save}>モデルと実行設定を保存</button
-            >{#if view.selection?.dirty || staleBasis}<button
+              onclick={save}>モデルと実行設定を保存</Button
+            >{#if view.selection?.dirty || staleBasis}<Button
+                wrap
                 disabled={locked || priceDirty}
                 onclick={() => controller?.rebase()}
-                >最新の保存値を読み直す（入力を破棄）</button
+                >最新の保存値を読み直す（入力を破棄）</Button
               >{/if}
-          </div>
+          </ActionGroup>
           <p class="muted">
             保存で料金は発生しません。参考価格が不明でも保存できます。接続テストと有効化はそれぞれ明示的に行います。
           </p>
@@ -596,8 +613,8 @@
           {#if !view.runtime?.draft}<p>
               先にモデルと実行設定を保存してください。
             </p>
-            <button disabled={locked} onclick={() => show('models')}
-              >モデルを選ぶ</button
+            <Button wrap disabled={locked} onclick={() => show('models')}
+              >モデルを選ぶ</Button
             >{:else}
             {#if !canActivate || retest || view.requestUncertain}<p>
                 固定のテスト入力を一次判定と二次処理へ送信します。料金が発生します。
@@ -605,8 +622,8 @@
             {#if view.selection?.dirty}<p class="setup-feedback">
                 変更したモデル・料金を先に保存してください。
               </p>
-              <button disabled={locked} onclick={() => show('models')}
-                >変更を保存する</button
+              <Button wrap disabled={locked} onclick={() => show('models')}
+                >変更を保存する</Button
               >{/if}
             {#if view.runtime.latest_test}{@const run =
                 view.runtime.latest_test}
@@ -636,10 +653,11 @@
                 <p>
                   受付状況を確認できません。同じ要求で受付を確認します。新しい有料テストは作成しません。
                 </p>
-                <button
+                <Button
+                  wrap
                   disabled={busy}
                   onclick={() => controller?.requestTest(true)}
-                  >同じテスト要求の受付を確認</button
+                  >同じテスト要求の受付を確認</Button
                 >
               </div>{:else if !canActivate || retest}<label class="check"
                 ><input
@@ -649,33 +667,41 @@
                   onchange={(e) => (confirmed = e.currentTarget.checked)}
                 />外部 AI へのテスト送信と料金の発生を確認しました</label
               >
-              <div class="setup-actions">
-                <button disabled={!confirmed || !canTest} onclick={test}
-                  >料金を確認して接続テスト</button
-                >
-              </div>{/if}
-            {#if canActivate && !view.requestUncertain}<div
-                class="setup-actions"
+              <ActionGroup
+                class={['setup-actions', 'part-AISetup-setup-actions']}
               >
-                {#if !sameActive && !retest}<button
-                    class="primary"
+                <Button wrap disabled={!confirmed || !canTest} onclick={test}
+                  >料金を確認して接続テスト</Button
+                >
+              </ActionGroup>{/if}
+            {#if canActivate && !view.requestUncertain}<ActionGroup
+                class={['setup-actions', 'part-AISetup-setup-actions']}
+              >
+                {#if !sameActive && !retest}<Button
+                    wrap
+                    variant="primary"
+                    class={['primary']}
                     disabled={locked}
-                    onclick={activate}>成功したテストの版を有効化</button
-                  >{/if}{#if !retest}<button
+                    onclick={activate}>成功したテストの版を有効化</Button
+                  >{/if}{#if !retest}<Button
+                    wrap
                     disabled={locked}
-                    onclick={() => (retest = true)}>再テストの条件を確認</button
-                  >{:else}<button
+                    onclick={() => (retest = true)}>再テストの条件を確認</Button
+                  >{:else}<Button
+                    wrap
                     disabled={locked}
                     onclick={() => {
                       retest = false;
                       confirmed = false;
-                    }}>再テストをやめる</button
+                    }}>再テストをやめる</Button
                   >{/if}
-              </div>{/if}
-            {#if sameActive && !retest}<button
-                class="primary"
+              </ActionGroup>{/if}
+            {#if sameActive && !retest}<Button
+                wrap
+                variant="primary"
+                class={['primary']}
                 disabled={locked}
-                onclick={() => show('permission')}>本文送信の許可へ進む</button
+                onclick={() => show('permission')}>本文送信の許可へ進む</Button
               >{/if}
           {/if}
         {:else if pane === 'permission' && !view.policy}
@@ -690,24 +716,28 @@
               saveCustom={(input) => controller!.saveCustom(input)}
               onDirty={(value) => (consentDirty = value)}
             />
-            {#if view.policyReloadRequired || (!view.policy.standard_terms && view.policy.profile?.secondary.provider === 'openrouter')}<button
+            {#if view.policyReloadRequired || (!view.policy.standard_terms && view.policy.profile?.secondary.provider === 'openrouter')}<Button
+                wrap
                 disabled={locked}
-                onclick={() => controller?.refresh()}>送信条件を読み直す</button
+                onclick={() => controller?.refresh()}>送信条件を読み直す</Button
               >{/if}
-            {#if view.policy?.standard_terms && !view.policy.standard_terms.ready && view.policy.profile?.secondary.provider === 'openrouter'}<button
+            {#if view.policy?.standard_terms && !view.policy.standard_terms.ready && view.policy.profile?.secondary.provider === 'openrouter'}<Button
+                wrap
                 disabled={locked ||
                   view.routeLoading ||
                   !view.routes?.key_available}
                 onclick={() => controller?.refreshRoutes()}
-                >送信条件の配信先情報を無料で更新</button
+                >送信条件の配信先情報を無料で更新</Button
               >{/if}
           </div>{/if}
       </div>
       {#if operationOpen}<section class="runtime-management library-content">
           <div class="operation-heading">
             <h2>AI の実行を管理</h2>
-            <button disabled={locked} onclick={() => (operationOpen = false)}
-              >準備に戻る</button
+            <Button
+              wrap
+              disabled={locked}
+              onclick={() => (operationOpen = false)}>準備に戻る</Button
             >
           </div>
           <p>
@@ -721,21 +751,26 @@
             保存した下書きを保持して、新しいメール解析への AI
             呼び出しを停止します。
           </p>
-          <button
+          <Button
+            wrap
             disabled={locked || !view.runtime?.active}
-            onclick={() => controller?.deactivate()}>AI の実行を停止</button
+            onclick={() => controller?.deactivate()}>AI の実行を停止</Button
           >
         </section>{/if}
-      <div class="library-footer">
-        <a class="setup-button" href={back}
+      <ActionGroup class={['library-footer', 'part-AISetup-library-footer']}>
+        <ActionLink
+          wrap
+          class={['setup-button', 'part-AISetup-setup-button']}
+          href={back}
           >{page.url.searchParams.has('return_to')
             ? '解析へ戻って条件を確認'
-            : '解析へ進む'}</a
-        >{#if !operationOpen && view.runtime?.active}<button
+            : '解析へ進む'}</ActionLink
+        >{#if !operationOpen && view.runtime?.active}<Button
+            wrap
             disabled={locked || priceDirty}
-            onclick={() => (operationOpen = true)}>AI の実行を管理</button
+            onclick={() => (operationOpen = true)}>AI の実行を管理</Button
           >{/if}
-      </div>
+      </ActionGroup>
     {/if}
   </LibraryPanel>
 </section>
@@ -788,9 +823,6 @@
   .price-row details {
     font-size: 0.8rem;
     color: var(--color-muted);
-  }
-  .price-row button {
-    font-size: 0.8rem;
   }
   @media (max-width: 600px) {
     .setup-notices {

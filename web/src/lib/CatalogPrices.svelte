@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { tick } from 'svelte';
   import {
     type Model,
@@ -158,11 +160,13 @@
     呼出し原価とは異なる参考価格です。空欄は不明、0 は明示的なゼロです。
   </p>
   <nav class="price-tabs" aria-label="価格の表示">
-    {#each [['reference', '参照価格'], ['manage', '価格を管理'], ['history', '価格履歴']] as [value, label]}<button
+    {#each [['reference', '参照価格'], ['manage', '価格を管理'], ['history', '価格履歴']] as [value, label]}<Button
+        wrap
+        variant="tab"
         type="button"
         disabled={busy}
         aria-pressed={purpose === value}
-        onclick={() => (purpose = value as typeof purpose)}>{label}</button
+        onclick={() => (purpose = value as typeof purpose)}>{label}</Button
       >{/each}
   </nav>
   <section aria-label="参照価格" hidden={purpose !== 'reference'}>
@@ -233,11 +237,15 @@
           required
           disabled={busy}
         />
-        <button type="submit" class="primary" disabled={busy}
-          >手入力価格を保存</button
+        <Button
+          wrap
+          variant="primary"
+          type="submit"
+          class={['primary']}
+          disabled={busy}>手入力価格を保存</Button
         >
-        <button type="button" disabled={busy} onclick={reloadDraft}
-          >最新の価格状態を読み直す（入力を破棄）</button
+        <Button wrap type="button" disabled={busy} onclick={reloadDraft}
+          >最新の価格状態を読み直す（入力を破棄）</Button
         >
       </form>
     {/if}
@@ -254,23 +262,25 @@
           {#if confirmVersion !== model.version}<p class="error" role="status">
               確認中に保存状態が更新されました。キャンセルして最新の価格を確認してください。
             </p>{/if}
-          <div class="actions">
-            <button
+          <ActionGroup class={['actions', 'part-CatalogPrices-actions']}>
+            <Button
+              wrap
               id="confirm-price-reset"
               disabled={busy}
               onclick={() => {
                 const version = confirmVersion;
                 confirmVersion = null;
                 if (version !== null) void reset(version);
-              }}>上書きを解除する</button
-            ><button disabled={busy} onclick={() => confirmation(false)}
-              >キャンセル</button
+              }}>上書きを解除する</Button
+            ><Button wrap disabled={busy} onclick={() => confirmation(false)}
+              >キャンセル</Button
             >
-          </div>
-        </div>{:else}<button
+          </ActionGroup>
+        </div>{:else}<Button
+          wrap
           id="price-reset"
           disabled={busy}
-          onclick={() => confirmation(true)}>API 価格へ戻す</button
+          onclick={() => confirmation(true)}>API 価格へ戻す</Button
         >{/if}
     {/if}
   </section>
@@ -295,9 +305,5 @@
     flex-wrap: wrap;
     gap: 0.4rem;
     margin-bottom: 1rem;
-  }
-  .price-tabs button[aria-pressed='true'] {
-    background: var(--color-action);
-    color: var(--color-on-action);
   }
 </style>

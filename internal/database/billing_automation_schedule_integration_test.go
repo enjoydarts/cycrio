@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/billing"
 	"github.com/enjoydarts/cycrio/internal/billingschedule"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/google/uuid"
@@ -55,7 +56,7 @@ func TestBillingAutomationPreservesAcceptedScheduleAndInvalidatesHistoryToken(t 
 	scheduleConflict(t, err, "history_changed")
 }
 
-func TestBillingAutomationMonthlySummaryUsesOnlyActiveFinancialFacts(t *testing.T) {
+func TestBillingAutomationPreservesMonthlyFinancialHistoryAndExcludesDuplicates(t *testing.T) {
 	f := processingSetup(t)
 	ctx := context.Background()
 	events := []ai.Event{financialEvent("payment", "1.000000000001", "2024-02-29"), financialEvent("invoice", "999", "2024-02-29"), financialEvent("refund", "0.750000000001", "2024-03-01")}
@@ -66,21 +67,31 @@ func TestBillingAutomationMonthlySummaryUsesOnlyActiveFinancialFacts(t *testing.
 		t.Fatal(err)
 	}
 	repo := NewBillingRepository(f.runtime.pool)
-	feb, err := repo.Summary(ctx, f.owner, "2024-02", &contract)
-	if err != nil || feb.Timezone != "Asia/Tokyo" || feb.EndDate != "2024-03-01" || feb.InvoiceCount != 1 || len(feb.Currencies) != 1 || feb.Currencies[0].NetAmount != "1.000000000001" || feb.Currencies[0].PaymentCount != 1 {
+	feb, err := repo.List(ctx, f.owner, contract, billing.Filter{Month: "2024-02", Limit: 20})
+	if err != nil || feb.Total != 2 || len(feb.Events) != 2 {
 		t.Fatal(feb, err)
 	}
-	march, err := repo.Summary(ctx, f.owner, "2024-03", &contract)
-	if err != nil || len(march.Currencies) != 1 || march.Currencies[0].NetAmount != "-0.750000000001" {
+	want := map[string]string{"payment": "1.000000000001", "invoice": "999"}
+	for _, event := range feb.Events {
+		if event.State != "active" || event.Currency != "JPY" || event.OccurredOn != "2024-02-29" || want[event.Kind] != event.Amount {
+			t.Fatal("automatic history lost financial fact", event)
+		}
+		delete(want, event.Kind)
+	}
+	if len(want) != 0 {
+		t.Fatal("missing February facts", want)
+	}
+	march, err := repo.List(ctx, f.owner, contract, billing.Filter{Month: "2024-03", Limit: 20})
+	if err != nil || march.Total != 1 || len(march.Events) != 1 || march.Events[0].Kind != "refund" || march.Events[0].Amount != "0.750000000001" || march.Events[0].OccurredOn != "2024-03-01" || march.Events[0].State != "active" {
 		t.Fatal(march, err)
 	}
 	linkFinancial(t, f, contract, financialEvent("payment", "01.000000000001", "2024-02-29"))
 	if _, err = r.RecordDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
-	again, err := repo.Summary(ctx, f.owner, "2024-02", &contract)
+	again, err := repo.List(ctx, f.owner, contract, billing.Filter{Month: "2024-02", Limit: 20})
 	if err != nil || !reflect.DeepEqual(feb, again) {
-		t.Fatal("duplicate excluded from aggregates", again, err)
+		t.Fatal("duplicate must not create another history event", again, err)
 	}
 }
 
@@ -101,7 +112,7 @@ func TestBillingAutomationAttentionIncludesRegistrationFailuresAndAIUnknown(t *t
 		t.Fatal(err)
 	}
 	enableFinancial(t, f)
-	if _, err := repo.RegisterDue(ctx, 20); err != nil {
+	if _, err := repo.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	page, err := repo.AnalysisResults(ctx, f.owner, subscriptions.AnalysisFilter{Review: "attention", Limit: 1, Offset: 1})

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
   import type { AnalysisResult } from './analysis-api.ts';
   let { result }: { result: AnalysisResult } = $props();
   const attention = $derived(
@@ -38,20 +39,26 @@
           ? '自動登録済み'
           : '登録済み'
         : result.automation_state === 'pending'
-          ? '自動登録待ち'
+          ? '承認待ち'
           : '登録先の確認が必要です'}</span
   >
   {#if recorded}<span class="secondary">支払・請求履歴に記録済み</span>{/if}
-  {#each targets as id}<a class="result-link" href={`/subscriptions/${id}`}
-      >サブスクを見る</a
+  {#each targets as id}<ActionLink
+      wrap
+      variant="text"
+      class={['result-link', 'part-AnalysisResultStatus-result-link']}
+      href={`/subscriptions/${id}`}>サブスクを見る</ActionLink
     >
-    <a class="result-link" href={`/subscriptions/${id}?tab=history`}
-      >支払・請求履歴を見る</a
+    <ActionLink
+      wrap
+      variant="text"
+      class={['result-link', 'part-AnalysisResultStatus-result-link']}
+      href={`/subscriptions/${id}?tab=history`}>支払・請求履歴を見る</ActionLink
     >{/each}
 {/if}
 
 <style>
-  .result-link {
+  :global(.part-AnalysisResultStatus-result-link) {
     display: block;
     margin-top: 0.35rem;
   }

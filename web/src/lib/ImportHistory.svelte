@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -54,7 +55,7 @@
       ? '前回取得した状態を表示しています。'
       : ''}
   </p>
-  <button onclick={() => controller?.load(accounts)}
-    >取り込み状況を再読み込み</button
+  <Button wrap onclick={() => controller?.load(accounts)}
+    >取り込み状況を再読み込み</Button
   >{/if}
 {#if view.page}<ImportProgressPanel entries={view.page} {compact} />{/if}

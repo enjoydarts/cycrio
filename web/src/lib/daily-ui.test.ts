@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 test('daily routes compose subscription and analysis screens through shared authenticated context', async () => {
   for (const [path, name] of [
     ['subscriptions', 'Subscriptions'],
-    ['subscriptions/[id]', 'SubscriptionDetail'],
+    ['subscriptions/[id=uuid]', 'SubscriptionDetail'],
     ['analysis', 'AnalysisInbox'],
   ]) {
     const source = await readFile(
@@ -21,7 +21,7 @@ test('daily mutation dialogs propagate saving state and original AI fields are s
       new URL(`./${name}.svelte`, import.meta.url),
       'utf8',
     ).catch(() => '');
-    assert.match(source, /busy=/);
+    assert.match(source, /busy=|\{busy\}/);
     assert.match(source, /onBusyChange|onFrozen/);
   }
   const fields = await readFile(

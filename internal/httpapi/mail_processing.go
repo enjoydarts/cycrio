@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
@@ -26,6 +28,28 @@ func WithMailProcessing(service MailProcessingService) Option {
 }
 
 func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, protect protectFunc) {
+	mux.HandleFunc("GET /v1/mail/accounts/{id}/import-history", protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
+		q, e := parseImportHistoryPagination(r)
+		if e != nil {
+			writeMailError(w, e)
+			return
+		}
+		history, ok := service.(interface {
+			ImportHistory(context.Context, string, string, int, int) (mailprocessing.ImportHistoryPage, error)
+		})
+		if !ok {
+			writeError(w, 503, "dependency_unavailable")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 8*time.Second)
+		defer cancel()
+		out, e := history.ImportHistory(ctx, p.ID, r.PathValue("id"), q[0], q[1])
+		if e != nil {
+			writeMailError(w, e)
+			return
+		}
+		writeJSON(w, 200, out)
+	}))
 	register := func(pattern string, admin bool, status int, callback func(http.ResponseWriter, *http.Request, string) (any, error)) {
 		mux.HandleFunc(pattern, protect(admin, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
 			if r.URL.RawQuery != "" || r.URL.ForceQuery {
@@ -48,6 +72,19 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 	}
 	register("GET /v1/mail/accounts/{id}/processing-preview", false, 200, func(_ http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		return service.Preview(r.Context(), owner, r.PathValue("id"))
+	})
+	register("POST /v1/mail/accounts/{id}/processing-retry-failed", false, 202, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
+		var in mailprocessing.Input
+		if e := readAdminJSON(w, r, &in, "expected_version", "runtime_version", "profile_id", "policy_version", "request_id", "max_messages", "confirmed"); e != nil {
+			return nil, e
+		}
+		bulk, ok := service.(interface {
+			RetryFailed(context.Context, string, string, mailprocessing.Input) (mailprocessing.RetryBatch, error)
+		})
+		if !ok {
+			return nil, mailprocessing.ErrUnavailable
+		}
+		return bulk.RetryFailed(r.Context(), owner, r.PathValue("id"), in)
 	})
 	register("GET /v1/mail/accounts/{id}/processing-runs", false, 200, func(_ http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		runs, err := service.ListRuns(r.Context(), owner, r.PathValue("id"))
@@ -127,4 +164,32 @@ func registerMailProcessing(mux *http.ServeMux, service MailProcessingService, p
 		}
 		return standard.SaveStandardPolicy(r.Context(), actor, in)
 	})
+}
+
+func parseImportHistoryPagination(r *http.Request) ([2]int, error) {
+	out := [2]int{20, 0}
+	q, e := url.ParseQuery(r.URL.RawQuery)
+	if e != nil || r.URL.ForceQuery {
+		return out, mailprocessing.ErrInvalid
+	}
+	for key, values := range q {
+		index := 0
+		if key == "offset" {
+			index = 1
+		} else if key != "limit" {
+			return out, mailprocessing.ErrInvalid
+		}
+		if len(values) != 1 || values[0] == "" {
+			return out, mailprocessing.ErrInvalid
+		}
+		n, e := strconv.Atoi(values[0])
+		if e != nil || strconv.Itoa(n) != values[0] {
+			return out, mailprocessing.ErrInvalid
+		}
+		out[index] = n
+	}
+	if out[0] < 1 || out[0] > 100 || out[1] < 0 || out[1] > 1000000 {
+		return out, mailprocessing.ErrInvalid
+	}
+	return out, nil
 }

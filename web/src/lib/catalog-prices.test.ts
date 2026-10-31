@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -50,7 +51,7 @@ test('the actual Svelte price currency pattern renders a valid three-letter curr
     { generate: 'server' },
   );
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])(svelte[^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])(svelte[^'"]+)\2/g,
     (_match, prefix, quote, path) =>
       `${prefix}${quote}${import.meta.resolve(path)}${quote}`,
   );

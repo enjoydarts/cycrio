@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -104,19 +106,22 @@
     description="送信元と外部サービスの接続を管理します。"
   >
     {#snippet action()}
-      <button
+      <Button
+        wrap
         disabled={view.busy || view.disposed}
-        onclick={() => controller?.load()}>更新</button
+        onclick={() => controller?.load()}>更新</Button
       >
     {/snippet}
   </LibraryHeader>
   <LibraryPanel>
     {#if !view.disposed}
       <nav class="library-tabs" aria-label="連携の設定項目">
-        {#each tabs as tab}<button
+        {#each tabs as tab}<Button
+            wrap
+            variant="tab"
             disabled={view.busy}
             aria-current={pane === tab.id ? 'page' : undefined}
-            onclick={() => show(tab.id)}>{tab.label}</button
+            onclick={() => show(tab.id)}>{tab.label}</Button
           >{/each}
       </nav>
     {/if}
@@ -130,8 +135,8 @@
             <p>
               テストメールの送信結果を確認してください。元の要求を保持しています。
             </p>
-            <button disabled={view.busy} onclick={() => show('test')}
-              >送信要求の確認へ</button
+            <Button wrap disabled={view.busy} onclick={() => show('test')}
+              >送信要求の確認へ</Button
             >
           </div>{/if}
       </div>
@@ -140,11 +145,13 @@
           {#if pane === 'settings'}
             <div class="section-heading">
               <h2>送信設定</h2>
-              {#if !editing}<button
-                  class="primary"
+              {#if !editing}<Button
+                  wrap
+                  variant="primary"
+                  class={['primary']}
                   disabled={view.busy || !view.view || !!view.pending}
                   onclick={() => (editing = true)}
-                  >{view.version ? '送信設定を編集' : '送信設定を登録'}</button
+                  >{view.version ? '送信設定を編集' : '送信設定を登録'}</Button
                 >{/if}
             </div>
             {#if editing}
@@ -177,18 +184,23 @@
                     required
                   /></label
                 >
-                <div class="actions">
-                  <button
-                    class="primary"
+                <ActionGroup
+                  class={['actions', 'part-IntegrationSettings-actions']}
+                >
+                  <Button
+                    wrap
+                    variant="primary"
+                    class={['primary']}
                     disabled={view.busy || !view.view || !!view.pending}
-                    >設定を保存</button
-                  ><button
+                    >設定を保存</Button
+                  ><Button
+                    wrap
                     type="button"
                     disabled={view.busy}
                     onclick={() => (editing = false)}
-                    >{view.dirty ? '入力を保持して閉じる' : '閉じる'}</button
+                    >{view.dirty ? '入力を保持して閉じる' : '閉じる'}</Button
                   >
-                </div>
+                </ActionGroup>
               </form>
             {:else}
               <dl>
@@ -223,10 +235,11 @@
                   現在の送信元：{view.view.config.sender}<br />Clerk
                   インスタンスID：{view.view.config.clerk_instance_id}
                 </p>
-                <button
+                <Button
+                  wrap
                   disabled={view.busy || !!view.pending}
                   onclick={() => controller?.adoptLatestBasis()}
-                  >最新設定を基準にして編集を続ける</button
+                  >最新設定を基準にして編集を続ける</Button
                 >
               </div>{/if}
           {:else if pane === 'webhooks'}
@@ -293,12 +306,13 @@
             {#if view.dirty}<p class="notice">
                 送信前に、編集中の設定を保存してください。
               </p>
-              <button
+              <Button
+                wrap
                 disabled={view.busy}
                 onclick={() => {
                   editing = true;
                   show('settings');
-                }}>送信設定に戻る</button
+                }}>送信設定に戻る</Button
               >{/if}
             <label class="confirmation"
               ><input
@@ -307,8 +321,10 @@
                 disabled={view.busy}
               />本人へのメール送信と利用枠の消費を確認しました</label
             >
-            <button
-              class="primary"
+            <Button
+              wrap
+              variant="primary"
+              class={['primary']}
               disabled={view.busy ||
                 !confirmed ||
                 !view.view ||
@@ -320,7 +336,7 @@
               onclick={() => controller?.send(confirmed)}
               >{view.pending
                 ? '同じ送信要求の結果を再確認'
-                : 'テストメールを1通送信'}</button
+                : 'テストメールを1通送信'}</Button
             >
             {#if view.pending}<div class="notice">
                 <p>結果の再確認ではメールを再送しません。</p>
@@ -329,12 +345,13 @@
                     >{view.pending.request_id}</code
                   >
                 </details>
-                <button
+                <Button
+                  wrap
                   disabled={view.busy}
                   onclick={() => {
                     controller?.newTest();
                     confirmed = false;
-                  }}>別のテストメールを送る準備をする</button
+                  }}>別のテストメールを送る準備をする</Button
                 >
                 <p>
                   別のテストは新たなメールを送ります。結果不明の場合も、先のメールが届く可能性があります。
@@ -408,25 +425,7 @@
     border: 1px solid var(--color-border);
     border-radius: 6px;
   }
-  button {
-    padding: 10px 14px;
-    margin: 8px 0;
-    max-width: 100%;
-    white-space: normal;
-    border: 1px solid var(--color-border);
-    border-radius: 8px;
-    color: var(--color-text);
-    background: var(--color-surface);
-  }
-  button:disabled {
-    opacity: 0.55;
-  }
-  .primary {
-    background: var(--color-action);
-    border-color: var(--color-action);
-    color: var(--color-on-action);
-  }
-  .actions {
+  :global(.part-IntegrationSettings-actions) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;

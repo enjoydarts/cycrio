@@ -49,6 +49,9 @@ func (r *BillingRepository) changeSource(ctx context.Context, owner, contract, i
 		return billing.Entry{}, e
 	}
 	defer tx.Rollback(ctx)
+	if e = mutableBillingSubscription(ctx, tx, owner, contract); e != nil {
+		return billing.Entry{}, e
+	}
 	out, e := getBilling(ctx, tx, owner, contract, id)
 	if e != nil {
 		return billing.Entry{}, e

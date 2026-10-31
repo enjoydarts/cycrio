@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -20,7 +21,7 @@ async function resultHTML(patch: Record<string, unknown>) {
   const { js, warnings } = compile(source, { generate: 'server' });
   assert.deepEqual(warnings, []);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, prefix, q, path) =>
       `${prefix}${q}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${q}`,
   );

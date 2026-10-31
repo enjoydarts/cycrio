@@ -84,6 +84,7 @@ type Preview struct {
 	TimeoutSeconds   int          `json:"timeout_seconds"`
 }
 type Input struct {
+	HistoryID       string `json:"history_id,omitempty" nonnull:"true"`
 	FullEmail       bool   `json:"full_email,omitempty" nonnull:"true"`
 	ExpectedVersion int64  `json:"expected_version"`
 	RuntimeVersion  int64  `json:"runtime_version"`
@@ -93,10 +94,42 @@ type Input struct {
 	MaxMessages     int    `json:"max_messages"`
 	Confirmed       bool   `json:"confirmed"`
 }
+
+// ImportHistory groups automatic batches by confirmed scope, and manual work
+// by its original request. Dates are unknown for legacy manual requests.
+type ImportHistory struct {
+	ActiveRunID     *string   `json:"active_run_id"`
+	ID              string    `json:"id"`
+	Kind            string    `json:"kind"`
+	CreatedAt       time.Time `json:"created_at"`
+	Since           *string   `json:"since"`
+	Before          *string   `json:"before"`
+	State           string    `json:"state"`
+	IsCurrent       bool      `json:"is_current"`
+	Incremental     bool      `json:"incremental"`
+	DiscoveredCount int       `json:"discovered_count"`
+	PendingCount    int       `json:"pending_count"`
+	CompletedCount  int       `json:"completed_count"`
+	CandidateCount  int       `json:"candidate_count"`
+	RegisteredCount int       `json:"registered_count"`
+	FailedCount     int       `json:"failed_count"`
+	UnknownCount    int       `json:"unknown_count"`
+}
+type ImportHistoryPage struct {
+	History []ImportHistory `json:"history"`
+	Total   int             `json:"total"`
+	Limit   int             `json:"limit"`
+	Offset  int             `json:"offset"`
+}
 type RetryInput struct {
 	Input
 	ExpectedResultID string `json:"expected_result_id"`
 	ConfirmUnknown   bool   `json:"confirm_unknown"`
+}
+type RetryBatch struct {
+	Run           Run `json:"run"`
+	AcceptedCount int `json:"accepted_count"`
+	SkippedCount  int `json:"skipped_count"`
 }
 type Run struct {
 	ID             string     `json:"id"`

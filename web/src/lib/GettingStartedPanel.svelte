@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionLink from './ActionLink.svelte';
   import type { FeedView } from './daily-controller.ts';
   import {
     gettingStartedGuide,
@@ -32,10 +34,11 @@
 >
   <header>
     <h2>サブスクを一覧に表示するまで</h2>
-    {#if view.status !== 'denied' && view.status !== 'disposed'}<button
+    {#if view.status !== 'denied' && view.status !== 'disposed'}<Button
+        wrap
         type="button"
         disabled={view.status === 'loading'}
-        onclick={onRefresh}>状態と一覧を更新</button
+        onclick={onRefresh}>状態と一覧を更新</Button
       >{/if}
   </header>
   {#if view.status === 'loading' || view.status === 'idle'}
@@ -46,7 +49,7 @@
     <div role="alert">
       <p>準備状況を確認できませんでした。</p>
       <p>{processingErrors[view.error]}</p>
-      <button type="button" onclick={onRefresh}>もう一度確認</button>
+      <Button wrap type="button" onclick={onRefresh}>もう一度確認</Button>
     </div>
   {:else if guide && data}
     {#if data.accounts.length > 1}
@@ -65,8 +68,11 @@
     <div class="guide-message" aria-live="polite">
       <h3>{guide.title}</h3>
       <p>{guide.description}</p>
-      {#if guide.href}<a class="button primary" href={guide.href}
-          >{guide.label}</a
+      {#if guide.href}<ActionLink
+          wrap
+          variant="primary"
+          class={['button primary']}
+          href={guide.href}>{guide.label}</ActionLink
         >{/if}
     </div>
     <ol class="steps" aria-label="サブスク登録までの流れ">
@@ -82,8 +88,8 @@
         <strong>取り込み・解析</strong><span>対象期間を確認して開始</span>
       </li>
       <li>
-        <strong>結果とサブスクを確認</strong><span
-          >要確認の項目は内容を確認・訂正</span
+        <strong>契約候補を確認・承認</strong><span
+          >承認した契約をサブスクで管理</span
         >
       </li>
     </ol>
@@ -110,7 +116,7 @@
         </div>
       </dl>{/if}
     <p class="note">
-      対象期間・本文の外部送信への同意と開始操作は、メール解析画面で行います。
+      対象期間・本文の外部送信への同意と開始操作は、メール接続ごとの取り込み設定で行います。
     </p>
   {/if}
 </article>
@@ -192,8 +198,5 @@
   }
   .note {
     margin-bottom: 0;
-  }
-  a {
-    overflow-wrap: anywhere;
   }
 </style>

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import type { Model, PriceInput } from './catalog-api.ts';
   import { priceFields } from './catalog-api.ts';
   import {
@@ -143,17 +145,23 @@
         /></label
       >
     </div>
-    <div class="setup-actions">
-      <button type="submit" class="primary" disabled={busy}>価格を保存</button
-      ><button
+    <ActionGroup class={['setup-actions', 'part-SetupPrice-setup-actions']}>
+      <Button
+        wrap
+        variant="primary"
+        type="submit"
+        class={['primary']}
+        disabled={busy}>価格を保存</Button
+      ><Button
+        wrap
         type="button"
         disabled={busy}
         onclick={() => {
           onDirty(false);
           onclose();
-        }}>キャンセル</button
+        }}>キャンセル</Button
       >
-    </div>
+    </ActionGroup>
   </form>
   {#if model.current_price}<p class="muted">
       現在の参照価格の取得（日本時間）：{datetime(

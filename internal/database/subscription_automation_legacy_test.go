@@ -1,3 +1,7 @@
+//go:build integration
+
+// Historical fixtures preserve compatibility coverage without retaining an
+// automatic contract creation path in the application binary.
 package database
 
 import (
@@ -241,4 +245,37 @@ func automaticCandidates(ctx context.Context, tx pgx.Tx, owner string) ([]autore
 		out = append(out, s)
 	}
 	return out, rows.Err()
+}
+
+func (r *SubscriptionRepository) registerLegacyDue(ctx context.Context, limit int) (int, error) {
+	rows, err := r.pool.Query(ctx, `SELECT i.owner_id,i.account_id,i.id FROM mail_processing_items i JOIN users u ON u.id=i.owner_id AND u.state='active' JOIN mail_accounts a ON a.owner_id=i.owner_id AND a.id=i.account_id AND a.state='ready' JOIN subscription_automation_preferences p ON p.owner_id=i.owner_id AND p.enabled LEFT JOIN subscription_automation_results r ON r.owner_id=i.owner_id AND r.result_id=i.id WHERE i.state='succeeded' AND (r.result_id IS NULL OR r.state='failed' AND r.attempts<5 AND r.retry_after<=clock_timestamp()) ORDER BY i.finished_at,i.id LIMIT $1`, limit)
+	if err != nil {
+		return 0, subscriptionError(err)
+	}
+	type candidate struct{ owner, account, result string }
+	items := []candidate{}
+	for rows.Next() {
+		var c candidate
+		if err = rows.Scan(&c.owner, &c.account, &c.result); err != nil {
+			rows.Close()
+			return 0, subscriptionError(err)
+		}
+		items = append(items, c)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return 0, subscriptionError(err)
+	}
+	count := 0
+	for _, c := range items {
+		processed, err := r.registerResult(ctx, c.owner, c.account, c.result)
+		if err != nil {
+			return count, err
+		}
+		if processed {
+			count++
+		}
+	}
+	return count, nil
 }

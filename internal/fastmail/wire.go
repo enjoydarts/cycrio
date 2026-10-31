@@ -19,20 +19,22 @@ var errInvalidFraming = errors.New("invalid mail response framing")
 // grammar and mailbox decoding remain the SDK's responsibility.
 type boundedConn struct {
 	net.Conn
-	deadline    time.Time
-	read        int
-	exceeded    atomic.Bool
-	timedOut    atomic.Bool
-	quoted      bool
-	escaped     bool
-	header      uint8
-	size        int
-	literal     int
-	expectLF    bool
-	pendingLF   bool
-	maxBytes    int
-	observe     func(b byte, literal, headerEnd bool) error
-	observerErr error
+	deadline       time.Time
+	read           int
+	exceeded       atomic.Bool
+	timedOut       atomic.Bool
+	disconnected   atomic.Bool
+	invalidFraming atomic.Bool
+	quoted         bool
+	escaped        bool
+	header         uint8
+	size           int
+	literal        int
+	expectLF       bool
+	pendingLF      bool
+	maxBytes       int
+	observe        func(b byte, literal, headerEnd bool) error
+	observerErr    error
 }
 
 func (c *boundedConn) budget() int {
@@ -64,6 +66,7 @@ func (c *boundedConn) Read(p []byte) (int, error) {
 	}
 	n, err := c.Conn.Read(p)
 	c.recordTimeout(err)
+	c.recordDisconnect(err)
 	c.read += n
 	if c.read > c.budget() {
 		c.exceeded.Store(true)
@@ -85,8 +88,10 @@ func (c *boundedConn) Read(p []byte) (int, error) {
 		c.recordTimeout(nextErr)
 		if m == 0 {
 			if nextErr == io.EOF {
+				c.invalidFraming.Store(true)
 				nextErr = errInvalidFraming
 			}
+			c.recordDisconnect(nextErr)
 			return n - 1, nextErr
 		}
 		c.read++
@@ -106,7 +111,17 @@ func (c *boundedConn) Read(p []byte) (int, error) {
 func (c *boundedConn) Write(p []byte) (int, error) {
 	n, err := c.Conn.Write(p)
 	c.recordTimeout(err)
+	c.recordDisconnect(err)
 	return n, err
+}
+
+func (c *boundedConn) recordDisconnect(err error) {
+	var netErr net.Error
+	// A local close also interrupts I/O after a response guard rejects data.
+	// It is not evidence of a remote disconnect.
+	if !errors.Is(err, net.ErrClosed) && (errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.As(err, &netErr)) {
+		c.disconnected.Store(true)
+	}
 }
 
 func (c *boundedConn) recordTimeout(err error) {
@@ -120,6 +135,9 @@ func (c *boundedConn) accept(b byte) error {
 	literal := c.literal > 0
 	headerEnd := !literal && (c.header == 2 || c.header == 3) && b == '\n'
 	if err := c.acceptByte(b); err != nil {
+		if errors.Is(err, errInvalidFraming) {
+			c.invalidFraming.Store(true)
+		}
 		return err
 	}
 	if c.observe != nil {

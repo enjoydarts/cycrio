@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import { onDestroy, untrack } from 'svelte';
   import { type ModelProvider, type CatalogFilter } from './catalog-api';
   import { providerNames } from './model-catalog';
@@ -90,14 +92,20 @@
       </select>
     </div>
   {/if}
-  <div class="search-buttons">
-    <button class="primary" disabled={locked || tooLong}>検索</button>
-    <button
+  <ActionGroup class={['search-buttons', 'part-ModelSearch-search-buttons']}>
+    <Button
+      wrap
+      variant="primary"
+      class={['primary']}
+      disabled={locked || tooLong}>検索</Button
+    >
+    <Button
+      wrap
       type="button"
       disabled={locked || (!search && provider === initialProvider)}
-      onclick={clear}>条件をクリア</button
+      onclick={clear}>条件をクリア</Button
     >
-  </div>
+  </ActionGroup>
   <p
     id={`${prefix}-search-help`}
     class:search-error={tooLong}

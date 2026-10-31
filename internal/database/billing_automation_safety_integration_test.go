@@ -127,7 +127,7 @@ func TestBillingAutomationContractReviewResolvedByOwnerAttach(t *testing.T) {
 	}
 	result := automationResult(t, f, financialEvent("payment", "0", "2024-02-29"))
 	enableFinancial(t, f)
-	if _, err := contracts.RegisterDue(ctx, 20); err != nil {
+	if _, err := contracts.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	var state string

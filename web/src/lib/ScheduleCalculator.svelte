@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount, untrack } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
@@ -140,13 +142,14 @@
 />
 
 <div class="schedule-entry">
-  <button
+  <Button
+    wrap
     type="button"
     onclick={() => {
       open = true;
       navigationMessage = '';
       void controller?.load();
-    }}>次回予定を計算</button
+    }}>次回予定を計算</Button
   >
   <ScheduleConditions view={shown} />
 </div>
@@ -277,14 +280,15 @@
         >
           周期は1〜10000の整数、基準請求日は実在する日付を指定してください。月末固定の場合、基準請求日も月末である必要があります。
         </p>{/if}
-      <button
+      <Button
+        wrap
         type="submit"
         disabled={frozen ||
           !valid ||
           !view.baseline ||
           view.conflict ||
           view.loading === 'preview'}
-        >{view.loading === 'preview' ? '計算しています…' : '計算する'}</button
+        >{view.loading === 'preview' ? '計算しています…' : '計算する'}</Button
       >
     </form>
     {#if view.preview && view.baseline}<ScheduleReview
@@ -303,24 +307,27 @@
             )} · 次回請求日 {view.latest.subscription.next_billing_date ??
               '不明'}
           </p>
-          <div class="actions">
-            <button
+          <ActionGroup class={['actions', 'part-ScheduleCalculator-actions']}>
+            <Button
+              wrap
               type="button"
               disabled={frozen}
               onclick={() => controller?.rebase()}
-              >入力を保持して最新版で確認し直す</button
-            ><button
+              >入力を保持して最新版で確認し直す</Button
+            ><Button
+              wrap
               type="button"
               disabled={frozen}
               onclick={() => controller?.discard()}
-              >入力を破棄して最新版を開く</button
+              >入力を破棄して最新版を開く</Button
             >
-          </div>
-        {:else}<button
+          </ActionGroup>
+        {:else}<Button
+            wrap
             type="button"
             disabled={frozen || view.loading === 'latest'}
             onclick={() => controller?.refreshLatest()}
-            >最新の契約を再取得</button
+            >最新の契約を再取得</Button
           >{/if}
       </aside>{/if}
     {#if view.reason === 'history_changed'}<p class="notice" role="alert">
@@ -341,15 +348,16 @@
     {#if view.error && !view.reason}<p class="notice error" role="alert">
         {processingErrors[view.error]}
       </p>{/if}
-    {#if !view.baseline && !view.uncertain && view.loading !== 'view' && view.status !== 'denied'}<button
+    {#if !view.baseline && !view.uncertain && view.loading !== 'view' && view.status !== 'denied'}<Button
+        wrap
         type="button"
-        onclick={() => controller?.load()}>条件を再読み込み</button
+        onclick={() => controller?.load()}>条件を再読み込み</Button
       >{/if}
     {#if view.uncertain}<p class="notice" role="status">
         保存の受付状況を確認できません。条件・候補日と保存要求を保持しています。日付が変わっても、同じ要求で先に確認してください。
       </p>
-      <button type="button" disabled={busy} onclick={() => save(true)}
-        >同じ要求で再確認</button
+      <Button wrap type="button" disabled={busy} onclick={() => save(true)}
+        >同じ要求で再確認</Button
       >
     {:else if view.saved}<aside class="notice" role="status">
         <p>確認した保存要求は受け付けられています。</p>
@@ -369,8 +377,8 @@
           </p>{:else}<p>
             現在の次回請求日: {view.saved.current.subscription
               .next_billing_date ?? '不明'}
-          </p>{/if}<button type="button" onclick={acknowledge}
-          >現在の契約を確認して閉じる</button
+          </p>{/if}<Button wrap type="button" onclick={acknowledge}
+          >現在の契約を確認して閉じる</Button
         >
       </aside>
     {:else}<label class="check"
@@ -383,8 +391,10 @@
             !view.preview?.candidate_date}
           onchange={(event) => controller?.confirm(event.currentTarget.checked)}
         />周期・基準請求日・日付の指定方法・候補日を確認しました</label
-      ><button
-        class="primary"
+      ><Button
+        wrap
+        variant="primary"
+        class={['primary']}
         type="button"
         disabled={frozen ||
           !valid ||
@@ -393,7 +403,7 @@
           !view.preview?.candidate_date ||
           !view.confirmed}
         onclick={() => save()}
-        >{busy ? '保存中…' : '周期・基準日・候補日を確認して保存'}</button
+        >{busy ? '保存中…' : '周期・基準日・候補日を確認して保存'}</Button
       >{/if}
   </div>
 </Modal>

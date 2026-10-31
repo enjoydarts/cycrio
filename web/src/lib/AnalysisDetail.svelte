@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionLink from './ActionLink.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import type { AnalysisResult } from './analysis-api.ts';
   import type { Subscription } from './subscriptions-api.ts';
   import type { SubscriptionDrafts } from './subscriptions-controller.ts';
@@ -74,8 +77,9 @@
 
 <div class="daily">
   {#if registrationError}<p class="notice" role="alert">
-      保存は受け付けられましたが、この解析結果との紐付けを確認できません。<button
-        onclick={onBackToResults}>結果一覧で最新の登録状況を確認</button
+      保存は受け付けられましたが、この解析結果との紐付けを確認できません。<Button
+        wrap
+        onclick={onBackToResults}>結果一覧で最新の登録状況を確認</Button
       >
     </p>{/if}
   <p class="muted">
@@ -90,9 +94,7 @@
       {@const financialOutcome = result.billing_automation?.find(
         (a) => a.event_index === index,
       )}
-      {@const manualRegistration =
-        !!contractOutcome &&
-        ['needs_review', 'failed'].includes(contractOutcome.state)}
+      {@const manualRegistration = !registration}
       {@const financialSourceAction =
         !!financialOutcome &&
         (['needs_review', 'failed'].includes(financialOutcome.state) ||
@@ -115,15 +117,17 @@
               : 'サブスクを登録した後、支払・請求履歴で内容を確認して記録できます。'}
           </p>{/if}
         <EventFields {event} />
-        {#if registration}<a
-            class="button"
+        {#if registration}<ActionLink
+            wrap
+            class={['button']}
             href={`/subscriptions/${registration.subscription_id}`}
-            >登録済みのサブスクを見る</a
+            >登録済みのサブスクを見る</ActionLink
           >
-          <a
-            class="button"
+          <ActionLink
+            wrap
+            class={['button']}
             href={`/subscriptions/${registration.subscription_id}?tab=history${financialSourceAction ? `&source_result_id=${result.id}&source_event_index=${index}` : ''}`}
-            >支払・請求履歴を見る</a
+            >支払・請求履歴を見る</ActionLink
           >{:else if manualRegistration && action?.index === index}{#if action.kind === 'create'}<h3
             >
               新規サブスクに登録
@@ -141,18 +145,23 @@
               {onBackToResults}
               onBusyChange={changed}
               onSaved={(s) => saved(index, s)}
-            />{/if}{:else if manualRegistration}<div class="actions">
-            <button
-              class="primary"
+            />{/if}{:else if manualRegistration}<ActionGroup
+            class={['actions', 'part-AnalysisDetail-actions']}
+          >
+            <Button
+              wrap
+              variant="primary"
+              class={['primary']}
               disabled={busy}
               onclick={() => (action = { index, kind: 'create' })}
-              >新規サブスクに登録</button
-            ><button
+              >新規サブスクに登録</Button
+            ><Button
+              wrap
               disabled={busy}
               onclick={() => (action = { index, kind: 'attach' })}
-              >既存のサブスクに紐付ける</button
+              >既存のサブスクに紐付ける</Button
             >
-          </div>{:else}<p class="muted">
+          </ActionGroup>{:else}<p class="muted">
             {contractOutcome?.state === 'registered'
               ? 'この情報には現在の登録先がありません。'
               : result.automation_state === 'not_applicable'

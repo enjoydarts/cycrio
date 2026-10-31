@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount, untrack } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -178,11 +181,12 @@
       {#if view.baseline?.id !== view.linked.id}<p>
           現在の入力を保持しています。登録先を開く場合は、入力を破棄することを確認してください。
         </p>
-        <button
+        <Button
+          wrap
           type="button"
           disabled={frozen}
           onclick={() => controller?.adoptLinked()}
-          >入力を破棄して登録済みの履歴を開く</button
+          >入力を破棄して登録済みの履歴を開く</Button
         >{/if}
     </aside>{/if}
   <form
@@ -271,28 +275,31 @@
             />{:else if view.values.refund_of_id}<p class="billing-id">
               選択中: {view.values.refund_of_id}
             </p>{:else}<p>返金元は未選択です。</p>{/if}
-          <div class="actions">
-            <button
+          <ActionGroup class={['actions', 'part-BillingEditor-actions']}>
+            <Button
+              wrap
               type="button"
               disabled={!view.values.currency}
               onclick={() => {
                 choosingPayment = true;
                 void controller?.loadPayments();
-              }}>支払いを選ぶ</button
-            >{#if view.values.refund_of_id}<button
+              }}>支払いを選ぶ</Button
+            >{#if view.values.refund_of_id}<Button
+                wrap
                 type="button"
-                onclick={() => edit({ refund_of_id: null })}>選択を解除</button
+                onclick={() => edit({ refund_of_id: null })}>選択を解除</Button
               >{/if}
-          </div>
+          </ActionGroup>
           {#if choosingPayment}<label
               >支払いの明細 ID で取得<input
                 type="text"
                 bind:value={paymentID}
               /></label
-            ><button
+            ><Button
+              wrap
               type="button"
               onclick={() => controller?.selectPayment(paymentID)}
-              >ID の支払いを選択</button
+              >ID の支払いを選択</Button
             >
             {#if view.loading.includes('payments') || view.loading.includes('payment')}<p
                 role="status"
@@ -309,19 +316,21 @@
                   このページに {view.values.currency} の支払いはありません。
                 </p>{/if}
               <nav class="pager" aria-label="支払いのページ">
-                <button
+                <Button
+                  wrap
                   type="button"
                   disabled={view.payments.offset === 0}
                   onclick={() =>
                     controller?.loadPayments(
                       Math.max(0, view.payments!.offset - 20),
-                    )}>前の支払い</button
-                ><span>全 {view.payments.total} 件</span><button
+                    )}>前の支払い</Button
+                ><span>全 {view.payments.total} 件</span><Button
+                  wrap
                   type="button"
                   disabled={view.payments.offset + 20 >= view.payments.total}
                   onclick={() =>
                     controller?.loadPayments(view.payments!.offset + 20)}
-                  >次の支払い</button
+                  >次の支払い</Button
                 >
               </nav>{/if}
           {/if}
@@ -345,16 +354,17 @@
               </p>
               <EventFields event={s.original_event} />{/each}
           </details>
-          <div class="actions">
-            <button type="button" onclick={() => controller?.rebase()}
-              >入力を保持して最新版で確認し直す</button
-            ><button type="button" onclick={() => controller?.discard()}
-              >入力を破棄して最新版を開く</button
+          <ActionGroup class={['actions', 'part-BillingEditor-actions']}>
+            <Button wrap type="button" onclick={() => controller?.rebase()}
+              >入力を保持して最新版で確認し直す</Button
+            ><Button wrap type="button" onclick={() => controller?.discard()}
+              >入力を破棄して最新版を開く</Button
             >
-          </div>{:else}<button
+          </ActionGroup>{:else}<Button
+            wrap
             type="button"
             onclick={() => controller?.refreshLatest()}
-            >最新の履歴を再取得</button
+            >最新の履歴を再取得</Button
           >{/if}
       </aside>{/if}
     {#if !view.conflict}<section class="section">
@@ -362,10 +372,11 @@
         <p class="muted">
           同じ日付・種別・金額・通貨の有効な明細を確認します。確認後に明細や候補が変わった場合は、もう一度確認が必要です。
         </p>
-        <button
+        <Button
+          wrap
           type="button"
           disabled={frozen || !valid || view.loading.includes('duplicates')}
-          onclick={() => controller?.preview()}>重複候補を確認</button
+          onclick={() => controller?.preview()}>重複候補を確認</Button
         >
         {#if view.loading.includes('duplicates')}<p role="status">
             重複候補を確認しています…
@@ -380,20 +391,22 @@
               disabled={frozen}
             />
             <nav class="pager" aria-label="重複候補のページ">
-              <button
+              <Button
+                wrap
                 type="button"
                 disabled={frozen || view.duplicates.offset === 0}
                 onclick={() =>
                   controller?.preview(
                     Math.max(0, view.duplicates!.offset - 20),
-                  )}>前の候補</button
-              ><span>全 {view.duplicates.total} 件</span><button
+                  )}>前の候補</Button
+              ><span>全 {view.duplicates.total} 件</span><Button
+                wrap
                 type="button"
                 disabled={frozen ||
                   view.duplicates.offset + 20 >= view.duplicates.total}
                 onclick={() =>
                   controller?.preview(view.duplicates!.offset + 20)}
-                >次の候補</button
+                >次の候補</Button
               >
             </nav>
             <label class="check"
@@ -411,10 +424,11 @@
     {#if view.reason === 'refund_conflict'}<p class="notice" role="alert">
         返金の累計または返金元の状態と整合しません。関連する支払い・返金の金額、通貨、状態を履歴一覧で確認してください。返金が紐付く支払いの変更・無効化にも制限があります。
       </p>
-      <a
-        class="button"
+      <ActionLink
+        wrap
+        class={['button']}
         href={`/subscriptions/${subscription.id}?tab=history&kind=refund`}
-        >関連する返金を確認</a
+        >関連する返金を確認</ActionLink
       >{:else if view.reason === 'possible_duplicate'}<p
         class="notice"
         role="alert"
@@ -432,8 +446,8 @@
     {#if view.uncertain}<p class="notice">
         受付状況を確認できません。金額・日付と要求を保持しています。同じ要求で再確認してください。
       </p>
-      <button type="button" disabled={busy} onclick={() => save(true)}
-        >同じ要求で再確認</button
+      <Button wrap type="button" disabled={busy} onclick={() => save(true)}
+        >同じ要求で再確認</Button
       >{:else}<label class="check"
         ><input
           type="checkbox"
@@ -443,8 +457,10 @@
         />{dateLabel}・種別・金額・通貨{view.values.kind === 'refund'
           ? '・返金元'
           : ''}・記録の状態を含め、内容を確認しました</label
-      ><button
-        class="primary"
+      ><Button
+        wrap
+        variant="primary"
+        class={['primary']}
         type="submit"
         disabled={frozen ||
           !valid ||
@@ -456,7 +472,7 @@
           ? '保存中…'
           : view.baseline
             ? '履歴の変更を保存'
-            : '履歴を記録'}</button
+            : '履歴を記録'}</Button
       >{/if}
   </form>
   {#if view.baseline}<BillingSources
@@ -471,10 +487,11 @@
       <p class="muted">
         日付や金額が一致しない履歴も含め、無効な履歴まで確認できます。
       </p>
-      <button
+      <Button
+        wrap
         type="button"
         disabled={frozen}
-        onclick={() => controller?.loadRecords()}>既存の履歴から選ぶ</button
+        onclick={() => controller?.loadRecords()}>既存の履歴から選ぶ</Button
       >{#if view.loading.includes('records')}<p role="status">
           履歴を読み込んでいます…
         </p>{/if}{#if view.records}{#if view.records.events.length}<BillingTable
@@ -484,17 +501,19 @@
             disabled={frozen}
           />{:else}<p class="empty">履歴はありません。</p>{/if}
         <nav class="pager" aria-label="既存履歴のページ">
-          <button
+          <Button
+            wrap
             type="button"
             disabled={frozen || view.records.offset === 0}
             onclick={() =>
               controller?.loadRecords(Math.max(0, view.records!.offset - 20))}
-            >前の履歴</button
-          ><span>全 {view.records.total} 件</span><button
+            >前の履歴</Button
+          ><span>全 {view.records.total} 件</span><Button
+            wrap
             type="button"
             disabled={frozen || view.records.offset + 20 >= view.records.total}
             onclick={() => controller?.loadRecords(view.records!.offset + 20)}
-            >次の履歴</button
+            >次の履歴</Button
           >
         </nav>{/if}
     </section>{/if}
@@ -506,27 +525,30 @@
           選択した履歴が更新されました。最新版を取得し、紐付け先を確認し直してください。
         </p>
         {#if view.latest?.id === reuse.id}<p>最新の版 {view.latest.version}</p>
-          <BillingTable entries={[view.latest]} /><button
+          <BillingTable entries={[view.latest]} /><Button
+            wrap
             type="button"
             disabled={frozen}
             onclick={() => {
               if (view.latest) chooseReuse(view.latest);
-            }}>最新版を紐付け先として選び直す</button
-          >{:else}<button
+            }}>最新版を紐付け先として選び直す</Button
+          >{:else}<Button
+            wrap
             type="button"
             disabled={frozen}
             onclick={() => controller?.refreshAttachment(reuse!.id)}
-            >紐付け先の最新版を再取得</button
+            >紐付け先の最新版を再取得</Button
           >{/if}{/if}<label class="check"
         ><input
           type="checkbox"
           bind:checked={reuseConfirmed}
           disabled={frozen}
         />入力中の明細を新規作成せず、この履歴へ根拠だけを追加します</label
-      ><button
+      ><Button
+        wrap
         type="button"
         disabled={frozen || !reuseConfirmed}
-        onclick={attachExisting}>既存履歴に根拠を紐付ける</button
+        onclick={attachExisting}>既存履歴に根拠を紐付ける</Button
       >
     </aside>{/if}
 </div>

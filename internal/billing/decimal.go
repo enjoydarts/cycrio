@@ -16,7 +16,6 @@ func Decimal(s string) *big.Int {
 	return n
 }
 func Add(a, b *big.Int) *big.Int { return new(big.Int).Add(a, b) }
-func Sub(a, b *big.Int) *big.Int { return new(big.Int).Sub(a, b) }
 func Canonical(n *big.Int) string {
 	sign := ""
 	if n.Sign() < 0 {

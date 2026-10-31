@@ -15,7 +15,7 @@ import (
 // A contract's financial version changes only when a financial entry changes.
 // An unresolved refund is reconsidered once per version, including after restart.
 const billingBasis = `COALESCE((SELECT md5(string_agg(b.id::text||':'||b.version::text,',' ORDER BY b.id)) FROM billing_events b WHERE b.owner_id=s.owner_id AND b.subscription_id=s.subscription_id),'empty')`
-const billingDue = `NOT EXISTS(SELECT 1 FROM billing_source_detachments d WHERE d.owner_id=s.owner_id AND d.result_id=s.result_id AND d.event_index=s.event_index) AND (w.result_id IS NULL OR w.state='failed' AND w.failures<5 AND w.retry_after<=clock_timestamp() OR w.state='needs_review' AND w.reason='refund_target_ambiguous' AND w.basis<>` + billingBasis + `)`
+const billingDue = `EXISTS(SELECT 1 FROM subscriptions contract WHERE contract.owner_id=s.owner_id AND contract.id=s.subscription_id AND contract.deleted_at IS NULL) AND NOT EXISTS(SELECT 1 FROM billing_source_detachments d WHERE d.owner_id=s.owner_id AND d.result_id=s.result_id AND d.event_index=s.event_index) AND (w.result_id IS NULL OR w.state='failed' AND w.failures<5 AND w.retry_after<=clock_timestamp() OR w.state='needs_review' AND w.reason='refund_target_ambiguous' AND w.basis<>` + billingBasis + `)`
 
 // RecordDue consumes saved, currently attached contract sources only. No mailbox,
 // model or credential is involved. Owner locks serialize it with manual mutations.
@@ -97,7 +97,10 @@ func (r *BillingRepository) recordSource(ctx context.Context, owner, account, re
 	if err != nil {
 		return false, billingError(err)
 	}
-	if err = tx.QueryRow(ctx, `SELECT id FROM subscriptions WHERE owner_id=$1 AND id=$2 FOR UPDATE`, owner, contract).Scan(&contract); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT id FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, owner, contract).Scan(&contract); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
 		return false, billingError(err)
 	}
 	var event ai.Event

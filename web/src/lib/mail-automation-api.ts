@@ -39,7 +39,7 @@ export type AutomationInput = {
   full_email: true;
   interval_seconds: 300;
   confirmed: true;
-  auto_register: true;
+  auto_register: false;
   request_id: string;
 };
 export type AutomationControl = {
@@ -267,7 +267,7 @@ export function createMailAutomationAPI(
         if (
           v.full_email !== true ||
           v.confirmed !== true ||
-          v.auto_register !== true ||
+          v.auto_register !== false ||
           v.interval_seconds !== 300 ||
           !validAutomationRange(v.since, inclusiveEnd(v.before))
         )
@@ -283,7 +283,7 @@ export function createMailAutomationAPI(
           full_email: true,
           interval_seconds: 300,
           confirmed: true,
-          auto_register: true,
+          auto_register: false,
         };
       });
       return parseMailAutomationState(

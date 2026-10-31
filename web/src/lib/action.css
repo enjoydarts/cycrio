@@ -1,0 +1,115 @@
+.ui-action {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  min-width: 44px;
+  max-width: 100%;
+  margin: 0;
+  padding: 10px 15px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ui-action:hover {
+  border-color: var(--color-action);
+}
+.ui-action:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 3px;
+}
+.ui-action:disabled,
+.ui-action[aria-disabled='true'] {
+  opacity: 0.5;
+  cursor: default;
+}
+.ui-primary {
+  background: var(--color-action);
+  border-color: var(--color-action);
+  color: var(--color-on-action);
+}
+.ui-danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+.ui-tab {
+  border: 0;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+}
+.ui-tab[aria-current],
+.ui-tab[aria-pressed='true'] {
+  color: var(--color-action);
+  border-bottom-color: var(--color-action);
+  font-weight: 600;
+}
+.ui-icon {
+  padding: 8px;
+  font-size: 24px;
+  background: transparent;
+  border-color: transparent;
+  color: inherit;
+}
+.ui-text {
+  border: 0;
+  background: transparent;
+  padding-inline: 0;
+  color: var(--color-action);
+}
+.ui-nav {
+  border: 0;
+  background: transparent;
+  justify-content: flex-start;
+  text-align: left;
+}
+.ui-plain {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  justify-content: flex-start;
+  text-align: left;
+}
+.ui-wrap {
+  width: max-content;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.ui-plain.ui-wrap {
+  width: 100%;
+}
+.ui-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  padding: 19px;
+  border-radius: 11px;
+  white-space: normal;
+  text-align: left;
+  min-width: 0;
+}
+.ui-overlay {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: #142f2966;
+}

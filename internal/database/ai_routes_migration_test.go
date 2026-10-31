@@ -20,7 +20,7 @@ import (
 func allLegacyRouteRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','ai_routes','ai_route_snapshots','ai_routes_state','ai_routes_audit','mail_processing_standard_proofs') ORDER BY tablename`)
+	rows, e := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT IN ('subscription_candidate_dismissals','mail_processing_retry_batches') AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT LIKE 'mail_automation%' AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments') AND tablename NOT IN ('subscription_automation_preferences','subscription_automation_preference_audit','subscription_automation_results','subscription_automation_events','goose_db_version','ai_routes','ai_route_snapshots','ai_routes_state','ai_routes_audit','mail_processing_standard_proofs') ORDER BY tablename`)
 	if e != nil {
 		t.Fatal(e)
 	}

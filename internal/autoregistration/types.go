@@ -1,9 +1,10 @@
-// Package autoregistration registers saved AI facts without owner confirmation.
+// Package autoregistration describes historical automatic registration metadata.
 package autoregistration
 
 type Preference struct {
-	Enabled bool  `json:"enabled"`
-	Version int64 `json:"version"`
+	ApprovalRequired bool  `json:"approval_required"`
+	Enabled          bool  `json:"enabled"`
+	Version          int64 `json:"version"`
 }
 type PreferenceInput struct {
 	Enabled         bool  `json:"enabled"`

@@ -25,6 +25,12 @@ export const subscriptionFromEvent = (
   ...blankSubscription(),
   service: event.service,
   plan: event.plan,
+  amount: ['refund', 'cancellation'].includes(event.event_type)
+    ? null
+    : event.amount,
+  currency: ['refund', 'cancellation'].includes(event.event_type)
+    ? null
+    : event.currency,
   interval_unit: event.interval_unit,
   interval_count: event.interval_count,
   next_billing_date: event.next_billing_at,

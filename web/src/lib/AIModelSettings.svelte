@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { type TokenProvider } from './api';
   import {
@@ -159,9 +161,17 @@
       view.settings?.secondary_model_id ?? null,
     )}
   </div>
-  <div class="actions save-settings">
-    <button
-      class="primary"
+  <ActionGroup
+    class={[
+      'actions save-settings',
+      'part-AIModelSettings-actions',
+      'part-AIModelSettings-save-settings',
+    ]}
+  >
+    <Button
+      wrap
+      variant="primary"
+      class={['primary']}
       disabled={busy ||
         !primary ||
         !secondary ||
@@ -171,26 +181,36 @@
       onclick={() => {
         if (primary && secondary)
           void controller?.saveSettings(primary, secondary);
-      }}>下書きを保存する</button
-    ><button disabled={busy} onclick={() => controller?.loadSettings()}
-      >保存状態を再読み込み</button
+      }}>下書きを保存する</Button
+    ><Button wrap disabled={busy} onclick={() => controller?.loadSettings()}
+      >保存状態を再読み込み</Button
     >
-  </div>
+  </ActionGroup>
   <p class="muted">
     保存時点の価格を参照します。カタログ価格は参考情報で、実際の利用原価ではありません。
   </p>
   <h3>カタログからモデルを選択</h3>
-  <div class="actions stage-selector">
-    <button
+  <ActionGroup
+    class={[
+      'actions stage-selector',
+      'part-AIModelSettings-actions',
+      'part-AIModelSettings-stage-selector',
+    ]}
+  >
+    <Button
+      wrap
+      variant="tab"
       aria-pressed={stage === 'primary'}
       disabled={busy}
-      onclick={() => changeStage('primary')}>一次判定を選ぶ</button
-    ><button
+      onclick={() => changeStage('primary')}>一次判定を選ぶ</Button
+    ><Button
+      wrap
+      variant="tab"
       aria-pressed={stage === 'secondary'}
       disabled={busy}
-      onclick={() => changeStage('secondary')}>二次処理を選ぶ</button
+      onclick={() => changeStage('secondary')}>二次処理を選ぶ</Button
     >
-  </div>
+  </ActionGroup>
   {#key stage}<ModelSearch
       prefix="settings"
       providers={stage === 'primary'
@@ -217,21 +237,29 @@
       `${stage === 'primary' ? '一次判定' : '二次処理'}に ${model.display_name} を選択`}
     onselect={choose}
   />
-  <div class="actions pagination">
-    <button
+  <ActionGroup
+    class={[
+      'actions pagination',
+      'part-AIModelSettings-actions',
+      'part-AIModelSettings-pagination',
+    ]}
+  >
+    <Button
+      wrap
       disabled={busy || !(view.filter.offset ?? 0)}
       onclick={() =>
         controller?.search({
           ...view.filter,
           offset: Math.max(0, (view.filter.offset ?? 0) - 20),
-        })}>前の 20 件</button
-    ><button
+        })}>前の 20 件</Button
+    ><Button
+      wrap
       disabled={busy || (view.filter.offset ?? 0) + 20 >= view.total}
       onclick={() =>
         controller?.search({
           ...view.filter,
           offset: (view.filter.offset ?? 0) + 20,
-        })}>次の 20 件</button
+        })}>次の 20 件</Button
     >
-  </div>
+  </ActionGroup>
 </section>

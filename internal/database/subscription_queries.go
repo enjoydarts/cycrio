@@ -25,7 +25,7 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 	}
 	// Search text is literal; '%' and '_' in service names are ordinary characters.
 	search := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(f.Query)) + "%"
-	const where = ` WHERE owner_id=$1 AND ($2 IN ('','all') OR status=$2) AND (service ILIKE $3 OR COALESCE(plan,'') ILIKE $3)
+	const where = ` WHERE owner_id=$1 AND deleted_at IS NULL AND ($2 IN ('','all') OR status=$2) AND (service ILIKE $3 OR COALESCE(plan,'') ILIKE $3)
 	 AND ($4='' OR EXISTS (
 	  SELECT 1 FROM subscription_sources src
 	  JOIN mail_processing_items item ON item.owner_id=src.owner_id AND item.id=src.result_id

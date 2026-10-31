@@ -17,6 +17,16 @@ const billingCreateBody = `{` + billingValues + `,"request_id":"` + subscription
 const billingUpdateBody = `{` + billingValues + `,"expected_version":1,"confirmed":true,"duplicate_confirmed":false,"duplicate_token":null}`
 const billingPath = "/v1/subscriptions/" + subscriptionUUID + "/billing-events"
 
+func TestBillingSummaryEndpointRemoved(t *testing.T) {
+	for _, path := range []string{"/v1/billing-summary", "/v1/billing-summary?month=2024-02", "/v1/billing-summary?month=2024-02&subscription_id=" + subscriptionUUID} {
+		f := &billingFixture{}
+		w := credentialRequest(billingHandler(f, "user"), "GET", path, "", "Bearer valid", "http://localhost:3100", "")
+		if w.Code != http.StatusNotFound || f.calls != 0 {
+			t.Fatal("removed summary endpoint remains available", path, w.Code, f.calls)
+		}
+	}
+}
+
 type billingFixture struct {
 	calls     int
 	owner     string
@@ -58,10 +68,6 @@ func (f *billingFixture) Duplicates(_ context.Context, o, c string, in billing.D
 	f.duplicate = in
 	return billing.DuplicatePage{Page: billing.Page{Limit: in.Limit, Offset: in.Offset}}, f.err
 }
-func (f *billingFixture) Summary(_ context.Context, o, m string, c *string) (billing.Summary, error) {
-	f.record(o)
-	return billing.Summary{Month: m, SubscriptionID: c}, f.err
-}
 func billingHandler(f *billingFixture, role string) http.Handler {
 	return NewHandler(configured(), verifyFunc(func(context.Context, string) (auth.Identity, error) { return auth.Identity{}, nil }), func(context.Context, string, string) (database.Principal, error) {
 		if role == "disabled" {
@@ -75,7 +81,7 @@ var billingRoutes = []struct {
 	method, path, body string
 	status             int
 }{
-	{"GET", billingPath, "", 200}, {"POST", billingPath, billingCreateBody, 201}, {"GET", billingPath + "/" + subscriptionUUID, "", 200}, {"PUT", billingPath + "/" + subscriptionUUID, billingUpdateBody, 200}, {"POST", billingPath + "/" + subscriptionUUID + "/sources", subscriptionSourceBody, 200}, {"DELETE", billingPath + "/" + subscriptionUUID + "/sources", subscriptionSourceBody, 200}, {"GET", "/v1/subscriptions/" + subscriptionUUID + "/billing-duplicates?kind=payment&occurred_on=2024-02-29&amount=1.00&currency=JPY", "", 200}, {"GET", "/v1/billing-summary?month=2024-02", "", 200},
+	{"GET", billingPath, "", 200}, {"POST", billingPath, billingCreateBody, 201}, {"GET", billingPath + "/" + subscriptionUUID, "", 200}, {"PUT", billingPath + "/" + subscriptionUUID, billingUpdateBody, 200}, {"POST", billingPath + "/" + subscriptionUUID + "/sources", subscriptionSourceBody, 200}, {"DELETE", billingPath + "/" + subscriptionUUID + "/sources", subscriptionSourceBody, 200}, {"GET", "/v1/subscriptions/" + subscriptionUUID + "/billing-duplicates?kind=payment&occurred_on=2024-02-29&amount=1.00&currency=JPY", "", 200},
 }
 
 func TestBillingHTTPAuthAndDTO(t *testing.T) {
@@ -138,7 +144,7 @@ func TestBillingHTTPStrictInput(t *testing.T) {
 	}
 }
 func TestBillingHTTPQueriesAndErrors(t *testing.T) {
-	for _, path := range []string{billingPath + "?unknown=1", billingPath + "?kind=", billingPath + "?state=all", billingPath + "?month=2024-13", billingPath + "?limit=0", billingPath + "?offset=-1", billingPath + "?limit=1&limit=2", billingPath + "?source_event_index=0", billingPath + "?source_result_id=" + subscriptionUUID, billingPath + "?source_result_id=" + subscriptionUUID + "&source_event_index=32", billingPath + "/bad", billingPath + "/" + subscriptionUUID + "?", strings.Replace(billingPath, subscriptionUUID, "bad", 1), "/v1/billing-summary", "/v1/billing-summary?month=2024-02&subscription_id=bad", "/v1/billing-summary?month=2024-02&month=2024-03", "/v1/subscriptions/" + subscriptionUUID + "/billing-duplicates?kind=payment&occurred_on=2024-01-01&amount=1&currency=JPY&exclude_id=bad"} {
+	for _, path := range []string{billingPath + "?unknown=1", billingPath + "?kind=", billingPath + "?state=all", billingPath + "?month=2024-13", billingPath + "?limit=0", billingPath + "?offset=-1", billingPath + "?limit=1&limit=2", billingPath + "?source_event_index=0", billingPath + "?source_result_id=" + subscriptionUUID, billingPath + "?source_result_id=" + subscriptionUUID + "&source_event_index=32", billingPath + "/bad", billingPath + "/" + subscriptionUUID + "?", strings.Replace(billingPath, subscriptionUUID, "bad", 1), "/v1/subscriptions/" + subscriptionUUID + "/billing-duplicates?kind=payment&occurred_on=2024-01-01&amount=1&currency=JPY&exclude_id=bad"} {
 		f := &billingFixture{}
 		w := credentialRequest(billingHandler(f, "user"), "GET", path, "", "Bearer valid", "http://localhost:3100", "")
 		if w.Code != 400 || f.calls != 0 {

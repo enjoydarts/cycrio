@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -44,7 +45,7 @@ async function componentURL(name: string): Promise<string> {
   for (const m of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${m[1]}.svelte`] = await componentURL(m[1]);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, prefix, q, path) =>
       `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
   );
@@ -66,15 +67,13 @@ async function html(value: AnalysisResult) {
     },
   }).body;
 }
-test('normal pending events render automatic waiting without manual contract buttons', async () => {
+test('every successful unregistered candidate offers explicit owner approval', async () => {
   const output = await html(result());
-  assert.match(output, /自動登録待ち/);
-  assert.doesNotMatch(
-    output,
-    /新規サブスクに登録|既存のサブスクに紐付ける|source_result_id=/,
-  );
+  assert.doesNotMatch(output, /自動登録待ち/);
+  assert.match(output, /新規サブスクに登録/);
+  assert.match(output, /既存のサブスクに紐付ける/);
 });
-test('only the exceptional event in a partial result offers manual registration', async () => {
+test('both normal and ambiguous unregistered events offer owner approval', async () => {
   const output = await html(
     result({
       events: [event, { ...event, service: 'B' }],
@@ -89,9 +88,9 @@ test('only the exceptional event in a partial result offers manual registration'
       ],
     }),
   );
-  assert.equal((output.match(/>新規サブスクに登録</g) ?? []).length, 1);
-  assert.equal((output.match(/>既存のサブスクに紐付ける</g) ?? []).length, 1);
-  assert.match(output, /自動登録待ち/);
+  assert.equal((output.match(/>新規サブスクに登録</g) ?? []).length, 2);
+  assert.equal((output.match(/>既存のサブスクに紐付ける</g) ?? []).length, 2);
+  assert.doesNotMatch(output, /自動登録待ち/);
 });
 for (const outcome of [
   undefined,

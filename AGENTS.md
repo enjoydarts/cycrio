@@ -37,6 +37,12 @@ Go は gofmt、TypeScript / Svelte は `web/.prettierrc.json` の Prettier 設�
 
 ## UI・データ変更時の確認
 
+- UIは `LibraryHeader`・`LibraryPanel`・`Modal` と、`Button`・`ActionLink`・`ActionGroup`・`DataTable` を組み合わせて構成してください。通常の操作ボタンや一覧表を各画面で直接作り直さないでください。
+- ボタンの色・余白・最小寸法・折り返しと、表の基本表示・操作列・モバイル表示は共通部品で管理します。親画面から子孫の `button` / `table` を一律に上書きしないでください。長い操作文言には `wrap` を使い、意味が省略されないようにします。
+- 新規に追加するボタンは、フォーム送信なら `Button type="submit"`、それ以外の操作なら `type="button"` を明示してください。既存ボタンを移行する際は送信動作を変えないでください。操作リンクは `ActionLink`、操作群の配置は `ActionGroup` を使います。通常の本文リンクは `a` を維持してください。
+- `DataTable` は用途に応じて `responsive="cards"`（カード型）/ `"compact"`（コンパクトな一覧）/ `"scroll"`（横スクロール）を選び、`data-label` で項目名、`data-primary` で主情報、`data-actions` で純粋な操作列を指定します。サービス名などの主情報に選択ボタンがあっても操作列にはしないでください。
+- Clerkなど外部ウィジェットの内部DOMは共通部品への置換対象外です。外部DOM向けのスタイルやセレクタをアプリの部品クラスに置き換えないでください。
+
 以下は、該当する機能を導入した後に適用してください。
 
 - i18n 導入後の UI 文言は辞書経由で管理し、対応する全言語の辞書を更新してください。

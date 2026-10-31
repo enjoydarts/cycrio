@@ -27,7 +27,7 @@ test('getting started separates connection, permission, start, import, stop, att
   assert.match(gettingStartedGuide(page, false).description, /登録/);
   page.automation!.progress.unknown_count = 1;
   assert.equal(gettingStartedGuide(page, false).stage, 'attention');
-  assert.match(gettingStartedGuide(page, false).href!, /tab=attention/);
+  assert.match(gettingStartedGuide(page, false).href!, /tab=history/);
   page.automation!.state = 'stopped';
   assert.equal(gettingStartedGuide(page, false).stage, 'stopped');
   page.automation!.state = 'needs_confirmation';
@@ -64,6 +64,15 @@ test('import progress does not promise registration without knowing owner automa
     gettingStartedGuide(page, false).description,
     /自動登録されます/,
   );
+});
+test('processing failures link to that connection history rather than candidate review', () => {
+  const page = gettingStartedFixture();
+  page.automation!.state = 'enabled';
+  page.automation!.progress.failed_count = 10;
+  const guide = gettingStartedGuide(page, false);
+  assert.ok(guide.href?.includes('tab=history'));
+  assert.ok(guide.href?.includes(`account_id=${page.selected!.id}`));
+  assert.ok(!guide.href?.includes('tab=attention'));
 });
 
 test('owner-fixable connection blockers do not ask the owner to wait for an administrator', () => {

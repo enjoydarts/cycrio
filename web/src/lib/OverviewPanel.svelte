@@ -1,11 +1,13 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
+  import Button from './Button.svelte';
+  import DataTable from './DataTable.svelte';
   import type { Snippet } from 'svelte';
   import type { FeedView } from './daily-controller.ts';
   import type { OverviewReport } from './overview-api.ts';
   import { money, cycle } from './daily-text.ts';
   import { processingDate } from './mail-processing-text.ts';
   import { inclusiveEnd } from './mail-automation-api.ts';
-  import BillingSummaryTable from './BillingSummaryTable.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   let {
@@ -39,12 +41,14 @@
 >
   <LibraryHeader title="ホーム" eyebrow="OVERVIEW" id="overview-heading">
     {#snippet action()}
-      <a
-        class="button primary"
+      <ActionLink
+        wrap
+        variant="primary"
+        class={['button primary']}
         href={report?.subscriptions.total === 0 ? '/import' : '/subscriptions'}
         >{report?.subscriptions.total === 0
           ? 'メールを取り込む'
-          : 'サブスクを見る'}</a
+          : 'サブスクを見る'}</ActionLink
       >
     {/snippet}
   </LibraryHeader>
@@ -61,7 +65,7 @@
       <p>
         ホームの情報を取得できませんでした。時間をおいて、もう一度読み込んでください。
       </p>
-      <button type="button" onclick={onReload}>もう一度読み込む</button>
+      <Button wrap type="button" onclick={onReload}>もう一度読み込む</Button>
     </div>{:else if report}
     <div class="overview-status">
       <span
@@ -89,7 +93,7 @@
                 {report.as_of}〜{inclusiveEnd(report.window_end)} · 日本時間
               </p>
             </div>
-            <button type="button" onclick={onReload}>更新</button>
+            <Button wrap type="button" onclick={onReload}>更新</Button>
           </div>
           {#if report.subscriptions.overdue || report.subscriptions.undated}<p
               class="date-notice library-content"
@@ -97,7 +101,13 @@
               保存日が過ぎた予定 {report.subscriptions.overdue} 件 · 日付未設定 {report
                 .subscriptions.undated} 件
             </p>{/if}
-          {#if report.upcoming.length}<table class="upcoming-table">
+          {#if report.upcoming.length}<DataTable
+              class={[
+                'upcoming-table',
+                'table-OverviewPanel',
+                'part-OverviewPanel-upcoming-table',
+              ]}
+            >
               <thead
                 ><tr><th>サービス</th><th>登録料金</th><th>次回請求日</th></tr
                 ></thead
@@ -121,32 +131,14 @@
                     ></tr
                   >{/each}</tbody
               >
-            </table>{:else}<p class="empty">
+            </DataTable>{:else}<p class="empty">
               この期間に保存されている次回請求日はありません。
             </p>{/if}
         </section></LibraryPanel
       >{/if}
     <details class="supplement">
-      <summary>支払実績・メール連携・表示条件</summary>
+      <summary>メール連携・表示条件</summary>
       <div class="supplement-body">
-        <section
-          class="overview-section billing"
-          aria-labelledby="month-actuals"
-        >
-          <div class="section-heading">
-            <h2 id="month-actuals">
-              {report.billing_month.month} の支払・返金実績
-            </h2>
-            <a
-              href={`/subscriptions/summary?month=${report.billing_month.month}`}
-              >月次集計へ</a
-            >
-          </div>
-          <p class="muted">
-            自分のすべてのサブスク（終了済みを含む）の保存済み明細です。
-          </p>
-          <BillingSummaryTable summary={report.billing_month} />
-        </section>
         <section class="overview-section" aria-labelledby="mail-status">
           <div class="section-heading">
             <h2 id="mail-status">メール連携と取り込み</h2>
@@ -172,7 +164,8 @@
                       class="muted"
                     >
                       次の確認予定：{processingDate(connection.next_check_at)}
-                    </p>{/if}<a href={`/analysis?account_id=${connection.id}`}
+                    </p>{/if}<a
+                    href={`/analysis?tab=history&account_id=${connection.id}`}
                     >この接続の取り込み状況を見る</a
                   >
                 </li>{/each}
@@ -252,14 +245,14 @@
     color: var(--color-muted);
     margin-bottom: 16px !important;
   }
-  .upcoming-table a {
+  :global(.part-OverviewPanel-upcoming-table) a {
     color: inherit;
     text-decoration: none;
   }
-  .upcoming-table a:hover {
+  :global(.part-OverviewPanel-upcoming-table) a:hover {
     text-decoration: underline;
   }
-  .upcoming-table td:first-child {
+  :global(.part-OverviewPanel-upcoming-table) td:first-child {
     width: 42%;
   }
   .amount {
@@ -316,15 +309,15 @@
     font-size: 20px;
   }
   @media (max-width: 700px) {
-    .upcoming-table tr {
+    :global(.part-OverviewPanel-upcoming-table) tr {
       padding: 18px 16px;
       gap: 14px;
     }
-    .upcoming-table tr td {
+    :global(.part-OverviewPanel-upcoming-table) tr td {
       padding: 0;
       border: 0;
     }
-    .upcoming-table tr td:first-child {
+    :global(.part-OverviewPanel-upcoming-table) tr td:first-child {
       width: 100%;
     }
     .overview-status {

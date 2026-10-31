@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -32,14 +33,21 @@ async function componentURL(name: string): Promise<string> {
   )) {
     imports[`./${match[1]}.svelte`] =
       name === 'AnalysisInbox' &&
-      !['LibraryHeader', 'LibraryPanel'].includes(match[1])
+      ![
+        'LibraryHeader',
+        'LibraryPanel',
+        'Button',
+        'ActionLink',
+        'ActionGroup',
+        'DataTable',
+      ].includes(match[1])
         ? moduleURL('export default function InactiveChild(){}')
         : await componentURL(match[1]);
   }
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
     .replace(
-      /(^import[\s\S]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+      /(^import[\s\S]*?from\s+|^import\s+)(['"])([^'"]+)\2/gm,
       (_m, p, q, path) =>
         `${p}${q}${imports[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
     );
@@ -82,7 +90,7 @@ function panelHTML(body: string) {
   assert.fail('panel closing element missing');
 }
 test('daily screens share the subscription header and keep their primary filters and results in its panel', async () => {
-  for (const name of ['AnalysisInbox', 'OverviewPanel', 'BillingSummary']) {
+  for (const name of ['AnalysisInbox', 'OverviewPanel']) {
     const body = await html(
       name,
       name === 'OverviewPanel'
@@ -92,18 +100,15 @@ test('daily screens share the subscription header and keep their primary filters
     assert.match(body, /<header[^>]*class="[^"]*\blibrary-header\b/);
     const panel = panelHTML(body);
     if (name === 'AnalysisInbox') {
-      assert.match(panel, /解析結果の表示/);
-      assert.match(panel, /すべてのアカウント/);
+      assert.match(panel, /承認したものがサブスクに表示/);
+      assert.match(panel, /すべてのメール接続/);
     } else if (name === 'OverviewPanel') {
       assert.match(panel, /保存済みの次回請求日/);
       assert.match(panel, /日常のサービス/);
-    } else {
-      assert.match(panel, /type="month"/);
-      assert.match(panel, /保存済みの明細を集計/);
     }
   }
 });
-test('home leads with saved dates while supplementary billing, connection and population details stay reachable', async () => {
+test('home leads with saved dates while supplementary connection and population details stay reachable', async () => {
   const body = await html('OverviewPanel', {
       view: { page: overviewFixture(), status: 'ready', error: null },
     }),
@@ -117,27 +122,18 @@ test('home leads with saved dates while supplementary billing, connection and po
     first,
     /メール連携と取り込み|支払・返金実績|対象 .*最大10件|請求確定/,
   );
-  assert.match(body, /支払・返金実績/);
+  assert.doesNotMatch(body, /支払・返金実績|subscriptions\/summary/);
   assert.match(body, /個人メール/);
-  assert.match(body, /123456789012345678901234.123456789012/);
+
   assert.equal((first.match(/class="[^\"]*primary/g) || []).length, 1);
 });
-test('monthly results keep exact money and counts together while calculation explanations are optional', async () => {
-  const body = await html('BillingSummaryTable', {
-      summary: overviewFixture().billing_month,
-    }),
-    first = visible(body);
-  assert.match(first, /123456789012345678901234.123456789012/);
-  assert.match(first, /JPY/);
-  assert.match(first, /USD/);
-  assert.doesNotMatch(first, /以上|金額集計の対象外|通貨の換算/);
-  assert.equal((first.match(/<th(?:\s|>)/g) || []).length, 4);
-  assert.match(body, /金額集計の対象外/);
-  assert.match(body, /未満/);
-});
-test('analysis places results before its single management disclosure', async () => {
+test('candidate review keeps technical history and intake settings out of the review screen', async () => {
   const body = await html('AnalysisInbox');
-  assert.ok(body.indexOf('取り込みの管理') > body.indexOf('解析結果の表示'));
+  assert.match(body, /確認が必要/);
+  assert.doesNotMatch(
+    body,
+    /取り込みの管理|最近の結果|要対応|実行履歴|解析失敗/,
+  );
   assert.doesNotMatch(
     visible(body),
     /件数を指定して手動解析|取り込みの状態・停止/,

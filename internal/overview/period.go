@@ -8,5 +8,5 @@ func Period(now time.Time) (Window, error) {
 	if today.Year() < 1 || end.Year() > 9999 {
 		return Window{}, ErrUnavailable
 	}
-	return Window{AsOf: today.Format("2006-01-02"), WindowEnd: end.Format("2006-01-02"), Timezone: "Asia/Tokyo", Month: today.Format("2006-01"), GeneratedAt: now.UTC()}, nil
+	return Window{AsOf: today.Format("2006-01-02"), WindowEnd: end.Format("2006-01-02"), Timezone: "Asia/Tokyo", GeneratedAt: now.UTC()}, nil
 }

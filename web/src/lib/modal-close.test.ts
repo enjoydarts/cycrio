@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
@@ -46,7 +47,7 @@ async function eventHandler(
 test('close button notifies controlled state synchronously before native dialog cleanup', async () => {
   let closed = 0,
     native = 0;
-  const click = await eventHandler('button', 'onclick', false, () => closed++, {
+  const click = await eventHandler('Button', 'onclick', false, () => closed++, {
     open: true,
     close: () => native++,
   });

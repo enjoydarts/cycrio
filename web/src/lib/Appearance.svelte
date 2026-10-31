@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import { getAppSession } from './app-context.ts';
   import type { ThemePreference } from './theme.ts';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -17,32 +19,26 @@
     description="この端末で使う配色を選びます。"
   />
   <LibraryPanel padded>
-    <div class="theme-options" role="group" aria-label="表示テーマ">
-      {#each options as option}<button
-          class:active={session.theme === option.value}
+    <ActionGroup
+      class={['theme-options', 'part-Appearance-theme-options']}
+      role="group"
+      aria-label="表示テーマ"
+    >
+      {#each options as option}<Button
+          wrap
+          class={[{ active: session.theme === option.value }]}
+          variant="tab"
           aria-pressed={session.theme === option.value}
-          onclick={() => session.setTheme(option.value)}>{option.label}</button
+          onclick={() => session.setTheme(option.value)}>{option.label}</Button
         >{/each}
-    </div>
+    </ActionGroup>
   </LibraryPanel>
 </section>
 
 <style>
-  .theme-options {
+  :global(.part-Appearance-theme-options) {
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-  }
-  button {
-    padding: 10px 18px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: var(--color-text);
-  }
-  button.active {
-    color: var(--color-action);
-    border-color: var(--color-action);
-    background: var(--color-surface-soft);
   }
 </style>

@@ -302,7 +302,7 @@ export function createMailAutomationController(
           full_email: true,
           interval_seconds: 300,
           confirmed: true,
-          auto_register: true,
+          auto_register: false,
           request_id: nonce(),
         },
       });

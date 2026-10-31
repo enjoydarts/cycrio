@@ -95,8 +95,8 @@ func TestSubscriptionsTransactionsOwnershipAndSources(t *testing.T) {
 		t.Fatal("attached source connection metadata", linked.Sources[1])
 	}
 	link.ExpectedVersion = 3
-	if _, e = repo.AttachSource(ctx, f.owner, first.ID, link); !errors.Is(e, subscriptions.ErrConflict) {
-		t.Fatal("duplicate attach", e)
+	if replay, e := repo.AttachSource(ctx, f.owner, first.ID, link); e != nil || replay.Version != 3 || len(replay.Sources) != 2 {
+		t.Fatal("duplicate attach must replay without a version increment", replay, e)
 	}
 	link.SourceEventIndex = 32
 	if _, e = repo.AttachSource(ctx, f.owner, first.ID, link); !errors.Is(e, subscriptions.ErrInvalid) {

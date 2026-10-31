@@ -1,4 +1,5 @@
 <script lang="ts">
+  import ActionLink from './ActionLink.svelte';
   import type { Role } from './api.ts';
   import {
     settingsNavigationGroups,
@@ -14,8 +15,11 @@
 
 <nav class="settings-navigation {variant}" aria-label="設定項目">
   {#if variant === 'sidebar'}
-    <a href="/settings" aria-current={section === '' ? 'page' : undefined}
-      >準備状況</a
+    <ActionLink
+      wrap
+      variant="nav"
+      href="/settings"
+      aria-current={section === '' ? 'page' : undefined}>準備状況</ActionLink
     >
   {/if}
   {#each settingsNavigationGroups(role) as group (group.id)}
@@ -23,14 +27,16 @@
       <p class="group-title">{group.title}</p>
       <div class="group-items">
         {#each group.items as item (item.id)}
-          <a
+          <ActionLink
+            wrap
+            variant="nav"
             href={`/settings/${item.id}`}
             aria-current={selected === item.id ? 'page' : undefined}
           >
             <span>{item.title}</span>{#if variant === 'list'}<span
                 aria-hidden="true">›</span
               >{/if}
-          </a>
+          </ActionLink>
         {/each}
       </div>
     </div>
@@ -44,7 +50,7 @@
   .sidebar {
     padding: 8px 0 0 12px;
   }
-  .sidebar a span {
+  .sidebar :global(.ui-nav span) {
     text-wrap: balance;
   }
   .settings-group {
@@ -61,7 +67,7 @@
     display: grid;
     gap: 3px;
   }
-  a {
+  .settings-navigation :global(.ui-nav) {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -73,7 +79,7 @@
     font-size: 13px;
     overflow-wrap: anywhere;
   }
-  a[aria-current='page'] {
+  .settings-navigation :global(.ui-nav[aria-current='page']) {
     background: var(--color-surface-soft);
     color: var(--color-action);
     font-weight: 600;
@@ -85,7 +91,7 @@
   .list .group-items {
     gap: 8px;
   }
-  .list a {
+  .list :global(.ui-nav) {
     justify-content: space-between;
     border: 1px solid var(--color-border);
     background: var(--color-surface);

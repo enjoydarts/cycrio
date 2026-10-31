@@ -90,7 +90,7 @@ export function gettingStartedGuide(
       label: 'メール連携を確認する',
       href: '/settings/mail',
     };
-  const analysis = `/analysis?account_id=${encodeURIComponent(account.id)}`;
+  const analysis = `/analysis?tab=history&account_id=${encodeURIComponent(account.id)}`;
   if (!preview || !automation)
     return {
       stage: 'changed',
@@ -133,7 +133,7 @@ export function gettingStartedGuide(
     return {
       stage: 'processing',
       title: 'メールを解析しています',
-      description: '進行中の処理と登録結果は、メール解析画面で確認できます。',
+      description: 'このメール接続の取り込み履歴で進行状況を確認できます。',
       label: '進行中の処理を見る',
       href: analysis,
     };
@@ -186,11 +186,11 @@ export function gettingStartedGuide(
   if (automation.progress.failed_count || automation.progress.unknown_count)
     return {
       stage: 'attention',
-      title: '確認が必要な解析結果があります',
+      title: '取り込みの処理失敗があります',
       description:
         '失敗や結果不明の処理があります。結果不明の再試行では追加料金が発生する場合があるため、内容を確認してください。',
-      label: '要対応の結果を見る',
-      href: `${analysis}&tab=attention`,
+      label: '取り込み履歴を見る',
+      href: analysis,
     };
   if (automation.discovery_failure_count || automation.retry_at)
     return {

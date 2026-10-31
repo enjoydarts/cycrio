@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/enjoydarts/cycrio/internal/billing"
 	"github.com/enjoydarts/cycrio/internal/overview"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/jackc/pgx/v5"
@@ -54,10 +53,10 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
  count(*) FILTER(WHERE status<>'ended' AND next_billing_date<$2::date),
  count(*) FILTER(WHERE status<>'ended' AND next_billing_date IS NULL),
  count(*) FILTER(WHERE status<>'ended' AND next_billing_date>=$3::date)
- FROM subscriptions WHERE owner_id=$1`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later); err != nil {
+ FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later); err != nil {
 		return out, overview.ErrUnavailable
 	}
-	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,provenance FROM subscriptions WHERE owner_id=$1 AND status<>'ended' AND next_billing_date>=$2::date AND next_billing_date<$3::date ORDER BY next_billing_date,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
+	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,provenance FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND next_billing_date>=$2::date AND next_billing_date<$3::date ORDER BY next_billing_date,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
 	if err != nil {
 		return out, overview.ErrUnavailable
 	}
@@ -73,7 +72,7 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 	if rows.Err() != nil {
 		return out, overview.ErrUnavailable
 	}
-	if tx.QueryRow(ctx, analysisLatest+`SELECT count(*) FROM reviewed r`+analysisWhere, owner, "", "all", "attention").Scan(&out.AttentionMessages) != nil {
+	if tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidates`, owner, "").Scan(&out.AttentionMessages) != nil {
 		return out, overview.ErrUnavailable
 	}
 	rows, err = tx.Query(ctx, `SELECT id,label,state FROM mail_accounts WHERE owner_id=$1 ORDER BY created_at,id`, owner)
@@ -103,14 +102,6 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 		item.BlockedReasons = automation.BlockedReasons
 		item.LastSuccessAt = automation.LastSuccessAt
 		item.NextCheckAt = automation.NextCheckAt
-	}
-	start, end, err := billing.MonthBounds(window.Month)
-	if err != nil {
-		return out, overview.ErrUnavailable
-	}
-	out.BillingMonth, err = billingSummaryInTransaction(ctx, tx, owner, window.Month, nil, start, end)
-	if err != nil {
-		return out, overview.ErrUnavailable
 	}
 	if tx.Commit(ctx) != nil {
 		return out, overview.ErrUnavailable

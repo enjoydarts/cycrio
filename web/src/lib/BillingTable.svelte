@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import DataTable from './DataTable.svelte';
+  import Button from './Button.svelte';
   import type { BillingEntry } from './billing-api.ts';
   let {
     entries,
@@ -14,7 +17,14 @@
   const kinds = { invoice: '請求', payment: '支払い', refund: '返金' };
 </script>
 
-<table class="billing-table">
+<DataTable
+  responsive="cards"
+  class={[
+    'billing-table',
+    'table-BillingTable',
+    'part-BillingTable-billing-table',
+  ]}
+>
   <thead
     ><tr
       ><th>日付</th><th>種別</th><th>金額 / 通貨</th><th>状態</th><th>根拠</th
@@ -36,11 +46,16 @@
           ></td
         >
         <td data-label="根拠">{entry.sources.length} 件</td>
-        {#if onselect}<td
-            ><button type="button" {disabled} onclick={() => onselect?.(entry)}
-              >{label}</button
+        {#if onselect}<td data-actions
+            ><ActionGroup
+              ><Button
+                wrap
+                type="button"
+                {disabled}
+                onclick={() => onselect?.(entry)}>{label}</Button
+              ></ActionGroup
             ></td
           >{/if}
       </tr>{/each}</tbody
   >
-</table>
+</DataTable>

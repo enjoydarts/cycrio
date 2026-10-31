@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
+  import DataTable from './DataTable.svelte';
   import type { Subscription } from './subscriptions-api.ts';
   import { money, cycle } from './daily-text.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
@@ -32,8 +35,10 @@
   >{/snippet}
 {#if layout === 'cards'}
   <div class="cards">
-    {#each items as item (item.id)}<button
-        class="card"
+    {#each items as item (item.id)}<Button
+        wrap
+        variant="card"
+        class={['card', 'part-SubscriptionListPanel-card']}
         {disabled}
         aria-label={`${item.service}の詳細`}
         onclick={() => onSelect(item.id)}
@@ -49,11 +54,11 @@
           ><span>{source(item)}</span><span
             >{item.next_billing_date ?? '請求日不明'}</span
           ></span
-        ></button
+        ></Button
       >{/each}
   </div>
 {:else}
-  <table>
+  <DataTable responsive="compact" class={['table-SubscriptionListPanel']}>
     <thead
       ><tr
         ><th>サービス</th><th>登録料金</th><th>次回の請求日</th><th
@@ -62,12 +67,14 @@
       ></thead
     ><tbody
       >{#each items as item (item.id)}<tr
-          ><td class="service"
-            ><button
-              class="brand"
+          ><td data-primary class="service"
+            ><Button
+              wrap
+              variant="plain"
+              class={['brand', 'part-SubscriptionListPanel-brand']}
               {disabled}
               aria-label={`${item.service}の詳細`}
-              onclick={() => onSelect(item.id)}>{@render brand(item)}</button
+              onclick={() => onSelect(item.id)}>{@render brand(item)}</Button
             ></td
           ><td class="price"
             >{money(item.amount, item.currency)}<small
@@ -79,56 +86,32 @@
             ><span class="status" class:active={item.status === 'active'}
               >{status(item)}</span
             ></td
-          ><td class="arrow"
-            ><button
-              {disabled}
-              aria-label={`${item.service}の詳細を開く`}
-              onclick={() => onSelect(item.id)}>›</button
+          ><td data-actions class="arrow"
+            ><ActionGroup
+              ><Button
+                wrap
+                variant="icon"
+                {disabled}
+                aria-label={`${item.service}の詳細を開く`}
+                onclick={() => onSelect(item.id)}>›</Button
+              ></ActionGroup
             ></td
           ></tr
         >{/each}</tbody
     >
-  </table>
+  </DataTable>
 {/if}
 
 <style>
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    table-layout: auto;
-  }
-  th {
-    text-align: left;
-    padding: 15px 20px;
-    color: var(--color-muted);
-    font-size: 11px;
-    font-weight: 500;
-    border-bottom: 1px solid var(--color-border);
-  }
-  td {
-    padding: 18px 20px;
-    border-bottom: 1px solid var(--color-border);
-    font-size: 13px;
-  }
   tr:last-child td {
     border-bottom: 0;
   }
-  .brand {
+  .brand,
+  :global(.part-SubscriptionListPanel-brand) {
     display: flex;
     gap: 12px;
     align-items: center;
-    text-align: left;
-    border: 0;
-    background: none;
-    padding: 0;
-    color: inherit;
     min-width: 0;
-  }
-  button {
-    cursor: pointer;
-  }
-  button:disabled {
-    cursor: default;
   }
   .brand-text {
     min-width: 0;
@@ -169,33 +152,16 @@
     color: var(--color-action);
     background: var(--color-surface-soft);
   }
-  .arrow button {
-    border: 0;
-    background: transparent;
-    color: var(--color-muted);
-    font-size: 24px;
-    min-width: 32px;
-    min-height: 40px;
-  }
   .cards {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 16px;
     padding: 20px;
   }
-  .card {
-    display: flex;
-    flex-direction: column;
+  :global(.part-SubscriptionListPanel-card) {
     gap: 20px;
-    border: 1px solid var(--color-border);
-    border-radius: 11px;
-    padding: 19px;
-    background: var(--color-surface);
-    color: var(--color-text);
-    min-width: 0;
-    text-align: left;
   }
-  .card:hover {
+  :global(.part-SubscriptionListPanel-card):hover {
     border-color: var(--color-action);
   }
   .card-line {
@@ -231,14 +197,10 @@
     }
     tr {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto 22px;
+      grid-template-columns: minmax(0, 1fr) auto 44px;
       padding: 16px;
       gap: 5px 8px;
       border-bottom: 1px solid var(--color-border);
-    }
-    td {
-      padding: 0;
-      border: 0;
     }
     .service {
       grid-row: 1/3;
@@ -260,7 +222,7 @@
       grid-row: 1/3;
       align-self: center;
     }
-    .brand {
+    :global(.part-SubscriptionListPanel-brand) {
       gap: 9px;
     }
     .brand-text strong {

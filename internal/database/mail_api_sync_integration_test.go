@@ -339,15 +339,13 @@ func TestMailAPIMigrationRoundTripPreservesUIDRecords(t *testing.T) {
 		t.Fatal(err)
 	}
 	p := automationMigrationProvider(t, pool)
-	if results, err := p.DownTo(ctx, 19); err != nil || len(results) != 1 || results[0].Source.Version != 20 {
-		t.Fatal(results, err)
-	}
+	results, err := p.DownTo(ctx, 19)
+	assertMigrationRange(t, results, err, latestMigrationVersion, 20)
 	if err := pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("UID records changed during downgrade", err)
 	}
-	if results, err := p.Up(ctx); err != nil || len(results) != 1 || results[0].Source.Version != 20 {
-		t.Fatal(results, err)
-	}
+	results, err = p.Up(ctx)
+	assertMigrationRange(t, results, err, 20, latestMigrationVersion)
 	if err := pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("UID records changed during upgrade", err)
 	}

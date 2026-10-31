@@ -94,44 +94,58 @@ func TestMailAutomationUIDResetPausesAndRequiresNewGeneration(t *testing.T) {
 }
 
 func TestMailAutomationTransientDiscoveryFailureResumesSameUIDProgress(t *testing.T) {
-	f, r, in := automaticFixture(t)
-	ctx := context.Background()
-	automaticBootstrap(t, f, r, in, 100)
-	sync := NewMailSyncRepository(f.runtime.pool)
-	if _, e := r.Tick(ctx, 10); e != nil {
-		t.Fatal(e)
-	}
-	l, _ := syncStart(t, sync)
-	if e := sync.Finish(ctx, l, mailsync.Page{UIDValidity: 77, AfterUID: 10, UpperUID: 100, UIDs: []uint32{1}, Initialized: true}, syncRefs(1), ""); e != nil {
-		t.Fatal(e)
-	}
-	l, _ = syncStart(t, sync)
-	if e := sync.Finish(ctx, l, mailsync.Page{}, nil, "invalid_response"); e != nil {
-		t.Fatal(e)
-	}
-	v, e := r.Read(ctx, f.owner, f.account)
-	if e != nil || v.State != "stopped" || v.Reason != "invalid_response" || !v.Ready {
-		t.Fatal(v, e)
-	}
-	if _, e = r.Resume(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()}); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = r.Tick(ctx, 10); e != nil {
-		t.Fatal(e)
-	}
-	l, w := syncStart(t, sync)
-	if w.Page.Mode != "incremental" || w.Page.AfterUID != 100 || w.Page.UIDValidity != 77 {
-		t.Fatal("resume rebootstrap or skipped baseline", w.Page)
-	}
-	if e = sync.Finish(ctx, l, mailsync.Page{UIDValidity: 77, AfterUID: 100, UpperUID: 100, Initialized: true, Done: true}, nil, ""); e != nil {
-		t.Fatal(e)
-	}
-	if _, e = r.Tick(ctx, 10); e != nil {
-		t.Fatal(e)
-	}
-	_, w = syncStart(t, sync)
-	if w.Page.Mode != "historical" || w.Page.AfterUID != 10 || w.Page.UpperUID != 100 {
-		t.Fatal("resume lost historical UID", w.Page)
+	for _, path := range []string{"invalid_response", "expired_claim", "expired_finish"} {
+		t.Run(path, func(t *testing.T) {
+			f, r, in := automaticFixture(t)
+			ctx := context.Background()
+			initial := automaticBootstrap(t, f, r, in, 100)
+			sync := NewMailSyncRepository(f.runtime.pool)
+			if _, e := r.Tick(ctx, 10); e != nil {
+				t.Fatal(e)
+			}
+			l, _ := syncStart(t, sync)
+			if e := sync.Finish(ctx, l, mailsync.Page{UIDValidity: 77, AfterUID: 10, UpperUID: 100, UIDs: []uint32{1}, Initialized: true}, syncRefs(1), ""); e != nil {
+				t.Fatal(e)
+			}
+			l, _ = syncStart(t, sync)
+			code := "invalid_response"
+			failures := 1
+			if path != "invalid_response" {
+				code = "lease_expired"
+				failures = 0
+				if _, e := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1`, l.RunID); e != nil {
+					t.Fatal(e)
+				}
+			}
+			if path == "expired_claim" {
+				if leases, e := sync.Claim(ctx); e != nil || len(leases) != 0 {
+					t.Fatal(leases, e)
+				}
+			} else if e := sync.Finish(ctx, l, mailsync.Page{}, nil, code); e != nil {
+				t.Fatal(e)
+			}
+			v, e := r.Read(ctx, f.owner, f.account)
+			if e != nil || v.State != "enabled" || v.Reason != code || !v.Ready || v.RetryAt == nil || v.DiscoveryFailureCount != failures || v.Generation != initial.Generation || v.Version != initial.Version {
+				t.Fatal(v, e)
+			}
+			if _, e = f.runtime.pool.Exec(ctx, `UPDATE mail_automations SET retry_after=clock_timestamp()-interval '1 second' WHERE id=$1`, v.ID); e != nil {
+				t.Fatal(e)
+			}
+			if _, e = r.Tick(ctx, 10); e != nil {
+				t.Fatal(e)
+			}
+			l, w := syncStart(t, sync)
+			if w.Page.Mode != "historical" || w.Page.AfterUID != 10 || w.Page.UpperUID != 100 || w.Page.UIDValidity != 77 || !w.Page.Initialized {
+				t.Fatal("retry lost historical UID snapshot", w.Page)
+			}
+			if e = sync.Finish(ctx, l, mailsync.Page{UIDValidity: 77, AfterUID: 100, UpperUID: 100, Initialized: true, Done: true}, nil, ""); e != nil {
+				t.Fatal(e)
+			}
+			v, e = r.Read(ctx, f.owner, f.account)
+			if e != nil || v.State != "enabled" || v.DiscoveryFailureCount != 0 || v.RetryAt != nil || v.Reason != "" || v.Generation != initial.Generation || v.Version != initial.Version {
+				t.Fatal("successful retry did not reset failure state", v, e)
+			}
+		})
 	}
 }
 

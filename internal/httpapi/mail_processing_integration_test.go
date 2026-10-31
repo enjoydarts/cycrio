@@ -69,7 +69,7 @@ func processingHTTPPool(t *testing.T, ctx context.Context) *pgxpool.Pool {
 	}
 	t.Cleanup(pool.Close)
 	var version int
-	if err = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 20 {
+	if err = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); err != nil || version != 22 {
 		t.Fatal("processing migration", version, err)
 	}
 	return pool
@@ -291,6 +291,16 @@ func TestMailProcessingHTTPDatabaseExplicitWorkerResultsAndOwnerCosts(t *testing
 	request("POST", base+"/processing-runs", input, "processing_owner", 202, &again)
 	if run.ID != again.ID || reader.calls != 0 || client.calls != 0 {
 		t.Fatal("request executed or duplicated processing")
+	}
+	var history mailprocessing.ImportHistoryPage
+	request("GET", base+"/import-history?limit=1&offset=0", nil, "processing_owner", 200, &history)
+	if history.Total != 1 || len(history.History) != 1 || history.History[0].ID != "manual:"+run.ID || history.History[0].Since != nil || history.History[0].PendingCount != 1 {
+		t.Fatal("logical import HTTP history", history)
+	}
+	request("GET", base+"/import-history?limit=1&offset=0", nil, "processing_admin", 404, nil)
+	request("GET", base+"/import-history?offset=1", nil, "processing_owner", 200, &history)
+	if history.Total != 1 || len(history.History) != 0 {
+		t.Fatal("HTTP history pagination", history)
 	}
 	for _, route := range []struct {
 		method, path string

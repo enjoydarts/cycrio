@@ -50,9 +50,6 @@ func TestDecimalExactArithmetic(t *testing.T) {
 	if got := Canonical(Add(a, b)); got != "1000000000000000000000000" {
 		t.Fatal(got)
 	}
-	if got := Canonical(Sub(Decimal("1.00"), Decimal("2.000"))); got != "-1" {
-		t.Fatal(got)
-	}
 	if Decimal("0001.00").Cmp(Decimal("1")) != 0 || Canonical(Decimal("0.000")) != "0" {
 		t.Fatal("normalization")
 	}

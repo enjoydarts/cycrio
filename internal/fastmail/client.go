@@ -162,6 +162,10 @@ func checkError(ctx context.Context, wire *boundedConn, err error, fallback stri
 		code = "timeout"
 	case errors.As(err, &netErr) && netErr.Timeout():
 		code = "timeout"
+	case wire != nil && wire.disconnected.Load() && !wire.invalidFraming.Load() && fallback != "authentication_failed" && fallback != "tls_failed":
+		// The SDK formats some decoder/socket errors with %v, losing their
+		// identity. Use the transport evidence without inspecting protocol text.
+		code = "connection_failed"
 	}
 	return mailaccounts.AdapterError{Code: code}
 }

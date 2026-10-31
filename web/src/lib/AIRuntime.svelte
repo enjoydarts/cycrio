@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api';
   import type { CatalogAPI } from './catalog-api';
@@ -76,12 +78,13 @@
 >
   <div class="catalog-title">
     <h3 id="runtime-heading">実行・接続</h3>
-    <button
+    <Button
+      wrap
       disabled={busy}
       onclick={() => {
         confirmed = false;
         void controller?.refresh();
-      }}>実行状態を再読み込み</button
+      }}>実行状態を再読み込み</Button
     >
   </div>
   <p class="muted">
@@ -107,9 +110,10 @@
       </p>
       {#if view.runtime.active && !view.runtime.active_ready}<p class="error">
           {reasonText(view.runtime.active_blocked_reason)}
-        </p>{/if}<button
+        </p>{/if}<Button
+        wrap
         disabled={busy || !view.runtime.active}
-        onclick={() => controller?.deactivate()}>実行を停止</button
+        onclick={() => controller?.deactivate()}>実行を停止</Button
       >
     </div>
     <div class="selection-summary">
@@ -221,18 +225,23 @@
           を指定します。この配信先のみ・指定順・フォールバック禁止・データ収集拒否・ZDR
           必須のポリシーで固定します。
         </p>{/if}
-      <div class="actions">
-        <button type="submit" class="primary" disabled={locked}
-          >実行設定を保存</button
-        ><button
+      <ActionGroup class={['actions', 'part-AIRuntime-actions']}>
+        <Button
+          wrap
+          variant="primary"
+          type="submit"
+          class={['primary']}
+          disabled={locked}>実行設定を保存</Button
+        ><Button
+          wrap
           type="button"
           disabled={busy}
           onclick={() => {
             confirmed = false;
             void controller?.load();
-          }}>入力を破棄して読み直す</button
+          }}>入力を破棄して読み直す</Button
         >
-      </div>
+      </ActionGroup>
     </form>
   {:else if !busy}<p class="muted">
       先に「モデル選択」で一次判定と二次処理の下書きを保存してください。
@@ -256,8 +265,8 @@
         </p>{/if}{#if pending}<p>
           受付済みです。結果を自動確認しています。再送信しません。
         </p>
-        <button disabled={busy} onclick={() => controller?.poll()}
-          >テスト結果を再確認</button
+        <Button wrap disabled={busy} onclick={() => controller?.poll()}
+          >テスト結果を再確認</Button
         >{/if}
     </div>{/if}
   {#if view.requestUncertain}<div class="box">
@@ -265,8 +274,8 @@
         前のテスト要求の受付結果が不明です。同じ要求 ID
         で確認します。新しいテストは開始しません。
       </p>
-      <button disabled={busy} onclick={() => controller?.requestTest(true)}
-        >同じ要求 ID で受付を再確認</button
+      <Button wrap disabled={busy} onclick={() => controller?.requestTest(true)}
+        >同じ要求 ID で受付を再確認</Button
       >
     </div>
   {:else}<div class="box">
@@ -293,13 +302,15 @@
         />課金を確認し、{view.runtime?.latest_test
           ? '追加の'
           : 'この'}接続テストを承認します</label
-      ><button
-        class="primary"
+      ><Button
+        wrap
+        variant="primary"
+        class={['primary']}
         disabled={busy || pending || !current || !confirmed}
         onclick={async () => {
           await controller?.requestTest(true, true);
           confirmed = false;
-        }}>課金を確認して接続テスト</button
+        }}>課金を確認して接続テスト</Button
       >{#if view.form?.dirty}<p class="muted">
           編集中の実行設定を保存してから、接続テストを行ってください。
         </p>{/if}
@@ -309,9 +320,11 @@
     現在の実行下書きに一致する成功テストだけを有効化できます。有効化時にモデル・API
     キー・価格の版を再確認します。
   </p>
-  <button
-    class="primary"
+  <Button
+    wrap
+    variant="primary"
+    class={['primary']}
     disabled={busy || !canActivate(view)}
-    onclick={() => controller?.activate()}>テスト成功版を有効化</button
+    onclick={() => controller?.activate()}>テスト成功版を有効化</Button
   >
 </section>

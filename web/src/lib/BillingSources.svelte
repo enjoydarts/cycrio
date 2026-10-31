@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { BillingEntry, BillingSource } from './billing-api.ts';
   import type {
     BillingEditorView,
@@ -56,14 +57,15 @@
           >{source.result_id}</span
         ></summary
       ><EventFields event={source.original_event} />
-      <button
+      <Button
+        wrap
         type="button"
         disabled={frozen}
         onclick={() => {
           selected = source;
           operation = 'detach';
           confirmed = false;
-        }}>この根拠の紐付けを外す</button
+        }}>この根拠の紐付けを外す</Button
       >
     </details>
   {:else}<p class="empty">この履歴に紐付いた根拠はありません。</p>{/each}
@@ -105,10 +107,10 @@
         />この根拠の{operation === 'attach'
           ? '追加'
           : '紐付け解除'}を確認しました。元の AI 抽出情報は保持されます。</label
-      ><button type="button" disabled={frozen || !confirmed} onclick={save}
+      ><Button wrap type="button" disabled={frozen || !confirmed} onclick={save}
         >{operation === 'attach'
           ? 'この履歴に根拠を紐付ける'
-          : '紐付けを外す'}</button
+          : '紐付けを外す'}</Button
       >
     </div>{/if}
 </section>

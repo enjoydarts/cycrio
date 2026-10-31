@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -17,7 +20,6 @@
   } from './billing-api.ts';
   import {
     createBillingFeed,
-    currentBillingMonth,
     type BillingDrafts,
   } from './billing-controller.ts';
   import type { FeedView } from './daily-controller.ts';
@@ -253,15 +255,10 @@
         メールからの自動記録と、本人が保存した請求・支払い・返金です。契約の料金や次回請求日は変更しません。
       </p>
     </div>
-    <button class="primary" onclick={() => open()}>＋ 履歴を記録</button>
-  </header>
-  <div class="actions">
-    <a
-      class="button"
-      href={`/subscriptions/summary?month=${filter.month || currentBillingMonth()}&subscription_id=${subscription.id}`}
-      >このサブスクの月次集計</a
+    <Button wrap variant="primary" class={['primary']} onclick={() => open()}
+      >＋ 履歴を記録</Button
     >
-  </div>
+  </header>
   {#if sourceMessage}<p class="notice" role="alert">{sourceMessage}</p>{/if}
   <form class="toolbar" onsubmit={(event) => event.preventDefault()}>
     <div class="filters">
@@ -302,11 +299,12 @@
           onchange={(event) =>
             goto(link({ month: event.currentTarget.value, offset: 0 }))}
         /></label
-      ><button
+      ><Button
+        wrap
         type="button"
         onclick={() =>
           goto(link({ kind: 'all', state: 'all', month: '', offset: 0 }))}
-        >絞り込みを解除</button
+        >絞り込みを解除</Button
       >
     </div>
   </form>
@@ -317,7 +315,9 @@
       履歴を読み込んでいます…
     </p>{:else if view.error}<div class="notice" role="alert">
       <p>{processingErrors[view.error]}</p>
-      <button onclick={() => controller?.load(filter)}>履歴を再読み込み</button>
+      <Button wrap onclick={() => controller?.load(filter)}
+        >履歴を再読み込み</Button
+      >
     </div>{:else if view.page}
     {#if view.page.events.length}<BillingTable
         entries={view.page.events}
@@ -330,24 +330,26 @@
         履歴はまだありません。確認した明細を記録してください。
       </p>{/if}
     <nav class="pager" aria-label="履歴のページ">
-      <a
-        class="button"
+      <ActionLink
+        wrap
+        class={['button']}
         href={link({ offset: Math.max(0, filter.offset - 20) })}
         aria-disabled={filter.offset === 0}
         onclick={(event) => {
           if (filter.offset === 0) event.preventDefault();
-        }}>前のページ</a
+        }}>前のページ</ActionLink
       ><span
         >全 {view.page.total} 件{view.page.events.length
           ? ` · ${filter.offset + 1}〜${filter.offset + view.page.events.length} 件`
           : ''}</span
-      ><a
-        class="button"
+      ><ActionLink
+        wrap
+        class={['button']}
         href={link({ offset: filter.offset + 20 })}
         aria-disabled={filter.offset + 20 >= view.page.total}
         onclick={(event) => {
           if (filter.offset + 20 >= view.page!.total) event.preventDefault();
-        }}>次のページ</a
+        }}>次のページ</ActionLink
       >
     </nav>
   {/if}
@@ -357,11 +359,12 @@
         抽出内容を確認してから記録します。すでに履歴へ登録されている根拠は登録先を開きます。
       </p>
       <div class="billing-source-picker">
-        {#each subscription.sources as source}<button
+        {#each subscription.sources as source}<Button
+            wrap
             onclick={() => openSource(source)}
             >{source.original_event.service} · {source.original_event
               .billed_at ?? '日付不明'} · イベント {source.event_index +
-              1}</button
+              1}</Button
           >{/each}
       </div>
     </details>{/if}

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/enjoydarts/cycrio/internal/autoregistration"
 	"github.com/enjoydarts/cycrio/internal/mailautomation"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
@@ -271,22 +270,11 @@ func (r *MailAutomationRepository) Save(ctx context.Context, owner, account stri
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_automations(id,owner_id,account_id,version,generation,state)VALUES($1,$2,$3,$4,$5,'enabled') ON CONFLICT(owner_id,account_id) DO UPDATE SET version=$4,generation=$5,state='enabled',reason='',next_check_at=clock_timestamp(),last_success_at=NULL,last_discovery_lane='historical',last_processing_lane='historical',discovery_failure_count=0,retry_after=NULL,retry_lane='',retry_window_index=0,updated_at=clock_timestamp()`, id, owner, account, version, generation); e != nil {
 		return mailautomation.State{}, processingError(e)
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO mail_automation_scopes(owner_id,account_id,automation_id,generation,account_version,runtime_version,profile_id,policy_version,since,before,full_email,interval_seconds,auto_register)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10::date,true,$11,$12)`, owner, account, id, generation, basis.AccountVersion, basis.RuntimeVersion, basis.ProfileID, basis.PolicyVersion, in.Since, in.Before, in.IntervalSeconds, in.AutoRegister); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO mail_automation_scopes(owner_id,account_id,automation_id,generation,account_version,runtime_version,profile_id,policy_version,since,before,full_email,interval_seconds,auto_register)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::date,$10::date,true,$11,$12)`, owner, account, id, generation, basis.AccountVersion, basis.RuntimeVersion, basis.ProfileID, basis.PolicyVersion, in.Since, in.Before, in.IntervalSeconds, false); e != nil {
 		return mailautomation.State{}, processingError(e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_automation_progress(owner_id,account_id,automation_id,generation,lane,window_index,folder_id) SELECT $1,$2,$3,$4,'bootstrap',0,id FROM mail_account_folders WHERE account_id=$2 AND selected AND available AND selectable`, owner, account, id, generation); e != nil {
 		return mailautomation.State{}, processingError(e)
-	}
-	if in.AutoRegister {
-		pref, e := automationPreference(ctx, tx, owner)
-		if e != nil {
-			return mailautomation.State{}, e
-		}
-		if !pref.Enabled {
-			if _, e = saveAutomationPreference(ctx, tx, owner, autoregistration.PreferenceInput{ExpectedVersion: pref.Version, Enabled: true}); e != nil {
-				return mailautomation.State{}, e
-			}
-		}
 	}
 	if e = auditAutomation(ctx, tx, owner, account, id, generation, version, "activated", ""); e != nil {
 		return mailautomation.State{}, e
@@ -383,13 +371,19 @@ func suspendAutomation(ctx context.Context, tx pgx.Tx, id, reason string) error 
 }
 
 func retryAutomaticDiscovery(ctx context.Context, tx pgx.Tx, w lockedSync, code string) error {
-	var failures int
-	if e := tx.QueryRow(ctx, `UPDATE mail_automations SET discovery_failure_count=discovery_failure_count+1 WHERE id=$1 RETURNING discovery_failure_count`, w.automation).Scan(&failures); e != nil {
-		return processingError(e)
-	}
-	delay, retry := mailautomation.DiscoveryBackoff(failures)
-	if !retry {
-		return suspendAutomation(ctx, tx, w.automation, code)
+	// Local suspension can expire a read-only discovery lease repeatedly.
+	// Restart the same snapshot without consuming or clearing server failures.
+	delay := 5 * time.Second
+	if code != "lease_expired" {
+		var failures int
+		if e := tx.QueryRow(ctx, `UPDATE mail_automations SET discovery_failure_count=discovery_failure_count+1 WHERE id=$1 RETURNING discovery_failure_count`, w.automation).Scan(&failures); e != nil {
+			return processingError(e)
+		}
+		var retry bool
+		delay, retry = mailautomation.DiscoveryBackoff(failures)
+		if !retry {
+			return suspendAutomation(ctx, tx, w.automation, code)
+		}
 	}
 	_, e := tx.Exec(ctx, `UPDATE mail_automations SET reason=$2,retry_after=clock_timestamp()+$3*interval '1 second',next_check_at=clock_timestamp()+$3*interval '1 second',retry_lane=$4,retry_window_index=$5,updated_at=clock_timestamp() WHERE id=$1`, w.automation, code, int(delay/time.Second), w.mode, w.window)
 	return processingError(e)

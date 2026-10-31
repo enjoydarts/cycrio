@@ -16,7 +16,7 @@ import (
 )
 
 func overviewClock() time.Time { return time.Date(2024, 2, 29, 15, 0, 0, 0, time.UTC) }
-func TestOverviewOwnPopulationDatesAndBillingMatch(t *testing.T) {
+func TestOverviewOwnPopulationAndDates(t *testing.T) {
 	f := processingSetup(t)
 	ctx := context.Background()
 	contracts := NewSubscriptionRepository(f.runtime.pool)
@@ -42,33 +42,8 @@ func TestOverviewOwnPopulationDatesAndBillingMatch(t *testing.T) {
 	add(f.owner, "Later", "active", "2024-03-31", &one, &usd)
 	add(f.owner, "Overdue", "active", "2024-02-29", nil, nil)
 	add(f.owner, "No date", "active", "", nil, nil)
-	ended := add(f.owner, "Ended", "ended", "2024-03-01", nil, nil)
+	add(f.owner, "Ended", "ended", "2024-03-01", nil, nil)
 	add(f.other, "Foreign", "active", "2024-03-01", &one, &usd)
-	bills := NewBillingRepository(f.runtime.pool)
-	payment, err := bills.Create(ctx, f.owner, first.ID, billingInput("payment", "1234.50", "2024-03-01"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	refund := billingInput("refund", "234.5", "2024-03-02")
-	refund.RefundOfID = &payment.ID
-	if _, err = bills.Create(ctx, f.owner, first.ID, refund); err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range []struct{ contract, kind, amount, date, state, currency string }{
-		{ended.ID, "payment", "10", "2024-03-03", "active", "JPY"},
-		{first.ID, "invoice", "999", "2024-03-03", "active", "JPY"},
-		{first.ID, "payment", "23", "2024-03-03", "voided", "JPY"},
-		{first.ID, "payment", "88", "2024-02-29", "active", "JPY"},
-		{first.ID, "payment", "99", "2024-04-01", "active", "JPY"},
-		{first.ID, "payment", "0.01", "2024-03-04", "active", "USD"},
-	} {
-		in := billingInput(entry.kind, entry.amount, entry.date)
-		in.State = entry.state
-		in.Currency = entry.currency
-		if _, err = bills.Create(ctx, f.owner, entry.contract, in); err != nil {
-			t.Fatal(err)
-		}
-	}
 	repo := NewOverviewRepository(f.runtime.pool, overviewClock)
 	report, err := repo.Read(ctx, f.owner)
 	if err != nil {
@@ -79,13 +54,6 @@ func TestOverviewOwnPopulationDatesAndBillingMatch(t *testing.T) {
 	}
 	if len(report.Upcoming) != 2 || report.Upcoming[0].ID != first.ID || report.Upcoming[0].Amount == nil || *report.Upcoming[0].Amount != "0" || report.Upcoming[1].Amount != nil || report.Upcoming[1].Status != "unknown" {
 		t.Fatal("upcoming lost owner, amount or state distinctions")
-	}
-	expected, err := bills.Summary(ctx, f.owner, "2024-03", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(report.BillingMonth) != fmt.Sprint(expected) || len(expected.Currencies) != 2 || expected.Currencies[0].NetAmount != "1010" || expected.InvoiceCount != 1 || expected.VoidedCount != 1 {
-		t.Fatal("overview billing diverged from existing summary", report.BillingMonth, expected)
 	}
 	if len(report.Connections) != 1 || report.Connections[0].ID != f.account || report.Connections[0].AutomationState != "not_configured" {
 		t.Fatal("connection ownership or state missing")
@@ -136,17 +104,17 @@ func TestOverviewMatchesAttentionAndDeniesInactiveOwners(t *testing.T) {
 	if err := f.repo.Finish(ctx, lease, mailprocessing.Completion{State: "unknown", ErrorCode: "timeout"}); err != nil {
 		t.Fatal(err)
 	}
-	expected, err := NewSubscriptionRepository(f.runtime.pool).AnalysisResults(ctx, f.owner, subscriptions.AnalysisFilter{State: "all", Review: "attention", Limit: 1})
+	expected, err := NewSubscriptionRepository(f.runtime.pool).Candidates(ctx, f.owner, subscriptions.AnalysisFilter{Limit: 1})
 	if err != nil {
 		t.Fatal(err)
 	}
 	repo := NewOverviewRepository(f.runtime.pool, overviewClock)
 	report, err := repo.Read(ctx, f.owner)
-	if err != nil || report.AttentionMessages != 2 || report.AttentionMessages != expected.Total {
+	if err != nil || report.AttentionMessages != 0 || report.AttentionMessages != expected.Total {
 		t.Fatal("attention differs from analysis feed", err)
 	}
 	empty, err := repo.Read(ctx, f.other)
-	if err != nil || empty.Subscriptions.Total != 0 || len(empty.Upcoming) != 0 || empty.Upcoming == nil || empty.Connections == nil || empty.BillingMonth.Currencies == nil || empty.AttentionMessages != 0 {
+	if err != nil || empty.Subscriptions.Total != 0 || len(empty.Upcoming) != 0 || empty.Upcoming == nil || empty.Connections == nil || empty.AttentionMessages != 0 {
 		t.Fatal("empty or foreign data handling", err)
 	}
 	if _, err = repo.Read(ctx, "not-an-id"); !errors.Is(err, overview.ErrInvalid) {

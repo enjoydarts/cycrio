@@ -10,8 +10,8 @@ import (
 	"testing"
 )
 
-func TestMailAutomationRunningDiscoveryExpiryStopsAndIgnoresLateFinish(t *testing.T) {
-	for _, stopFirst := range []bool{false, true} {
+func TestMailAutomationStopBeforeRunningDiscoveryExpiryIgnoresLateFinish(t *testing.T) {
+	for _, finishExpiry := range []bool{false, true} {
 		f, r, in := automaticFixture(t)
 		ctx := context.Background()
 		v := automaticBootstrap(t, f, r, in, 100)
@@ -23,25 +23,22 @@ func TestMailAutomationRunningDiscoveryExpiryStopsAndIgnoresLateFinish(t *testin
 		if _, e := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET lease_until=clock_timestamp()-interval '1 second' WHERE id=$1`, lease.RunID); e != nil {
 			t.Fatal(e)
 		}
-		if stopFirst {
-			if _, e := r.Stop(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()}); e != nil {
+		if _, e := r.Stop(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()}); e != nil {
+			t.Fatal(e)
+		}
+		if finishExpiry {
+			if e := sync.Finish(ctx, lease, mailsync.Page{}, nil, "lease_expired"); e != nil {
 				t.Fatal(e)
 			}
-		}
-		if jobs, e := sync.Claim(ctx); e != nil || len(jobs) != 0 {
+		} else if jobs, e := sync.Claim(ctx); e != nil || len(jobs) != 0 {
 			t.Fatal(jobs, e)
 		}
 		got, e := r.Read(ctx, f.owner, f.account)
-		if e != nil || got.State != "stopped" || !stopFirst && got.Reason != "lease_expired" {
+		if e != nil || got.State != "stopped" || got.Reason != "" || got.DiscoveryFailureCount != 0 {
 			t.Fatal("expired running work restarted", got, e)
 		}
 		if e = sync.Finish(ctx, lease, mailsync.Page{UIDValidity: 77, AfterUID: 100, UpperUID: 100, Done: true, Initialized: true, UIDs: []uint32{1}}, syncRefs(1), ""); e != nil {
 			t.Fatal(e)
-		}
-		if !stopFirst {
-			if stopped, e := r.Stop(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: got.Version, RequestID: uuid.NewString()}); e != nil || stopped.State != "stopped" {
-				t.Fatal("stop after expiry failed", stopped, e)
-			}
 		}
 		for i := 0; i < 7; i++ {
 			if _, e = r.Tick(ctx, 20); e != nil {

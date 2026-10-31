@@ -191,7 +191,7 @@ func TestMailAutomationConsentCASReplayIsolationAndStopResume(t *testing.T) {
 		t.Fatal("nonce", e)
 	}
 	var enabled bool
-	if e = f.runtime.pool.QueryRow(ctx, `SELECT enabled FROM subscription_automation_preferences WHERE owner_id=$1`, f.owner).Scan(&enabled); e != nil || !enabled {
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM subscription_automation_preferences WHERE owner_id=$1 AND enabled)`, f.owner).Scan(&enabled); e != nil || enabled {
 		t.Fatal(enabled, e)
 	}
 	stop := mailautomation.Control{ExpectedSettingsVersion: 1, RequestID: uuid.NewString()}

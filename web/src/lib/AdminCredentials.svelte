@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount, tick } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -215,24 +217,33 @@
     description="サービスを選んで登録・更新します。保存した秘密値は再表示しません。"
   >
     {#snippet action()}
-      <button
-        class="secondary refresh"
+      <Button
+        wrap
+        class={[
+          'secondary refresh',
+          'part-AdminCredentials-secondary',
+          'part-AdminCredentials-refresh',
+        ]}
         disabled={busy || dirty}
         onclick={() => {
           confirmation = null;
           void controller?.load();
-        }}>更新</button
+        }}>更新</Button
       >
     {/snippet}
   </LibraryHeader>
   <LibraryPanel>
     <nav class="library-tabs" aria-label="API キーの表示">
-      <button
+      <Button
+        wrap
+        variant="tab"
         aria-current={!history ? 'page' : undefined}
-        onclick={() => (history = false)}>接続サービス</button
-      ><button
+        onclick={() => (history = false)}>接続サービス</Button
+      ><Button
+        wrap
+        variant="tab"
         aria-current={history ? 'page' : undefined}
-        onclick={() => (history = true)}>操作履歴</button
+        onclick={() => (history = true)}>操作履歴</Button
       >
     </nav>
     <div class="library-content">
@@ -254,22 +265,33 @@
       </div>
       {#if discardConfirmation}<div class="confirmation" role="alert">
           <p>入力を破棄してサービス一覧に戻りますか？</p>
-          <div class="confirmation-actions">
-            <button class="danger" disabled={busy} onclick={discardEditor}
-              >入力を破棄して戻る</button
-            ><button
-              class="secondary"
+          <ActionGroup
+            class={[
+              'confirmation-actions',
+              'part-AdminCredentials-confirmation-actions',
+            ]}
+          >
+            <Button
+              wrap
+              class={['danger', 'part-AdminCredentials-danger']}
               disabled={busy}
-              onclick={() => (discardConfirmation = false)}>編集を続ける</button
+              onclick={discardEditor}>入力を破棄して戻る</Button
+            ><Button
+              wrap
+              class={['secondary', 'part-AdminCredentials-secondary']}
+              disabled={busy}
+              onclick={() => (discardConfirmation = false)}>編集を続ける</Button
             >
-          </div>
+          </ActionGroup>
         </div>{/if}
       <div hidden={history}>
         {#if selectedProvider === null}
           <div class="service-list" aria-label="登録サービス">
             {#each view.credentials as credential (credential.provider)}
-              <button
-                class="service-row"
+              <Button
+                wrap
+                variant="plain"
+                class={['service-row', 'part-AdminCredentials-service-row']}
                 disabled={busy}
                 onclick={() => selectProvider(credential.provider)}
                 ><span
@@ -280,14 +302,19 @@
                   class="badge"
                   class:configured={credential.state === 'configured'}
                   >{statuses[credential.state]}</span
-                ><span aria-hidden="true">→</span></button
+                ><span aria-hidden="true">→</span></Button
               >
             {/each}
           </div>
-        {:else}<button
-            class="secondary back"
+        {:else}<Button
+            wrap
+            class={[
+              'secondary back',
+              'part-AdminCredentials-secondary',
+              'part-AdminCredentials-back',
+            ]}
             disabled={busy}
-            onclick={() => selectProvider(null)}>← サービス一覧に戻る</button
+            onclick={() => selectProvider(null)}>← サービス一覧に戻る</Button
           >{/if}
         <div class="provider-list">
           {#each view.credentials as credential (credential.provider)}
@@ -394,10 +421,15 @@
                       aria-describedby="secret-help"
                     />
                   {/if}
-                  <button class="primary" type="submit" disabled={busy}
+                  <Button
+                    wrap
+                    variant="primary"
+                    class={['primary']}
+                    type="submit"
+                    disabled={busy}
                     >{credential.state === 'configured'
                       ? '設定を更新する'
-                      : '設定を登録する'}</button
+                      : '設定を登録する'}</Button
                   >
                 </form>
                 {#if credential.state === 'configured'}
@@ -408,29 +440,40 @@
                       aria-label={`${provider.label} の無効化確認`}
                     >
                       <p>{provider.label} の API キーを無効化しますか？</p>
-                      <div class="confirmation-actions">
-                        <button
+                      <ActionGroup
+                        class={[
+                          'confirmation-actions',
+                          'part-AdminCredentials-confirmation-actions',
+                        ]}
+                      >
+                        <Button
+                          wrap
                           id={`confirm-disable-${credential.provider}`}
-                          class="danger"
+                          class={['danger', 'part-AdminCredentials-danger']}
                           disabled={busy}
                           onclick={() =>
                             disable(credential.provider, credential.version)}
-                          >無効化を確定する</button
-                        ><button
-                          class="secondary"
+                          >無効化を確定する</Button
+                        ><Button
+                          wrap
+                          class={[
+                            'secondary',
+                            'part-AdminCredentials-secondary',
+                          ]}
                           disabled={busy}
                           onclick={() =>
                             cancelConfirmation(credential.provider)}
-                          >キャンセル</button
+                          >キャンセル</Button
                         >
-                      </div>
+                      </ActionGroup>
                     </div>
-                  {:else}<button
+                  {:else}<Button
+                      wrap
                       id={`disable-${credential.provider}`}
-                      class="secondary"
+                      class={['secondary', 'part-AdminCredentials-secondary']}
                       disabled={busy}
                       onclick={() => openConfirmation(credential.provider)}
-                      >{provider.label} を無効化する</button
+                      >{provider.label} を無効化する</Button
                     >{/if}
                 {/if}
               </article>{/if}
@@ -476,41 +519,37 @@
   [hidden] {
     display: none !important;
   }
-  .refresh {
+  :global(.part-AdminCredentials-refresh) {
     width: auto;
   }
   .service-list {
     overflow: hidden;
   }
-  .service-row {
+  :global(.part-AdminCredentials-service-row) {
     display: flex;
     align-items: center;
     gap: 1rem;
-    text-align: left;
     margin: 0;
     padding: 1rem 0;
-    border: 0;
     border-radius: 0;
     border-bottom: 1px solid var(--color-border);
-    color: var(--color-text);
-    background: var(--color-surface);
   }
-  .service-row:hover {
+  :global(.part-AdminCredentials-service-row):hover {
     background: var(--color-surface-soft);
   }
-  .service-row > span:first-child {
+  :global(.part-AdminCredentials-service-row > span:first-child) {
     flex: 1;
   }
-  .service-row small {
+  :global(.part-AdminCredentials-service-row) small {
     display: block;
     color: var(--color-muted);
     font-weight: 400;
     margin-top: 0.2rem;
   }
-  .service-row:last-child {
+  :global(.part-AdminCredentials-service-row):last-child {
     border-bottom: 0;
   }
-  .back {
+  :global(.part-AdminCredentials-back) {
     width: auto;
     margin: 0 0 1rem;
   }
@@ -610,48 +649,17 @@
     background: var(--color-surface);
     font: inherit;
   }
-  button {
-    width: 100%;
-    min-height: 2.75rem;
-    border: 1px solid var(--color-border);
-    border-radius: 0.55rem;
-    padding: 0.6rem 0.7rem;
-    margin-top: 0.65rem;
-    font: inherit;
-    font-size: 0.8rem;
-    font-weight: 600;
-    cursor: pointer;
-    line-height: 1.6;
-    overflow-wrap: anywhere;
-  }
-  .primary {
-    background: var(--color-action);
-    color: var(--color-on-action);
-    border-color: var(--color-action);
-  }
-  .primary:hover {
-    background: var(--color-action-hover);
-  }
-  .secondary {
+  :global(.part-AdminCredentials-secondary) {
     background: var(--color-surface);
     color: var(--color-action);
   }
-  .secondary:hover {
+  :global(.part-AdminCredentials-secondary):hover {
     background: var(--color-surface-soft);
   }
-  .danger {
+  :global(.part-AdminCredentials-danger) {
     background: #9f1239;
     color: white;
     border-color: #9f1239;
-  }
-  button:disabled {
-    opacity: 0.6;
-    cursor: wait;
-  }
-  button:focus-visible,
-  input:focus-visible {
-    outline: 2px solid var(--color-action-hover);
-    outline-offset: 3px;
   }
   .confirmation {
     background: var(--color-surface-soft);
@@ -664,12 +672,12 @@
   .confirmation p {
     margin: 0;
   }
-  .confirmation-actions {
+  :global(.part-AdminCredentials-confirmation-actions) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
-  .confirmation-actions button {
+  :global(.part-AdminCredentials-confirmation-actions) :global(.ui-action) {
     flex: 1 1 8rem;
   }
   .help {

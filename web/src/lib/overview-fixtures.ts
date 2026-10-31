@@ -53,32 +53,5 @@ export function overviewFixture() {
         next_check_at: '2024-02-29T15:05:00Z',
       },
     ],
-    billing_month: {
-      month: '2024-03',
-      start_date: '2024-03-01',
-      end_date: '2024-04-01',
-      timezone: 'Asia/Tokyo',
-      subscription_id: null,
-      currencies: [
-        {
-          currency: 'JPY',
-          payment_amount: '12.34',
-          refund_amount: '0',
-          net_amount: '12.34',
-          payment_count: 1,
-          refund_count: 0,
-        },
-        {
-          currency: 'USD',
-          payment_amount: '123456789012345678901234.123456789012',
-          refund_amount: '0',
-          net_amount: '123456789012345678901234.123456789012',
-          payment_count: 1,
-          refund_count: 0,
-        },
-      ],
-      invoice_count: 0,
-      voided_count: 0,
-    },
   };
 }

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import DataTable from './DataTable.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api';
   import { modelProviders, type ModelProvider } from './catalog-api';
@@ -22,7 +25,7 @@
     type UsageView,
   } from './ai-runtime-controller';
   import { datetime, providerNames } from './model-catalog';
-  import CostTotals from './CostTotals.svelte';
+  import UsageOverview from './UsageOverview.svelte';
   import UsageAmounts from './UsageAmounts.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
@@ -36,7 +39,7 @@
     $props();
   let view = $state<UsageView>(emptyUsageView());
   let controller: ReturnType<typeof createUsageController> | undefined;
-  let purpose = $state<'overview' | 'breakdown' | 'calls'>('overview');
+  let purpose = $state<'overview' | 'users' | 'calls'>('overview');
   let busy = $derived(
     ['idle', 'loading', 'denied', 'disposed'].includes(view.status) ||
       Boolean(view.reconciling),
@@ -73,19 +76,21 @@
     description="月別・使用ユーザー別に、保存された実利用の原価を確認できます。"
   >
     {#snippet action()}
-      <button disabled={busy} onclick={() => controller?.load()}
-        >原価を再読み込み</button
+      <Button wrap disabled={busy} onclick={() => controller?.load()}
+        >原価を再読み込み</Button
       >
     {/snippet}
   </LibraryHeader>
   <LibraryPanel>
     <div class="catalog-ui usage-ui usage-body">
       <nav class="library-tabs" aria-label="原価の表示">
-        {#each [['overview', '概要・ユーザー別'], ['breakdown', '詳細内訳'], ['calls', '呼出し履歴']] as [value, label]}<button
+        {#each [['overview', '概要'], ['users', 'ユーザー別'], ['calls', '呼出し履歴']] as [value, label]}<Button
+            wrap
+            variant="tab"
             type="button"
             disabled={busy}
             aria-pressed={purpose === value}
-            onclick={() => (purpose = value as typeof purpose)}>{label}</button
+            onclick={() => (purpose = value as typeof purpose)}>{label}</Button
           >{/each}
       </nav>
       <div class="usage-filters library-toolbar">
@@ -172,8 +177,8 @@
       {#if view.filter.user_id}<p>
           選択中の消費利用者：<code>{view.filter.user_id}</code>
         </p>
-        <button disabled={busy} onclick={() => filter({ user_id: '' })}
-          >利用者の絞り込みを解除</button
+        <Button wrap disabled={busy} onclick={() => filter({ user_id: '' })}
+          >利用者の絞り込みを解除</Button
         >{/if}
       <div
         class="feedback"
@@ -195,114 +200,75 @@
         hidden={purpose !== 'overview'}
       >
         {#if view.report}
-          <div class="usage-summary">
-            <h4>{view.report.month} の既知原価</h4>
-            <p>
-              {view.report.provisional
-                ? '暫定月（後から更新される可能性があります）'
-                : '月次集計'} · 更新 {datetime(view.report.updated_at)} JST
-            </p>
-            <details>
-              <summary>集計の対象・計算方法</summary>
-              <p class="muted">
-                対象期間：{datetime(view.report.from)} 以上 / {datetime(
-                  view.report.to,
-                )} 未満（JST）。通貨ごとに表示し、不明額は合計に含めません。推定・報告は既知額の内訳です。
-              </p>
-              <p>
-                原価は採用済みの最新記録です。配信先報告への置換後は推定額を重ねて加算しません。
-              </p>
-            </details>
-            <UsageAmounts totals={view.report.totals} />
-          </div>
+          <UsageOverview report={view.report} />
+        {/if}
+      </section>
+      <section
+        class="library-content"
+        aria-label="使用ユーザー別"
+        hidden={purpose !== 'users'}
+      >
+        {#if view.report}
           <h2>使用ユーザー別</h2>
           <p class="muted">
             {view.report.users_total} 人 · 呼出し 0 件の利用者も表示します。利用者を選ぶと、その利用者が消費した呼出しに絞り込みます。
           </p>
           <div class="usage-table">
-            <table>
+            <DataTable responsive="cards" class={['table-AIUsage']}>
               <caption class="sr-only">使用ユーザー別の月次原価</caption><thead
                 ><tr
                   ><th scope="col">消費利用者</th><th scope="col"
-                    >呼出し / 不明 / 失敗</th
-                  ><th scope="col">通貨別原価</th><th scope="col">操作</th></tr
+                    >呼出し / 失敗・結果不明</th
+                  ><th scope="col">集計済みコスト</th><th scope="col">操作</th
+                  ></tr
                 ></thead
               ><tbody
                 >{#each view.report.users as user}<tr
                     class:active-row={view.filter.user_id === user.user_id}
-                    ><td data-label="消費利用者"><code>{user.user_id}</code></td
-                    ><td data-label="呼出し / 不明 / 失敗"
-                      >{user.calls} 件 / {user.unknown_calls} 件 / {user.failures}
+                    ><td data-primary data-label="消費利用者"
+                      ><code>{user.user_id}</code></td
+                    ><td data-label="呼出し / 失敗・結果不明"
+                      >{user.calls} 件 / {user.failures}
                       件</td
-                    ><td data-label="通貨別原価"
+                    ><td data-label="集計済みコスト"
                       ><UsageAmounts totals={user.totals} counts={false} /></td
-                    ><td data-label="操作"
-                      ><button
-                        disabled={busy}
-                        aria-label={`${user.user_id} の使用原価を表示`}
-                        onclick={() => filter({ user_id: user.user_id })}
-                        >この利用者を表示</button
+                    ><td data-actions data-label="操作"
+                      ><ActionGroup
+                        ><Button
+                          wrap
+                          disabled={busy}
+                          aria-label={`${user.user_id} の使用原価を表示`}
+                          onclick={() => filter({ user_id: user.user_id })}
+                          >この利用者を表示</Button
+                        ></ActionGroup
                       ></td
                     ></tr
                   >{:else}<tr><td colspan="4">対象の利用者はいません。</td></tr
                   >{/each}</tbody
               >
-            </table>
+            </DataTable>
           </div>
-          <div class="actions pagination">
-            <button
+          <ActionGroup
+            class={[
+              'actions pagination',
+              'part-AIUsage-actions',
+              'part-AIUsage-pagination',
+            ]}
+          >
+            <Button
+              wrap
               disabled={busy || view.usersOffset === 0}
               onclick={() =>
                 controller?.usersPage(Math.max(0, view.usersOffset - 50))}
-              >利用者の前の50件</button
-            ><button
+              >利用者の前の50件</Button
+            ><Button
+              wrap
               disabled={busy ||
                 view.usersOffset + 50 >= view.report.users_total}
               onclick={() => controller?.usersPage(view.usersOffset + 50)}
-              >利用者の次の50件</button
+              >利用者の次の50件</Button
             >
-          </div>
-        {/if}
-      </section>
-      <section
-        class="library-content"
-        aria-label="詳細内訳"
-        hidden={purpose !== 'breakdown'}
-      >
-        {#if view.report}
-          <h2>管理者テスト・システム処理</h2>
-          <div class="selection-summary">
-            {#each view.report.administration as item}<article class="box">
-                <h4>{scopeNames[item.scope]}</h4>
-                <CostTotals totals={item.totals} />
-              </article>{:else}<p class="muted">
-                対象の呼出しはありません。
-              </p>{/each}
-          </div>
-          <h3>プロバイダー・モデル・処理段階の内訳</h3>
-          <div class="usage-table">
-            <table>
-              <caption class="sr-only">選択した条件での原価内訳</caption><thead
-                ><tr
-                  ><th scope="col">プロバイダー / モデル</th><th scope="col"
-                    >処理段階</th
-                  ><th scope="col">通貨別原価</th></tr
-                ></thead
-              ><tbody
-                >{#each view.report.breakdown as row}<tr
-                    ><td data-label="プロバイダー / モデル"
-                      ><strong>{row.model_name}</strong><span
-                        >{providerNames[row.provider]}</span
-                      ></td
-                    ><td data-label="処理段階">{stageNames[row.stage]}</td><td
-                      data-label="通貨別原価"
-                      ><CostTotals totals={row.totals} /></td
-                    ></tr
-                  >{:else}<tr><td colspan="3">呼出し 0 件</td></tr
-                  >{/each}</tbody
-              >
-            </table>
-          </div>
+          </ActionGroup>
         {/if}
       </section>
       <section
@@ -322,7 +288,7 @@
               : 0} 件目から最大 50 件
           </p>
           <div class="usage-table calls-table">
-            <table>
+            <DataTable responsive="cards" class={['table-AIUsage']}>
               <caption class="sr-only">AI 呼出し履歴と採用原価</caption><thead
                 ><tr
                   ><th scope="col">開始（JST）/ スコープ</th><th scope="col"
@@ -396,36 +362,48 @@
                       >{#if row.cost.status === 'unknown'}<span class="muted"
                           >{reasonText(row.cost.reason)}</span
                         >{/if}</td
-                    ><td data-label="確認"
-                      ><button
-                        disabled={busy}
-                        aria-label={`${row.model_name} の原価履歴`}
-                        onclick={() => controller?.revisions(row.id)}
-                        >原価履歴</button
-                      >{#if row.provider === 'openrouter' && row.generation_id}<button
+                    ><td data-actions data-label="確認"
+                      ><ActionGroup
+                        ><Button
+                          wrap
                           disabled={busy}
-                          aria-label={`${row.model_name} の原価を再照合`}
-                          onclick={() => controller?.reconcile(row)}
-                          >原価を再照合</button
-                        >{/if}</td
+                          aria-label={`${row.model_name} の原価履歴`}
+                          onclick={() => controller?.revisions(row.id)}
+                          >原価履歴</Button
+                        >{#if row.provider === 'openrouter' && row.generation_id}<Button
+                            wrap
+                            disabled={busy}
+                            aria-label={`${row.model_name} の原価を再照合`}
+                            onclick={() => controller?.reconcile(row)}
+                            >原価を再照合</Button
+                          >{/if}</ActionGroup
+                      ></td
                     ></tr
                   >{:else}<tr><td colspan="7">呼出し 0 件</td></tr
                   >{/each}</tbody
               >
-            </table>
+            </DataTable>
           </div>
-          <div class="actions pagination">
-            <button
+          <ActionGroup
+            class={[
+              'actions pagination',
+              'part-AIUsage-actions',
+              'part-AIUsage-pagination',
+            ]}
+          >
+            <Button
+              wrap
               disabled={busy || view.callsOffset === 0}
               onclick={() =>
                 controller?.callsPage(Math.max(0, view.callsOffset - 50))}
-              >呼出しの前の50件</button
-            ><button
+              >呼出しの前の50件</Button
+            ><Button
+              wrap
               disabled={busy || view.callsOffset + 50 >= view.calls.total}
               onclick={() => controller?.callsPage(view.callsOffset + 50)}
-              >呼出しの次の50件</button
+              >呼出しの次の50件</Button
             >
-          </div>{/if}
+          </ActionGroup>{/if}
         {#if view.revisionCallID}<section class="box" aria-label="原価履歴">
             <h4>使用量・原価の版履歴（最新 50 件）</h4>
             <details>
@@ -467,11 +445,6 @@
   .usage-body .usage-table {
     border: 0;
     border-radius: 0;
-  }
-  .usage-summary {
-    margin-bottom: 1.5rem;
-    border-bottom: 1px solid var(--color-border);
-    padding-bottom: 1rem;
   }
   .advanced-filters {
     align-self: end;

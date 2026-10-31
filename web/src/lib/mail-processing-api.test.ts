@@ -86,7 +86,7 @@ test('DTO parsers reject malformed types, enums, nil UUID, impossible date, exce
     );
   for (const patch of [
     { state: 'limited' },
-    { max_messages: 101 },
+    { max_messages: 0 },
     { completed_count: 3 },
     { created_at: '2026-02-30T00:00:00Z' },
     { started_at: undefined },

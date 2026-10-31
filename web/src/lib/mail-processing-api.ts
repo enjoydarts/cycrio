@@ -1,4 +1,6 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
+import { importHistoryID } from './import-executions-api.ts';
+import { input } from './daily-api.ts';
 import {
   parseRouteProof,
   type RouteProof,
@@ -59,6 +61,7 @@ export type ProcessingPreview = {
   timeout_seconds: number;
 };
 export type ProcessingInput = {
+  history_id?: string;
   full_email?: boolean;
   expected_version: number;
   runtime_version: number;
@@ -362,7 +365,7 @@ export function parseProcessingRun(
 ): ProcessingRun {
   const v = record(value);
   if (uuid(v.account_id) !== uuid(accountID)) return invalid();
-  const max_messages = integer(v.max_messages, 1, 100),
+  const max_messages = integer(v.max_messages, 1),
     total_count = integer(v.total_count, 0, max_messages),
     completed_count = integer(v.completed_count, 0, total_count);
   const related_count = integer(v.related_count, 0, completed_count),
@@ -618,6 +621,26 @@ export function createMailProcessingAPI(
     }
   };
   return {
+    async retryFailed(
+      id: string,
+      body: ProcessingInput,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) {
+      const v = record(
+        await request(accountPath(id, 'retry-failed'), token, signal, 'POST', {
+          ...inputBody(body),
+          ...(body.history_id === undefined
+            ? {}
+            : { history_id: input(() => importHistoryID(body.history_id)) }),
+        }),
+      );
+      return {
+        run: parseProcessingRun(v.run, id),
+        accepted_count: integer(v.accepted_count),
+        skipped_count: integer(v.skipped_count),
+      };
+    },
     async saveStandardPolicy(
       input: StandardPolicyInput,
       token: TokenProvider,

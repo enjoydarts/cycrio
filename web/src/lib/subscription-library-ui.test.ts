@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function componentURL(name: string): Promise<string> {
   const nested: Record<string, string> = {};
   for (const m of js.code.matchAll(/from\s+['"]\.\/([^'"]+)\.svelte['"]/g))
     nested[`./${m[1]}.svelte`] = await componentURL(m[1]);
-  return `data:text/javascript;base64,${Buffer.from(js.code.replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '').replace(/(from\s+|import\s*)(['"])([^'"]+)\2/g, (_m, prefix, q, path) => `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`)).toString('base64')}`;
+  return `data:text/javascript;base64,${Buffer.from(js.code.replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '').replace(/(from\s+|import\s+)(['"])([^'"]+)\2/g, (_m, prefix, q, path) => `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`)).toString('base64')}`;
 }
 test('library list and cards expose real amounts, unknown sources and accessible detail actions', async () => {
   const Component = (await import(await componentURL('SubscriptionListPanel')))
@@ -86,7 +87,7 @@ async function libraryHTML(query = '', available = true) {
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '')
     .replace(
-      /(^import[^\n]*?from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+      /(^import[^\n]*?from\s+|^import\s+)(['"])([^'"]+)\2/gm,
       (_m, p, q, path) =>
         `${p}${q}${stubs[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`,
     );
@@ -94,10 +95,15 @@ async function libraryHTML(query = '', available = true) {
     .body.replace(/<!--[\s\S]*?-->/g, '')
     .replace(/ class="[^"]*"/g, '');
 }
-test('library summary uses formal counts and actual decimal payments while source scope hides global totals', async () => {
+test('library summary shows counts without monthly payment totals and source scope hides global counts', async () => {
   const html = await libraryHTML();
   assert.match(html, /href="\/analysis\?tab=attention"/);
-  assert.match(html, /123456789012345678901234.123456789012 USD/);
+  assert.doesNotMatch(
+    html,
+    /今月の支払実績|支払・返金|subscriptions\/summary|123456789012345678901234/,
+  );
+  assert.match(html, /登録したサブスク/);
+  assert.match(html, /確認が必要なメール/);
   assert.match(html, /すべて<span>4<\/span>/);
   assert.match(html, /利用中<span>2<\/span>/);
   const scoped = await libraryHTML(

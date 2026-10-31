@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount, tick } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import { type TokenProvider } from './api';
@@ -209,10 +211,11 @@
     description="モデルを選んで、対応機能と参考価格を確認できます。"
   >
     {#snippet action()}
-      <button
+      <Button
+        wrap
         type="button"
         disabled={busy}
-        onclick={() => controller?.loadCatalog()}>保存状態を再読み込み</button
+        onclick={() => controller?.loadCatalog()}>保存状態を再読み込み</Button
       >
     {/snippet}
   </LibraryHeader>
@@ -222,9 +225,10 @@
           <p>
             保存の結果を確認できません。入力は保持しています。別の保存や詳細の切り替えの前に、保存済みの状態を確認してください。
           </p>
-          <button
+          <Button
+            wrap
             disabled={view.status === 'loading' || view.status === 'saving'}
-            onclick={recoverWrite}>保存済みの状態を確認</button
+            onclick={recoverWrite}>保存済みの状態を確認</Button
           >
         </div>{/if}
       <div
@@ -242,11 +246,13 @@
       </div>
       <nav class="library-tabs" aria-label="カタログの表示">
         {#each [['catalog', 'モデル一覧'], ['sync', '同期・更新'], ['add', 'モデルを追加']] as [value, label]}
-          <button
+          <Button
+            wrap
+            variant="tab"
             type="button"
             aria-pressed={purpose === value}
             disabled={view.status === 'saving'}
-            onclick={() => (purpose = value as typeof purpose)}>{label}</button
+            onclick={() => (purpose = value as typeof purpose)}>{label}</Button
           >
         {/each}
       </nav>
@@ -285,23 +291,31 @@
             <p class="muted price-note">
               料金は参考値です。条件別料金・割引は詳細で確認できます。「不明」は無料を意味しません。
             </p>
-            <div class="actions pagination">
-              <button
+            <ActionGroup
+              class={[
+                'actions pagination',
+                'part-ModelCatalog-actions',
+                'part-ModelCatalog-pagination',
+              ]}
+            >
+              <Button
+                wrap
                 disabled={busy || !(view.filter.offset ?? 0)}
                 onclick={() =>
                   controller?.loadCatalog({
                     ...view.filter,
                     offset: Math.max(0, (view.filter.offset ?? 0) - 20),
-                  })}>前の 20 件</button
-              ><button
+                  })}>前の 20 件</Button
+              ><Button
+                wrap
                 disabled={busy || (view.filter.offset ?? 0) + 20 >= view.total}
                 onclick={() =>
                   controller?.loadCatalog({
                     ...view.filter,
                     offset: (view.filter.offset ?? 0) + 20,
-                  })}>次の 20 件</button
+                  })}>次の 20 件</Button
               >
-            </div>
+            </ActionGroup>
           </div>
           {#if view.selected}
             {@const model = view.selected}
@@ -382,14 +396,18 @@
                         >非対応</option
                       ></select
                     >
-                    <button class="primary" disabled={busy}
-                      >モデル情報を保存</button
+                    <Button
+                      wrap
+                      variant="primary"
+                      class={['primary']}
+                      disabled={busy}>モデル情報を保存</Button
                     >
-                    <button
+                    <Button
+                      wrap
                       type="button"
                       disabled={busy}
                       onclick={reloadModelDraft}
-                      >最新のモデル情報を読み直す（入力を破棄）</button
+                      >最新のモデル情報を読み直す（入力を破棄）</Button
                     >
                   </form>{/if}
               </details>
@@ -427,8 +445,8 @@
                   onDirty={(value) => (priceDirty = value)}
                   invalid={() => controller?.validationError()}
                 />{/key}
-              <button disabled={busy} onclick={() => openModel(null)}
-                >詳細を閉じる</button
+              <Button wrap disabled={busy} onclick={() => openModel(null)}
+                >詳細を閉じる</Button
               >
             </section>
           {/if}
@@ -497,7 +515,9 @@
             ><option value="">不明</option><option value="true">対応</option
             ><option value="false">非対応</option></select
           >
-          <button class="primary" disabled={busy}>モデルを追加</button>
+          <Button wrap variant="primary" class={['primary']} disabled={busy}
+            >モデルを追加</Button
+          >
         </form>
       </section>
     </div>

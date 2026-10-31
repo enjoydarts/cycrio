@@ -1,4 +1,7 @@
 <script lang="ts">
+  import DataTable from './DataTable.svelte';
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { tick } from 'svelte';
   import {
     type SyncState,
@@ -92,7 +95,7 @@
     キーでモデルを取得し、価格は手入力します。Liquid AI は手入力のみです。推論
     API は呼び出しません。
   </p>
-  <table aria-label="提供元の同期状態">
+  <DataTable class={['table-CatalogSync']} aria-label="提供元の同期状態">
     <thead
       ><tr
         ><th>提供元</th><th>状態</th><th>最終成功（日本時間）</th><th
@@ -106,18 +109,22 @@
             >{statusNames[row.status]}{#if row.error_code}<span class="error">
                 · 同期を確認してください</span
               >{/if}</td
-          ><td>{datetime(row.last_success_at)}</td><td
-            ><button
-              disabled={busy}
-              aria-label={`${providerNames[row.provider]} の同期設定`}
-              aria-pressed={selected === row.provider}
-              onclick={() => (selected = row.provider)}
-              >{selected === row.provider ? '選択中' : '設定'}</button
+          ><td>{datetime(row.last_success_at)}</td><td data-actions
+            ><ActionGroup
+              ><Button
+                wrap
+                variant="tab"
+                disabled={busy}
+                aria-label={`${providerNames[row.provider]} の同期設定`}
+                aria-pressed={selected === row.provider}
+                onclick={() => (selected = row.provider)}
+                >{selected === row.provider ? '選択中' : '設定'}</Button
+              ></ActionGroup
             ></td
           ></tr
         >{/each}</tbody
     >
-  </table>
+  </DataTable>
   {#if selected === null}<p class="muted">
       提供元を選ぶと、同期の設定と実行状況を確認できます。
     </p>{/if}
@@ -187,23 +194,28 @@
                 }}
                 disabled={busy}
               />{/if}
-            <div class="actions">
-              <button type="submit" disabled={busy || row.provider === 'liquid'}
-                >同期設定を保存</button
-              ><button
+            <ActionGroup class={['actions', 'part-CatalogSync-actions']}>
+              <Button
+                wrap
+                type="submit"
+                disabled={busy || row.provider === 'liquid'}
+                >同期設定を保存</Button
+              ><Button
+                wrap
                 type="button"
                 disabled={busy ||
                   row.provider === 'liquid' ||
                   row.status === 'queued' ||
                   row.status === 'running'}
-                onclick={() => request(row.provider)}>今すぐ同期を依頼</button
+                onclick={() => request(row.provider)}>今すぐ同期を依頼</Button
               >
-            </div>
-            <button
+            </ActionGroup>
+            <Button
+              wrap
               type="button"
               disabled={busy || row.provider === 'liquid'}
               onclick={() => reloadDraft(row.provider)}
-              >最新の同期設定を読み直す（入力を破棄）</button
+              >最新の同期設定を読み直す（入力を破棄）</Button
             >
           </form>{/if}
       </article>
@@ -215,13 +227,9 @@
   [hidden] {
     display: none !important;
   }
-  td button {
+  td :global(.ui-action) {
     margin: 0;
   }
   @media (max-width: 720px) {
-    table,
-    tbody {
-      display: block;
-    }
   }
 </style>

@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function component(name: string) {
   const code = compile(await source(name), {
     generate: 'server',
   }).js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, p, q, path) =>
       `${p}${q}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${q}`,
   );
@@ -108,7 +109,10 @@ test('all ambiguous choices render equally with replacement disclosure and disab
   ])
     assert.ok(html.replace(/\s+/g, ' ').includes(t), t);
   assert.equal((html.match(/この候補を入力する/g) ?? []).length, 2);
-  assert.match(html, /<button[^>]*disabled[^>]*>この候補を入力する/);
+  assert.match(
+    html.replace(/<!--[\s\S]*?-->/g, ''),
+    /<button[^>]*disabled[^>]*>この候補を入力する/,
+  );
   assert.doesNotMatch(html, /checked|おすすめ|精度/);
   assert.ok(
     html.indexOf('<details>') < html.indexOf('schedule-history-counts'),

@@ -100,7 +100,7 @@ func (r *SubscriptionRepository) Get(ctx context.Context, owner, id string) (sub
 		return subscriptions.Subscription{}, e
 	}
 	defer tx.Rollback(ctx)
-	s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2`, owner, id))
+	s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
 	if e == nil {
 		e = fillSubscription(ctx, tx, owner, &s)
 	}
@@ -115,6 +115,13 @@ func sourceSubscription(ctx context.Context, tx pgx.Tx, owner, id, result string
 	}
 	if state != "succeeded" || index < 0 || index >= count {
 		return subscriptions.ErrInvalid
+	}
+	var dismissed bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM subscription_candidate_dismissals WHERE owner_id=$1 AND result_id=$2 AND event_index=$3)`, owner, result, index).Scan(&dismissed); e != nil {
+		return subscriptionError(e)
+	}
+	if dismissed {
+		return subscriptions.ErrConflict
 	}
 	_, e = tx.Exec(ctx, `INSERT INTO subscription_sources(owner_id,subscription_id,result_id,event_index) VALUES($1,$2,$3,$4)`, owner, id, result, index)
 	return subscriptionError(e)
@@ -154,7 +161,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 		if !same {
 			return subscriptions.Subscription{}, subscriptions.ErrConflict
 		}
-		s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2`, owner, existing))
+		s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, existing))
 		if e == nil {
 			e = fillSubscription(ctx, tx, owner, &s)
 		}
@@ -177,7 +184,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 }
 func lockSubscription(ctx context.Context, tx pgx.Tx, owner, id string, expected int64) error {
 	var version int64
-	e := tx.QueryRow(ctx, `SELECT version FROM subscriptions WHERE owner_id=$1 AND id=$2 FOR UPDATE`, owner, id).Scan(&version)
+	e := tx.QueryRow(ctx, `SELECT version FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, owner, id).Scan(&version)
 	if e != nil {
 		return subscriptionError(e)
 	}
@@ -226,6 +233,21 @@ func (r *SubscriptionRepository) AttachSource(ctx context.Context, owner, id str
 		return subscriptions.Subscription{}, e
 	}
 	defer tx.Rollback(ctx)
+	var attached string
+	e = tx.QueryRow(ctx, `SELECT subscription_id FROM subscription_sources WHERE owner_id=$1 AND result_id=$2 AND event_index=$3`, owner, in.SourceResultID, in.SourceEventIndex).Scan(&attached)
+	if e == nil {
+		if attached != id {
+			return subscriptions.Subscription{}, subscriptions.ErrConflict
+		}
+		s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
+		if e == nil {
+			e = fillSubscription(ctx, tx, owner, &s)
+		}
+		return s, e
+	}
+	if !errors.Is(e, pgx.ErrNoRows) {
+		return subscriptions.Subscription{}, subscriptionError(e)
+	}
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return subscriptions.Subscription{}, e
 	}

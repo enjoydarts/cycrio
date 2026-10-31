@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { AuthState } from './auth.ts';
   let {
     state,
@@ -52,7 +53,9 @@
         {:else if state.status === 'unconfigured'}
           <h1>ログインの準備中です</h1>
           <p>管理者による認証設定の完了後に、ご利用いただけます。</p>
-          <button class="primary" onclick={retry}>設定を再確認</button>
+          <Button wrap variant="primary" class={['primary']} onclick={retry}
+            >設定を再確認</Button
+          >
         {:else if state.status === 'pending'}
           <h1>利用許可をお待ちください</h1>
           <p>ログインを確認しました。管理者の許可後にご利用いただけます。</p>
@@ -60,18 +63,20 @@
             管理者に次のユーザーIDをお伝えください。<br />
             <span>ユーザーID：</span><code>{state.clerkUserId}</code>
           </p>
-          <button class="primary" onclick={retry}>利用許可を再確認</button
-          ><button onclick={signOut}>ログアウト</button>
+          <Button wrap variant="primary" class={['primary']} onclick={retry}
+            >利用許可を再確認</Button
+          ><Button wrap onclick={signOut}>ログアウト</Button>
         {:else if state.status === 'error'}
           <h1>確認できませんでした</h1>
           <p>{errors[state.code]}</p>
-          <button class="primary" onclick={retry}>もう一度試す</button
-          >{#if state.signedIn}<button onclick={signOut}>ログアウト</button
+          <Button wrap variant="primary" class={['primary']} onclick={retry}
+            >もう一度試す</Button
+          >{#if state.signedIn}<Button wrap onclick={signOut}>ログアウト</Button
             >{/if}
         {:else if state.status === 'denied'}
           <h1>利用権限がありません</h1>
           <p>権限について管理者へお問い合わせください。</p>
-          <button onclick={signOut}>ログアウト</button>
+          <Button wrap onclick={signOut}>ログアウト</Button>
         {:else}
           <h1>
             {state.status === 'redirecting'
@@ -114,13 +119,6 @@
     width: 100%;
     max-width: 400px;
   }
-  .clerk-host :global(button.cl-socialButtonsBlockButton:hover) {
-    background: color-mix(
-      in srgb,
-      var(--color-surface) 90%,
-      var(--color-border)
-    );
-  }
   .clerk-host.last-google :global(button.cl-socialButtonsBlockButton) {
     position: relative;
     overflow: visible;
@@ -136,14 +134,7 @@
     right: -10px;
     top: -11px;
     pointer-events: none;
-    padding: 1px 6px;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    background: var(--color-surface);
-    color: var(--color-muted);
-    font-size: 11px;
     line-height: 18px;
-    font-weight: 400;
     box-shadow: 0 0 0 1px var(--color-surface);
   }
   .access-panel {
@@ -195,21 +186,6 @@
     color: var(--color-muted);
     line-height: 1.9;
     margin: 0 0 20px;
-  }
-  button {
-    display: block;
-    width: 100%;
-    border: 1px solid var(--color-border);
-    border-radius: 6px;
-    padding: 10px;
-    margin-top: 10px;
-    background: var(--color-surface);
-    color: var(--color-action);
-  }
-  .primary {
-    background: var(--color-action);
-    color: var(--color-on-action);
-    border-color: var(--color-action);
   }
   .login-note {
     margin: 18px 0 0;

@@ -57,15 +57,15 @@ func TestSubscriptionAutomationRetainsFactsAndCurrencyIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	first := automationResult(t, f, ai.Event{Service: " Example \t Cloud ", Plan: autoPtr(" Pro "), EventType: "renewal", Amount: autoPtr("123.45"), Currency: autoPtr("USD"), BilledAt: autoPtr("2025-01-01"), NextBillingAt: autoPtr("2025-02-01"), IntervalUnit: autoPtr("month"), IntervalCount: autoPtr(int64(1))})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	automationResult(t, f, ai.Event{Service: "example cloud", Plan: autoPtr("pro"), EventType: "renewal", Amount: autoPtr("789"), Currency: autoPtr("USD"), NextBillingAt: autoPtr("2024-02-01")})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	automationResult(t, f, ai.Event{Service: "example cloud", Plan: autoPtr("pro"), EventType: "renewal", Amount: autoPtr("1000"), Currency: autoPtr("JPY")})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	page, err := r.List(ctx, f.owner, subscriptions.Filter{Limit: 20})
@@ -118,7 +118,7 @@ func TestSubscriptionAutomationConflictingManualSourceCurrenciesNeedReview(t *te
 	if _, err = r.SaveAutomation(ctx, f.owner, autoregistration.PreferenceInput{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	var state string
@@ -151,7 +151,7 @@ func TestSubscriptionAutomationRechecksStopsAfterOwnerLockWait(t *testing.T) {
 				t.Fatal(err)
 			}
 			done := make(chan error, 1)
-			go func() { _, err := r.RegisterDue(ctx, 20); done <- err }()
+			go func() { _, err := r.registerLegacyDue(ctx, 20); done <- err }()
 			waitProcessingLock(t, f.runtime.pool, "SELECT state FROM users WHERE id=%FOR NO KEY UPDATE")
 			switch stop {
 			case "preference":
@@ -187,7 +187,7 @@ func TestSubscriptionAutomationPreferenceAndSavedResults(t *testing.T) {
 		t.Fatal(p, err)
 	}
 	result := subscriptionResult(t, f, 1)
-	if n, err := r.RegisterDue(ctx, 20); err != nil || n != 0 {
+	if n, err := r.registerLegacyDue(ctx, 20); err != nil || n != 0 {
 		t.Fatal("default off", n, err)
 	}
 	p, err = r.SaveAutomation(ctx, f.owner, autoregistration.PreferenceInput{Enabled: true})
@@ -204,7 +204,7 @@ func TestSubscriptionAutomationPreferenceAndSavedResults(t *testing.T) {
 	var wg sync.WaitGroup
 	for range 3 {
 		wg.Go(func() {
-			if _, err := r.RegisterDue(ctx, 20); err != nil {
+			if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 				t.Error(err)
 			}
 		})
@@ -224,7 +224,7 @@ func TestSubscriptionAutomationPreferenceAndSavedResults(t *testing.T) {
 		t.Fatal(updated, err)
 	}
 	subscriptionResult(t, f, 1)
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	after, err := r.Get(ctx, f.owner, contract.ID)
@@ -232,7 +232,7 @@ func TestSubscriptionAutomationPreferenceAndSavedResults(t *testing.T) {
 		t.Fatal("do not overwrite manual state", after, err)
 	}
 	empty := subscriptionResult(t, f, 0)
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	var state string
@@ -246,7 +246,7 @@ func TestSubscriptionAutomationPreferenceAndSavedResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	subscriptionResult(t, f, 1)
-	if n, err := r.RegisterDue(ctx, 20); err != nil || n != 0 {
+	if n, err := r.registerLegacyDue(ctx, 20); err != nil || n != 0 {
 		t.Fatal("disabled", n, err)
 	}
 	if _, err = f.runtime.pool.Exec(ctx, `UPDATE users SET state='disabled' WHERE id=$1`, f.owner); err != nil {
@@ -274,7 +274,7 @@ func TestSubscriptionAutomationManualSourceAndAmbiguousFacts(t *testing.T) {
 	if _, err = r.SaveAutomation(ctx, f.owner, autoregistration.PreferenceInput{Enabled: true}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	var state string
@@ -287,7 +287,7 @@ func TestSubscriptionAutomationManualSourceAndAmbiguousFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	ambiguous := subscriptionResult(t, f, 1)
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, `SELECT state FROM subscription_automation_results WHERE result_id=$1`, ambiguous).Scan(&state); err != nil || state != "needs_review" {
@@ -302,7 +302,7 @@ func TestSubscriptionAutomationManualSourceAndAmbiguousFacts(t *testing.T) {
 	if _, err = f.runtime.pool.Exec(ctx, `UPDATE mail_processing_items SET events=$2::jsonb WHERE id=$1`, invalid, `[{"service":"","event_type":"renewal"}]`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	if err = f.runtime.pool.QueryRow(ctx, `SELECT state FROM subscription_automation_results WHERE result_id=$1`, invalid).Scan(&state); err != nil || state != "needs_review" {
@@ -329,7 +329,7 @@ func TestSubscriptionAutomationFailureRetainsResultsAndRetries(t *testing.T) {
 		t.Fatal(err)
 	}
 	automaticFailureTrigger(t, f)
-	if n, err := r.RegisterDue(ctx, 20); err != nil || n != 1 {
+	if n, err := r.registerLegacyDue(ctx, 20); err != nil || n != 1 {
 		t.Fatal(n, err)
 	}
 	var resultState, ledgerState, eventState string
@@ -341,13 +341,13 @@ func TestSubscriptionAutomationFailureRetainsResultsAndRetries(t *testing.T) {
 	if err = f.runtime.pool.QueryRow(ctx, `SELECT adopted_amount::text,consuming_user_id,status FROM ai_calls WHERE id=$1`, recorded.ID).Scan(&retainedAmount, &retainedOwner, &retainedState); err != nil || retainedAmount != amount || retainedOwner != f.owner || retainedState != "succeeded" {
 		t.Fatal("recorded AI cost must survive", retainedAmount, retainedOwner, retainedState, err)
 	}
-	if n, err := r.RegisterDue(ctx, 20); err != nil || n != 0 {
+	if n, err := r.registerLegacyDue(ctx, 20); err != nil || n != 0 {
 		t.Fatal("backoff", n, err)
 	}
 	if _, err := f.runtime.pool.Exec(ctx, `DROP TRIGGER synthetic_autoreg_failure ON subscriptions; DROP FUNCTION synthetic_autoreg_failure(); UPDATE subscription_automation_results SET retry_after=clock_timestamp()-interval '1 second'`); err != nil {
 		t.Fatal(err)
 	}
-	if n, err := r.RegisterDue(ctx, 20); err != nil || n != 1 {
+	if n, err := r.registerLegacyDue(ctx, 20); err != nil || n != 1 {
 		t.Fatal(n, err)
 	}
 	var contracts, attempts int
@@ -374,7 +374,7 @@ func TestSubscriptionAutomationFailureStillRecognizesManualSource(t *testing.T) 
 		t.Fatal(err)
 	}
 	automaticFailureTrigger(t, f)
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	var state, id string

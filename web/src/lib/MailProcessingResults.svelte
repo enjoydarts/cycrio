@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type {
     ProcessingEvent,
     ProcessingResult,
@@ -134,7 +135,8 @@
                 }}
               />前回の結果が不明で、重複して処理・課金される可能性を確認しました</label
             >{/if}
-          <button
+          <Button
+            wrap
             type="button"
             disabled={!canRetry ||
               !charge[result.id] ||
@@ -143,7 +145,7 @@
               onRetry(result.id, !!charge[result.id], !!unknown[result.id]);
               charge[result.id] = false;
               unknown[result.id] = false;
-            }}>このメールだけを再解析</button
+            }}>このメールだけを再解析</Button
           >
         </div>
       {/if}
@@ -235,33 +237,9 @@
     height: 1rem;
     margin-top: 0.15rem;
   }
-  button {
-    min-height: 2.8rem;
-    max-width: 100%;
-    padding: 0.6rem 0.8rem;
-    border: 1px solid var(--color-action);
-    border-radius: 0.5rem;
-    color: var(--color-action);
-    background: var(--color-surface);
-    font: inherit;
-    font-size: 0.8rem;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-  button:focus-visible,
-  input:focus-visible {
-    outline: 2px solid var(--color-action);
-    outline-offset: 2px;
-  }
   @media (max-width: 400px) {
     li {
       padding: 0.75rem;
-    }
-    button {
-      width: 100%;
     }
   }
 </style>

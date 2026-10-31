@@ -8,15 +8,6 @@
   font-variant-numeric: tabular-nums;
   font-size: 12px;
 }
-.billing .billing-population {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 24px;
-}
-.billing .billing-counts {
-  border-top: 1px solid var(--color-border);
-  padding-top: 20px;
-}
 .billing :is(.billing-confirm, .billing-conflict) {
   border-left: 3px solid var(--color-action);
   background: var(--color-surface-soft);
@@ -53,20 +44,6 @@
   justify-content: flex-start;
   text-align: left;
 }
-.billing .billing-scope {
-  display: flex;
-  align-items: start;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-block: 16px;
-}
-.billing .billing-scope > div {
-  min-width: 0;
-  flex: 1;
-}
-.billing .billing-summary-table td:first-child {
-  width: auto;
-}
 @media (max-width: 600px) {
   .billing .titlebar {
     flex-direction: column;
@@ -80,38 +57,6 @@
   }
 }
 @media (max-width: 740px) {
-  .billing .billing-table,
-  .billing .billing-summary-table,
-  .billing :is(tbody, tr, td) {
-    display: block;
-    width: 100%;
-  }
-  .billing :is(.billing-table, .billing-summary-table) {
-    border: 0;
-    background: transparent;
-  }
-  .billing thead {
-    display: none;
-  }
-  .billing tr {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
-    padding: 20px 0;
-    border-bottom: 1px solid var(--color-border);
-  }
-  .billing :is(.billing-table, .billing-summary-table) td {
-    padding: 0;
-    border: 0;
-    width: 100%;
-  }
-  .billing td[data-label]::before {
-    content: attr(data-label);
-    display: block;
-    font-size: 12px;
-    color: var(--color-muted);
-    margin-bottom: 3px;
-  }
   .billing :is(.billing-confirm, .billing-conflict) {
     padding: 12px;
   }

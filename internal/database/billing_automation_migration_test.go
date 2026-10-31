@@ -15,7 +15,7 @@ import (
 func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	t.Helper()
 	ctx := context.Background()
-	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
+	rows, err := pool.Query(ctx, `SELECT tablename FROM pg_tables WHERE schemaname=current_schema() AND tablename NOT IN ('subscription_candidate_dismissals','mail_processing_retry_batches') AND tablename NOT LIKE 'integration_%' AND tablename NOT IN ('mail_oauth_pending','mail_message_folder_memberships') AND tablename NOT IN ('billing_automation_work','billing_automation_events','billing_source_detachments','goose_db_version') ORDER BY tablename`)
 	if err != nil {
 		t.Fatal(err)
 	}

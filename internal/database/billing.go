@@ -60,6 +60,11 @@ func (r *BillingRepository) begin(ctx context.Context, owner, contract string) (
 
 const billingColumns = `id,subscription_id,version,kind,to_char(occurred_on,'YYYY-MM-DD'),amount,currency,refund_of_id,state,created_at,updated_at,provenance`
 
+func mutableBillingSubscription(ctx context.Context, tx pgx.Tx, owner, contract string) error {
+	var id string
+	return billingError(tx.QueryRow(ctx, `SELECT id FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL FOR UPDATE`, owner, contract).Scan(&id))
+}
+
 func scanBilling(row pgx.Row) (billing.Entry, error) {
 	var out billing.Entry
 	e := row.Scan(&out.ID, &out.SubscriptionID, &out.Version, &out.Kind, &out.OccurredOn, &out.Amount, &out.Currency, &out.RefundOfID, &out.State, &out.CreatedAt, &out.UpdatedAt, &out.Provenance)
@@ -126,6 +131,9 @@ func (r *BillingRepository) Create(ctx context.Context, owner, contract string, 
 	}
 	defer tx.Rollback(ctx)
 	var existing, existingContract string
+	if e = mutableBillingSubscription(ctx, tx, owner, contract); e != nil {
+		return billing.Entry{}, e
+	}
 	var same bool
 	e = tx.QueryRow(ctx, `SELECT id,subscription_id,request_doc=$3::jsonb FROM billing_events WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&existing, &existingContract, &same)
 	if e == nil {
@@ -181,6 +189,9 @@ func (r *BillingRepository) Update(ctx context.Context, owner, contract, id stri
 		return billing.Entry{}, e
 	}
 	defer tx.Rollback(ctx)
+	if e = mutableBillingSubscription(ctx, tx, owner, contract); e != nil {
+		return billing.Entry{}, e
+	}
 	old, e := getBilling(ctx, tx, owner, contract, id)
 	if e != nil {
 		return billing.Entry{}, e

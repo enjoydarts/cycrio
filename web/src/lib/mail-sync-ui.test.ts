@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -116,7 +117,7 @@ test('manual sync SSR starts empty, explains saved targets, receive-date boundar
   const { js, warnings } = compile(source, { generate: 'server' });
   assert.deepEqual(warnings, []);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_m, prefix, quote, path) =>
       `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
@@ -177,7 +178,7 @@ test('actual start, retry, refresh and discard CTAs call separate controller ope
       return;
     }
     const node = value as Record<string, unknown>;
-    if (node.name === 'button') buttons.push(node);
+    if (node.name === 'Button') buttons.push(node);
     Object.values(node).forEach(visit);
   }
   visit(parse(source, { modern: true }));

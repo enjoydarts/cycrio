@@ -22,7 +22,7 @@ func TestSubscriptionAutomationUpdatesOnlyNewerExplicitAutomaticFacts(t *testing
 	process := func(event ai.Event) {
 		t.Helper()
 		automationResult(t, f, event)
-		if _, err := r.RegisterDue(ctx, 20); err != nil {
+		if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -72,7 +72,7 @@ func TestSubscriptionAutomationManualScheduleProtectsAutomaticContract(t *testin
 		t.Fatal(err)
 	}
 	automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal", BilledAt: autoPtr("2023-01-01")})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	page, err := r.List(ctx, f.owner, subscriptions.Filter{Limit: 20})
@@ -86,7 +86,7 @@ func TestSubscriptionAutomationManualScheduleProtectsAutomaticContract(t *testin
 		t.Fatal("manual schedule must protect its explicit values", saved, err)
 	}
 	automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal", BilledAt: autoPtr("2025-01-01"), NextBillingAt: autoPtr("2025-02-01")})
-	if _, err = r.RegisterDue(ctx, 20); err != nil {
+	if _, err = r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	after, err := r.Get(ctx, f.owner, s.ID)
@@ -103,11 +103,11 @@ func TestSubscriptionAutomationFirstDatedFactPreservesUndatedKnownValues(t *test
 		t.Fatal(err)
 	}
 	automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal", NextBillingAt: autoPtr("2027-01-01")})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal", BilledAt: autoPtr("2025-01-01"), NextBillingAt: autoPtr("2025-02-01"), IntervalUnit: autoPtr("month"), IntervalCount: autoPtr(int64(1))})
-	if _, err := r.RegisterDue(ctx, 20); err != nil {
+	if _, err := r.registerLegacyDue(ctx, 20); err != nil {
 		t.Fatal(err)
 	}
 	page, err := r.List(ctx, f.owner, subscriptions.Filter{Limit: 20})

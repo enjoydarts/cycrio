@@ -256,7 +256,11 @@ func TestCheckRejectsTruncatedListCompletion(t *testing.T) {
 		})
 		_, err := c.Check(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"))
 		waitClosed(t, done)
-		if adapterCode(err) != "invalid_response" {
+		want := "invalid_response"
+		if ending == "" {
+			want = "connection_failed"
+		}
+		if adapterCode(err) != want {
 			t.Fatal("accepted unterminated completion", err, adapterCode(err))
 		}
 	}

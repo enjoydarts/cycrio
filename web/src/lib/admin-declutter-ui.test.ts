@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -81,7 +82,7 @@ async function component(name: string, state: Record<string, unknown> = {}) {
   const code = js.code
     .replace(/^import\s+['"][^'"]+\.css['"];?$/gm, '')
     .replace(
-      /(from\s+|^import\s*)(['"])([^'"]+)\2/gm,
+      /(from\s+|^import\s+)(['"])([^'"]+)\2/gm,
       (_m, p, q, path) =>
         `${p}${q}${path.startsWith('$app/') ? navigation : (nested[path] ?? (path.startsWith('.') ? new URL(path.endsWith('.ts') ? path : `${path}.ts`, import.meta.url).href : import.meta.resolve(path)))}${q}`,
     );

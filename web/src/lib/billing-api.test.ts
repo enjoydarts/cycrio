@@ -4,7 +4,6 @@ import {
   createBillingAPI,
   parseBillingEntry,
   parseBillingValues,
-  parseBillingSummary,
   BillingError,
 } from './billing-api.ts';
 const sid = '11111111-1111-4111-8111-111111111111';
@@ -27,25 +26,6 @@ export const billingEntry = () => ({
   created_at: '2026-10-26T00:00:00Z',
   updated_at: '2026-10-26T00:00:00Z',
 });
-const summary = () => ({
-  month: '2028-02',
-  start_date: '2028-02-01',
-  end_date: '2028-03-01',
-  timezone: 'Asia/Tokyo',
-  subscription_id: null,
-  currencies: [
-    {
-      currency: 'JPY',
-      payment_amount: '123456789012345678901234567890.123456789012',
-      refund_amount: '0',
-      net_amount: '123456789012345678901234567890.123456789012',
-      payment_count: 2,
-      refund_count: 0,
-    },
-  ],
-  invoice_count: 1,
-  voided_count: 2,
-});
 test('billing values require real dates, exact nonnegative money, explicit nullable parent and valid states', () => {
   assert.equal(parseBillingValues(billingValues).amount, billingValues.amount);
   assert.equal(
@@ -61,6 +41,7 @@ test('billing values require real dates, exact nonnegative money, explicit nulla
     { currency: 'jpy' },
     { occurred_on: '2026-02-29' },
     { occurred_on: '0000-01-01' },
+    { occurred_on: '10000-01-01' },
     { refund_of_id: undefined },
     { kind: 'refund' },
     { refund_of_id: eid },
@@ -107,57 +88,6 @@ test('billing sources preserve independent original AI values and event index ze
   ])
     assert.throws(() => parseBillingEntry({ ...billingEntry(), ...patch }));
 });
-test('monthly totals accept larger sums, negative nets and actual zero rows without rounding', () => {
-  assert.equal(
-    parseBillingSummary(summary()).currencies[0].payment_amount,
-    summary().currencies[0].payment_amount,
-  );
-  assert.equal(
-    parseBillingSummary({
-      ...summary(),
-      currencies: [
-        {
-          currency: 'JPY',
-          payment_amount: '0',
-          refund_amount: '2',
-          net_amount: '-2',
-          payment_count: 0,
-          refund_count: 1,
-        },
-      ],
-    }).currencies[0].net_amount,
-    '-2',
-  );
-  for (const patch of [
-    { subscription_id: undefined },
-    { timezone: 'UTC' },
-    { end_date: '2028-02-29' },
-    { month: '2028-13' },
-    { currencies: [summary().currencies[0], summary().currencies[0]] },
-    { currencies: [{ ...summary().currencies[0], payment_amount: 1 }] },
-  ])
-    assert.throws(() => parseBillingSummary({ ...summary(), ...patch }));
-});
-test('summary exclusive end supports Go year boundaries without changing entry date validation', () => {
-  for (const [month, end_date] of [
-    ['0001-01', '0001-02-01'],
-    ['0099-12', '0100-01-01'],
-    ['9999-12', '10000-01-01'],
-  ]) {
-    assert.equal(
-      parseBillingSummary({
-        ...summary(),
-        month,
-        start_date: `${month}-01`,
-        end_date,
-      }).end_date,
-      end_date,
-    );
-  }
-  assert.throws(() =>
-    parseBillingValues({ ...billingValues, occurred_on: '10000-01-01' }),
-  );
-});
 test('billing requests omit all/empty filters, preserve source zero and use private abortable requests', async () => {
   let captured: RequestInit | undefined;
   let url = '';
@@ -194,7 +124,7 @@ test('billing requests omit all/empty filters, preserve source zero and use priv
     'Bearer token',
   );
 });
-test('responses must match requested subscription, event, page filters and summary scope', async () => {
+test('responses must match requested subscription, event, page filters', async () => {
   const api = (body: unknown) =>
     createBillingAPI('', async () => Response.json(body));
   const token = async () => 'token';
@@ -214,9 +144,6 @@ test('responses must match requested subscription, event, page filters and summa
     ),
     { code: 'dependency_unavailable' },
   );
-  await assert.rejects(api(summary()).summary('2028-02', sid, token), {
-    code: 'dependency_unavailable',
-  });
   await assert.rejects(
     api({
       events: [billingEntry(), billingEntry()],

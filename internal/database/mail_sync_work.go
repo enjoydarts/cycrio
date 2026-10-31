@@ -107,7 +107,7 @@ func (r *MailSyncRepository) Claim(ctx context.Context) ([]mailsync.Lease, error
 			} else if state == "running" && !w.alive {
 				e = endSync(ctx, tx, id, "failed", "lease_expired")
 				if e == nil && w.automation != "" {
-					e = suspendAutomation(ctx, tx, w.automation, "lease_expired")
+					e = retryAutomaticDiscovery(ctx, tx, w, "lease_expired")
 				}
 				state = "failed"
 			} else if state == "leased" && !w.alive {
@@ -230,7 +230,10 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 		}
 		return nil
 	}
-	if !w.alive {
+	// A known authorization or UID reset still needs confirmation, even if
+	// its response arrives after the read-only discovery lease has expired.
+	confirmation := code == "uid_validity_changed" || code == "authentication_failed" || code == "credentials_unavailable"
+	if !w.alive && !(w.automation != "" && confirmation) {
 		code = "lease_expired"
 	}
 	if code != "" {
@@ -241,7 +244,7 @@ func (r *MailSyncRepository) Finish(ctx context.Context, l mailsync.Lease, p mai
 			return mailsync.ErrUnavailable
 		}
 		if w.automation != "" {
-			if code == "timeout" || code == "connection_failed" {
+			if code == "timeout" || code == "connection_failed" || code == "invalid_response" || code == "lease_expired" {
 				e = retryAutomaticDiscovery(ctx, tx, w, code)
 			} else if code == "uid_validity_changed" || code == "authentication_failed" || code == "credentials_unavailable" {
 				e = pauseAutomation(ctx, tx, w.automation, code)

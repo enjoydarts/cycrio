@@ -147,7 +147,7 @@ func runHatchetInterruption(t *testing.T, kind, directory, historyDSN string) ha
 	if kind != "worker_crash" && (report.UnknownCalls != 0 || report.KnownAmount == nil || *report.KnownAmount != "0.001" || report.Currency == nil || *report.Currency != "USD" || report.CallState != "succeeded") {
 		t.Fatal("late synthetic usage lost")
 	}
-	if n, err := subscriptions.RegisterDue(ctx, 100); err != nil || n != 0 {
+	if n, err := subscriptions.registerLegacyDue(ctx, 100); err != nil || n != 0 {
 		t.Fatal("stopped work registered contract")
 	}
 	if n, err := NewBillingRepository(f.runtime.pool).RecordDue(ctx, 100); err != nil || n != 0 {

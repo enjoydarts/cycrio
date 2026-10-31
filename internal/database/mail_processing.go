@@ -147,6 +147,7 @@ func (r *MailProcessingRepository) Preview(ctx context.Context, owner, account s
 }
 
 type processingRequest struct {
+	RetryAll         bool                 `json:"retry_all,omitempty"`
 	Input            mailprocessing.Input `json:"input"`
 	MessageID        string               `json:"message_id"`
 	ExpectedResultID string               `json:"expected_result_id"`
@@ -160,11 +161,28 @@ func (r *MailProcessingRepository) Retry(ctx context.Context, owner, account, me
 	if !mailprocessing.ValidID(message) || !mailprocessing.ValidRetry(in) {
 		return mailprocessing.Run{}, mailprocessing.ErrInvalid
 	}
-	return r.request(ctx, owner, account, processingRequest{in.Input, message, in.ExpectedResultID, in.ConfirmUnknown})
+	return r.request(ctx, owner, account, processingRequest{Input: in.Input, MessageID: message, ExpectedResultID: in.ExpectedResultID, ConfirmUnknown: in.ConfirmUnknown})
+}
+func (r *MailProcessingRepository) RetryFailed(ctx context.Context, owner, account string, in mailprocessing.Input) (mailprocessing.RetryBatch, error) {
+	var out mailprocessing.RetryBatch
+	if _, e := r.request(ctx, owner, account, processingRequest{Input: in, RetryAll: true}); e != nil {
+		return out, e
+	}
+	var raw []byte
+	if e := r.pool.QueryRow(ctx, `SELECT response_doc FROM mail_processing_retry_batches WHERE owner_id=$1 AND account_id=$2 AND request_id=$3`, owner, account, in.RequestID).Scan(&raw); e != nil {
+		return out, processingError(e)
+	}
+	if json.Unmarshal(raw, &out) != nil {
+		return out, mailprocessing.ErrUnavailable
+	}
+	return out, nil
 }
 func (r *MailProcessingRepository) request(ctx context.Context, owner, account string, request processingRequest) (mailprocessing.Run, error) {
 	in := request.Input
 	if !mailprocessing.ValidInput(in) {
+		return mailprocessing.Run{}, mailprocessing.ErrInvalid
+	}
+	if in.HistoryID != "" && (!request.RetryAll || len(in.HistoryID) > 200) {
 		return mailprocessing.Run{}, mailprocessing.ErrInvalid
 	}
 	tx, e := r.beginAccount(ctx, owner, account)
@@ -186,6 +204,15 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	}
 	if !errors.Is(e, mailprocessing.ErrNotFound) {
 		return mailprocessing.Run{}, e
+	}
+	if in.HistoryID != "" {
+		var exists bool
+		if e = tx.QueryRow(ctx, importHistoryCTE+`SELECT EXISTS(SELECT 1 FROM histories WHERE id=$3)`, owner, account, in.HistoryID).Scan(&exists); e != nil {
+			return mailprocessing.Run{}, processingError(e)
+		}
+		if !exists {
+			return mailprocessing.Run{}, mailprocessing.ErrNotFound
+		}
 	}
 	p, e := processingPreview(ctx, tx, owner, account, true)
 	if e != nil {
@@ -219,6 +246,25 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
 		}
 		ids = append(ids, request.MessageID)
+	} else if request.RetryAll {
+		rows, e := tx.Query(ctx, importHistoryCTE+`SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed' AND `+processingSourceSelected+` ORDER BY m.created_at,m.id`, owner, account, in.HistoryID)
+		if e != nil {
+			return mailprocessing.Run{}, processingError(e)
+		}
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				rows.Close()
+				return mailprocessing.Run{}, processingError(e)
+			}
+			ids = append(ids, id)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return mailprocessing.Run{}, processingError(e)
+		}
+		in.MaxMessages = len(ids)
 	} else {
 		rows, e := tx.Query(ctx, `SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND `+processingSourceSelected+` AND `+processingPending+` ORDER BY m.created_at,m.id LIMIT $3`, owner, account, in.MaxMessages)
 		if e != nil {
@@ -245,17 +291,38 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	if e != nil {
 		return mailprocessing.Run{}, e
 	}
-	for _, id := range ids {
-		if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state)VALUES($1,$2,$3,$4,$5,'queued')`, uuid.NewString(), owner, account, run.ID, id); e != nil {
+	if request.RetryAll {
+		// Snapshot all selected failures in one statement so the HTTP deadline
+		// does not turn the number of round trips into an implicit page limit.
+		if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state) SELECT gen_random_uuid(),$1,$2,$3,message_id,'queued' FROM unnest($4::uuid[]) AS message_id`, owner, account, run.ID, ids); e != nil {
 			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+		}
+	} else {
+		for _, id := range ids {
+			if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state)VALUES($1,$2,$3,$4,$5,'queued')`, uuid.NewString(), owner, account, run.ID, id); e != nil {
+				return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			}
 		}
 	}
 	action := "processing_requested"
-	if request.MessageID != "" {
+	if request.MessageID != "" || request.RetryAll {
 		action = "processing_retried"
 	}
 	if e = auditProcessing(ctx, tx, owner, account, run.ID, action); e != nil {
 		return mailprocessing.Run{}, e
+	}
+	if request.RetryAll {
+		batch := mailprocessing.RetryBatch{Run: run, AcceptedCount: len(ids)}
+		// Queued selected messages no longer count as failures; any current
+		// failures left behind are outside the connection's selected source.
+		e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM mail_discovered_messages m JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed'`, owner, account, in.HistoryID).Scan(&batch.SkippedCount)
+		if e != nil {
+			return mailprocessing.Run{}, processingError(e)
+		}
+		response, _ := json.Marshal(batch)
+		if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_retry_batches(owner_id,account_id,request_id,request_doc,response_doc)VALUES($1,$2,$3,$4,$5)`, owner, account, in.RequestID, raw, response); e != nil {
+			return mailprocessing.Run{}, processingError(e)
+		}
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return mailprocessing.Run{}, processingError(e)

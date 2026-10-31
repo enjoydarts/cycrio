@@ -1,3 +1,4 @@
+import './svelte-test-hooks.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
@@ -15,7 +16,7 @@ async function panel() {
   const { js, warnings } = compile(source, { generate: 'server' });
   assert.deepEqual(warnings, []);
   const code = js.code.replace(
-    /(from\s+|import\s*)(['"])([^'"]+)\2/g,
+    /(from\s+|import\s+)(['"])([^'"]+)\2/g,
     (_match, prefix, quote, path) =>
       `${prefix}${quote}${path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path)}${quote}`,
   );
@@ -41,7 +42,7 @@ test('actual guide HTML scopes progress to the selected account and links to the
   assert.match(html, /個人のメール/);
   assert.match(html, /解析待ち/);
   assert.match(html, /8 件/);
-  assert.match(html, /href="\/analysis\?account_id=/);
+  assert.match(html, /href="\/analysis\?tab=history&amp;account_id=/);
   assert.doesNotMatch(
     html,
     /<table\b|<aside\b|送信する<|取り込みを開始<|href="\/settings\/ai/,

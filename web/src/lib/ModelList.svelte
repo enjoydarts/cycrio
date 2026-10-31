@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import DataTable from './DataTable.svelte';
+  import Button from './Button.svelte';
   import { type Model } from './catalog-api';
   import { modelRate, providerNames } from './model-catalog';
   let {
@@ -21,7 +24,11 @@
 </script>
 
 <div class="model-list">
-  <table aria-label="モデル一覧">
+  <DataTable
+    responsive="cards"
+    class={['table-ModelList']}
+    aria-label="モデル一覧"
+  >
     <thead
       ><tr>
         <th scope="col">モデル</th><th scope="col">提供元</th>
@@ -64,20 +71,24 @@
                   : '有効'}</span
             ></td
           >
-          <td class="model-action"
-            ><button
-              type="button"
-              disabled={busy || !eligible(model)}
-              aria-label={actionLabel(model)}
-              aria-pressed={selectedID === model.id}
-              onclick={() => onselect(model)}
-              >{selectedID === model.id ? '選択中' : actionText}</button
+          <td data-actions class="model-action"
+            ><ActionGroup
+              ><Button
+                wrap
+                variant="tab"
+                type="button"
+                disabled={busy || !eligible(model)}
+                aria-label={actionLabel(model)}
+                aria-pressed={selectedID === model.id}
+                onclick={() => onselect(model)}
+                >{selectedID === model.id ? '選択中' : actionText}</Button
+              ></ActionGroup
             ></td
           >
         </tr>
       {/each}
     </tbody>
-  </table>
+  </DataTable>
   {#if models.length === 0}<div class="empty-models">
       <strong>該当するモデルがありません</strong>
       <p>検索語や提供元を変更するか、条件をクリアしてください。</p>

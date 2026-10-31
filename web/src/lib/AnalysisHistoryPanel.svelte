@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Button from './Button.svelte';
   import type { AnalysisRun, RunPage } from './analysis-api.ts';
   import { processingActive } from './mail-processing-controller.ts';
   import { runNames } from './daily-text.ts';
@@ -27,10 +28,11 @@
             >{run.completed_count} / {run.total_count} 件</span
           >
         </div>
-        {#if processingActive(run)}<button
+        {#if processingActive(run)}<Button
+            wrap
             disabled={!!saving}
             onclick={() => onCancel(run)}
-            >{saving === run.id ? '停止中…' : '停止'}</button
+            >{saving === run.id ? '停止中…' : '停止'}</Button
           >{/if}
       </div>
       {#if run.failed_count || run.unknown_count}<p class="run-warning">

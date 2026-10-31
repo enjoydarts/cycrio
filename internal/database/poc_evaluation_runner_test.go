@@ -131,7 +131,7 @@ func runPoCEvaluation(t *testing.T, messages int) evaluation.Report {
 	phase = time.Now()
 	registered := 0
 	for {
-		n, e := subscriptions.RegisterDue(ctx, 100)
+		n, e := subscriptions.registerLegacyDue(ctx, 100)
 		if e != nil {
 			t.Fatal("register synthetic results", e)
 		}
@@ -167,7 +167,7 @@ func runPoCEvaluation(t *testing.T, messages int) evaluation.Report {
 		t.Fatal("synthetic contract matching changed", report.Contracts)
 	}
 	// An idle recovery pass must not duplicate either contracts or bills.
-	if n, e := subscriptions.RegisterDue(ctx, 100); e != nil || n != 0 {
+	if n, e := subscriptions.registerLegacyDue(ctx, 100); e != nil || n != 0 {
 		t.Fatal("registration replay", n, e)
 	}
 	if n, e := billing.RecordDue(ctx, 100); e != nil || n != 0 {

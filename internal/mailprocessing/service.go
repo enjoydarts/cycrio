@@ -74,6 +74,19 @@ func (s *Service) Retry(ctx context.Context, owner, account, message string, in 
 	v, e := s.repo.Retry(ctx, owner, account, message, in)
 	return v, safe(e)
 }
+func (s *Service) RetryFailed(ctx context.Context, owner, account string, in Input) (RetryBatch, error) {
+	if !ValidID(owner) || !ValidID(account) || !ValidInput(in) {
+		return RetryBatch{}, ErrInvalid
+	}
+	repo, ok := s.repo.(interface {
+		RetryFailed(context.Context, string, string, Input) (RetryBatch, error)
+	})
+	if !ok {
+		return RetryBatch{}, ErrUnavailable
+	}
+	v, e := repo.RetryFailed(ctx, owner, account, in)
+	return v, safe(e)
+}
 func (s *Service) ListRuns(ctx context.Context, owner, account string) ([]Run, error) {
 	if !ValidID(owner) || !ValidID(account) {
 		return nil, ErrInvalid
@@ -82,6 +95,20 @@ func (s *Service) ListRuns(ctx context.Context, owner, account string) ([]Run, e
 	if v == nil && e == nil {
 		v = []Run{}
 	}
+	return v, safe(e)
+}
+
+func (s *Service) ImportHistory(ctx context.Context, owner, account string, limit, offset int) (ImportHistoryPage, error) {
+	if !ValidID(owner) || !ValidID(account) || limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
+		return ImportHistoryPage{}, ErrInvalid
+	}
+	repo, ok := s.repo.(interface {
+		ImportHistory(context.Context, string, string, int, int) (ImportHistoryPage, error)
+	})
+	if !ok {
+		return ImportHistoryPage{}, ErrUnavailable
+	}
+	v, e := repo.ImportHistory(ctx, owner, account, limit, offset)
 	return v, safe(e)
 }
 func (s *Service) Results(ctx context.Context, owner, account string) ([]Result, error) {

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ActionGroup from './ActionGroup.svelte';
+  import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { getAppSession } from './app-context.ts';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
@@ -252,32 +254,34 @@
               </dd>
             </div>
           </dl>
-          <div class="actions">
-            <button type="button" onclick={() => controller?.rebase()}
-              >入力を保持して最新内容を確認し直す</button
-            ><button type="button" onclick={() => controller?.discard()}
-              >入力を破棄して最新内容に戻す</button
+          <ActionGroup class={['actions', 'part-SubscriptionForm-actions']}>
+            <Button wrap type="button" onclick={() => controller?.rebase()}
+              >入力を保持して最新内容を確認し直す</Button
+            ><Button wrap type="button" onclick={() => controller?.discard()}
+              >入力を破棄して最新内容に戻す</Button
             >
-          </div>{:else}<button
+          </ActionGroup>{:else}<Button
+            wrap
             type="button"
             onclick={() => controller?.refreshLatest()}
-            >最新の契約内容を再取得</button
+            >最新の契約内容を再取得</Button
           >{/if}
       {:else if source}<p>
           他の操作ですでに登録された可能性があります。入力を保持しています。結果一覧に戻り、最新の登録状況と登録先を確認してください。
         </p>
-        <button
+        <Button
+          wrap
           type="button"
           onclick={() => {
             drafts?.delete(`${source.result_id}/${source.event_index}`);
             onBackToResults();
-          }}>解析結果の一覧に戻って登録状況を更新</button
+          }}>解析結果の一覧に戻って登録状況を更新</Button
         >
       {:else}<p>
           要求が競合しました。入力を保持しています。内容を確認して新規登録をやり直せます。
         </p>
-        <button type="button" onclick={() => controller?.discard()}
-          >入力を破棄して新規登録をやり直す</button
+        <Button wrap type="button" onclick={() => controller?.discard()}
+          >入力を破棄して新規登録をやり直す</Button
         >{/if}
     </div>{/if}
   <label class="check"
@@ -294,12 +298,14 @@
   {#if view.uncertain}<p class="notice">
       受付状況を確認できません。入力と要求を保持しています。同じ要求で再確認してください。
     </p>
-    <button type="button" disabled={busy} onclick={() => save(true)}
-      >同じ要求で再確認</button
-    >{:else}<button
-      class="primary"
+    <Button wrap type="button" disabled={busy} onclick={() => save(true)}
+      >同じ要求で再確認</Button
+    >{:else}<Button
+      wrap
+      variant="primary"
+      class={['primary']}
       type="submit"
       disabled={busy || !view.confirmed || !valid || view.conflict}
-      >{busy ? '保存中…' : initial ? '変更を保存' : 'サブスクを登録'}</button
+      >{busy ? '保存中…' : initial ? '変更を保存' : 'サブスクを登録'}</Button
     >{/if}
 </form>

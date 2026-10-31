@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider, Role } from './api.ts';
   import type { MailAccount } from './mail-api.ts';
@@ -108,11 +110,12 @@
       <p class="eyebrow">MANUAL MAIL ANALYSIS</p>
       <h4>メール本文の手動解析</h4>
     </div>
-    <button
+    <Button
+      wrap
       id="processing-refresh"
       type="button"
       disabled={busy}
-      onclick={() => controller?.refresh()}>解析状況を更新</button
+      onclick={() => controller?.refresh()}>解析状況を更新</Button
     >
   </div>
   <p class="help">
@@ -188,23 +191,26 @@
     <p class="help">
       一次判定で関連性を確認し、必要なメールを二次抽出へ送信します。停止時も送信済みの処理には料金が発生する場合があります。
     </p>
-    <div class="actions">
-      <button
+    <ActionGroup class={['actions', 'part-MailProcessing-actions']}>
+      <Button
+        wrap
+        variant="primary"
         id="processing-start"
-        class="primary"
+        class={['primary']}
         type="submit"
         disabled={!canSend ||
           !validProcessingMaximum(view.form.max_messages) ||
           !view.form.confirmed ||
-          !view.preview?.pending_count}>確認した条件で解析を開始</button
-      ><button
+          !view.preview?.pending_count}>確認した条件で解析を開始</Button
+      ><Button
+        wrap
         id="processing-discard"
         type="button"
         disabled={view.status === 'saving' || view.uncertain}
         onclick={() => controller?.discard()}
-        >入力を破棄して最新条件を確認</button
+        >入力を破棄して最新条件を確認</Button
       >
-    </div>
+    </ActionGroup>
   </form>
   <div aria-live="polite" aria-atomic="true">
     {#if view.status === 'loading'}<p class="feedback">
@@ -218,11 +224,12 @@
     {#if view.uncertain}<p class="feedback">
         要求が受け付けられたか確認できません。送信内容と要求IDを保持しています。新しい要求を作らず、同じ要求の再送で受付状況を確認できます。
       </p>
-      <button
+      <Button
+        wrap
         id="processing-replay"
         type="button"
         disabled={busy}
-        onclick={() => controller?.replay()}>同じ解析要求を再送</button
+        onclick={() => controller?.replay()}>同じ解析要求を再送</Button
       >{/if}
   </div>
   <div class="heading history">
@@ -258,10 +265,11 @@
             <dd>{run.unknown_count}</dd>
           </div>
         </dl>
-        {#if processingActive(run)}<button
+        {#if processingActive(run)}<Button
+            wrap
             type="button"
             disabled={view.status === 'saving'}
-            onclick={() => controller?.cancel(run.id)}>解析を停止</button
+            onclick={() => controller?.cancel(run.id)}>解析を停止</Button
           >{/if}
       </li>{:else}<li class="help">
         解析履歴はありません。条件を確認して明示的に開始してください。
@@ -298,7 +306,7 @@
     font-size: 0.9rem;
   }
   .heading,
-  .actions {
+  :global(.part-MailProcessing-actions) {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -367,33 +375,7 @@
     margin-top: 0.25rem;
     accent-color: var(--color-action);
   }
-  button {
-    min-height: 2.8rem;
-    max-width: 100%;
-    padding: 0.6rem 0.9rem;
-    border: 1px solid var(--color-action);
-    border-radius: 0.5rem;
-    background: var(--color-surface);
-    color: var(--color-action);
-    font: inherit;
-    font-size: 0.8rem;
-    line-height: 1.6;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.55;
-    cursor: default;
-  }
-  .primary {
-    background: var(--color-action);
-    color: var(--color-surface);
-  }
-  button:focus-visible,
-  input:focus-visible {
-    outline: 2px solid var(--color-action);
-    outline-offset: 2px;
-  }
-  .actions {
+  :global(.part-MailProcessing-actions) {
     justify-content: flex-start;
     margin: 1rem 0;
   }
@@ -444,7 +426,7 @@
     font-variant-numeric: tabular-nums;
   }
   @media (max-width: 400px) {
-    .actions {
+    :global(.part-MailProcessing-actions) {
       flex-direction: column;
       align-items: stretch;
     }
