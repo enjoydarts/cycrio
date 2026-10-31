@@ -10,6 +10,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
+	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 	"github.com/google/uuid"
 	"path/filepath"
 	"strings"
@@ -96,6 +97,13 @@ func TestExecuteGatesSecondCallAndKeepsSecretsTransient(t *testing.T) {
 			})
 			client := inference(func(_ context.Context, q ai.Request) (ai.Response, error) {
 				calls++
+				wantInstructions := subscriptionprompts.ClassifierInstructions
+				if calls == 2 {
+					wantInstructions = subscriptionprompts.ExtractorInstructions
+				}
+				if q.Input.Instructions != wantInstructions || q.Input.ClassificationCriteria != nil {
+					t.Fatal("production prompt drift or criteria override")
+				}
 				key = q.Key
 				if q.Input.Text != "sensitive synthetic body" || !strings.Contains(q.Input.Instructions, "untrusted") || !strings.Contains(q.Input.Instructions, "URLs") {
 					t.Fatal("unsafe request")

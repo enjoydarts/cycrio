@@ -77,3 +77,8 @@ test-evaluation-hatchet:
 test-recovery:
 	sh deploy/local/recover-test.sh
 	sh deploy/local/recover-cleanup-test.sh
+
+# Default is dry-run. Paid external evaluation requires explicit EVAL_ARGS.
+.PHONY: prompt-evaluation
+prompt-evaluation:
+	$(COMPOSE) run --rm --no-deps api go run ./cmd/prompteval $(EVAL_ARGS)

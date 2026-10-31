@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 )
 
 const testID = "11111111-1111-4111-8111-111111111111"
@@ -113,6 +114,13 @@ func TestConnectionTestRecordsBeforeEveryCallAndKeepsSecretsTransient(t *testing
 		}
 	}
 	for _, req := range client.requests {
+		wantInstructions := subscriptionprompts.ExtractorInstructions
+		if req.Provider == "liquid" {
+			wantInstructions = subscriptionprompts.ClassifierInstructions
+		}
+		if req.Input.Instructions != wantInstructions || req.Input.ClassificationCriteria != nil {
+			t.Fatal("connection test prompt drift or criteria override")
+		}
 		for _, b := range req.Key {
 			if b != 0 {
 				t.Fatal("key was not discarded")

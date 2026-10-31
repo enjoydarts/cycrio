@@ -11,6 +11,9 @@ import (
 type RequestInput struct {
 	Text         string `json:"-"`
 	Instructions string `json:"-"`
+	// ClassificationCriteria overrides only Liquid's three gate labels for
+	// controlled evaluation. Nil uses the shared production criteria.
+	ClassificationCriteria map[string]string `json:"-"`
 }
 type Request struct {
 	Provider        string              `json:"provider"`

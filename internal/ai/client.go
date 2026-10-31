@@ -10,6 +10,9 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 )
 
 type Client struct{ http *http.Client }
@@ -41,6 +44,11 @@ func safeMetadata(s string, r Request) string {
 			return ""
 		}
 	}
+	for _, criterion := range r.Input.ClassificationCriteria {
+		if criterion != "" && strings.Contains(s, criterion) {
+			return ""
+		}
+	}
 	return s
 }
 func validKey(k []byte) bool {
@@ -69,7 +77,14 @@ func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 			return out, &Error{Code: "invalid_request"}
 		}
 		endpoint = "https://api.liquid.ai/decisions/v1/systemone"
-		body = map[string]any{"model": r.ModelID, "state": r.Input.Text, "questions": map[string]any{"classification": map[string]any{"type": "choice", "instructions": r.Input.Instructions, "criteria": map[string]string{"subscription_related": "Subscription invoice, payment, renewal, refund, plan change, cancellation or trial.", "not_related": "Unrelated to a subscription lifecycle or billing event.", "uncertain": "Insufficient evidence to decide whether this is subscription related."}}}}
+		criteria := r.Input.ClassificationCriteria
+		if criteria == nil {
+			criteria = subscriptionprompts.ClassificationCriteria()
+		}
+		if !validClassificationCriteria(criteria) {
+			return out, &Error{Code: "invalid_request"}
+		}
+		body = map[string]any{"model": r.ModelID, "state": r.Input.Text, "questions": map[string]any{"classification": map[string]any{"type": "choice", "instructions": r.Input.Instructions, "criteria": criteria}}}
 	case "openrouter":
 		if r.MaxOutputTokens < 1 || len(r.ProviderSlug) > 128 || !slugPattern.MatchString(r.ProviderSlug) {
 			return out, &Error{Code: "invalid_request"}
@@ -226,6 +241,19 @@ func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	out.Extraction = &ex
 	return out, nil
+}
+
+func validClassificationCriteria(criteria map[string]string) bool {
+	if len(criteria) != 3 {
+		return false
+	}
+	for _, label := range []string{"subscription_related", "not_related", "uncertain"} {
+		value := criteria[label]
+		if strings.TrimSpace(value) == "" || len(value) > 2048 || !utf8.ValidString(value) {
+			return false
+		}
+	}
+	return true
 }
 
 func unsupportedPricing(provider string, m map[string]any) string {
