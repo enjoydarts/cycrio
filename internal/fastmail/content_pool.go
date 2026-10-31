@@ -114,7 +114,9 @@ func (p *ContentPool) acquire(ctx context.Context, key contentKey) (*contentSess
 		}
 		now := time.Now()
 		if s := p.sessions[key]; s != nil && !s.busy {
-			if now.Sub(s.idle) >= contentIdle || now.Sub(s.created) >= contentLifetime || s.uses >= contentUses || s.wire.totalBytes() >= contentTotalWire {
+			// Reserve a full operation timeout before reusing the connection.
+			// Its hard lifetime deadline must not truncate a newly started read.
+			if now.Sub(s.idle) >= contentIdle || !now.Add(checkTimeout).Before(s.created.Add(contentLifetime)) || s.uses >= contentUses || s.wire.totalBytes() >= contentTotalWire {
 				delete(p.sessions, key)
 				s.close()
 			} else {

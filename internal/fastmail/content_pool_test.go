@@ -371,7 +371,7 @@ func TestContentPoolExpiresMissingCacheAndRechecksGeneration(t *testing.T) {
 }
 
 func TestContentPoolSessionRetirementAndCapacity(t *testing.T) {
-	for _, limit := range []string{"idle", "lifetime", "uses", "wire"} {
+	for _, limit := range []string{"idle", "lifetime", "lifetime_margin", "uses", "wire"} {
 		t.Run(limit, func(t *testing.T) {
 			s, c := newPoolServer(t, false)
 			p := NewContentPool()
@@ -385,6 +385,8 @@ func TestContentPoolSessionRetirementAndCapacity(t *testing.T) {
 					session.idle = time.Now().Add(-contentIdle)
 				case "lifetime":
 					session.created = time.Now().Add(-contentLifetime)
+				case "lifetime_margin":
+					session.created = time.Now().Add(-contentLifetime + checkTimeout/2)
 				case "uses":
 					session.uses = contentUses
 				case "wire":
