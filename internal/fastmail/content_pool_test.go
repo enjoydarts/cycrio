@@ -26,6 +26,8 @@ type poolServer struct {
 	body           string
 	stall          bool
 	searchResponse string
+	bodyGate       <-chan struct{}
+	bodyStarted    chan<- struct{}
 	disconnect     chan struct{}
 	wg             sync.WaitGroup
 }
@@ -89,6 +91,12 @@ func newPoolServer(t *testing.T, present bool) (*poolServer, *Client) {
 					} else if strings.HasPrefix(s.body, "RAW:") {
 						fmt.Fprint(server, strings.TrimPrefix(s.body, "RAW:"))
 					} else {
+						if s.bodyStarted != nil {
+							s.bodyStarted <- struct{}{}
+						}
+						if s.bodyGate != nil {
+							<-s.bodyGate
+						}
 						fmt.Fprintf(server, "* 1 FETCH (UID 9 BODY[TEXT] {%d}\r\n%s)\r\n", len(s.body), s.body)
 					}
 					fmt.Fprintf(server, "%s OK done\r\n", tag)
@@ -117,6 +125,121 @@ func (s *poolServer) count(fragment string) int {
 
 func poolScope() ContentScope {
 	return ContentScope{OwnerID: "owner", AccountID: "account", CredentialID: "credential", CredentialVersion: 1, Provider: "fastmail", Host: "imap.fastmail.com", Port: 993}
+}
+
+func TestConcurrentContentPoolReadsOnIndependentSessionsAndBoundsScope(t *testing.T) {
+	for _, tc := range []struct {
+		requested, want int
+	}{{0, 1}, {-1, 1}, {2, 2}, {4, 4}, {99, 4}} {
+		t.Run(fmt.Sprint(tc.requested), func(t *testing.T) {
+			s, c := newPoolServer(t, true)
+			gate := make(chan struct{})
+			started := make(chan struct{}, 8)
+			s.bodyGate, s.bodyStarted = gate, started
+			p := NewConcurrentContentPool(tc.requested)
+			var release sync.Once
+			defer p.Close()
+			defer release.Do(func() { close(gate) })
+			r := p.Reader(poolScope(), c)
+			results := make(chan error, tc.want)
+			for range tc.want {
+				go func() {
+					body, err := r.ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+					if err == nil && string(body) != "hello" {
+						err = fmt.Errorf("unexpected body")
+					}
+					results <- err
+				}()
+			}
+			for range tc.want {
+				select {
+				case <-started:
+				case <-time.After(time.Second):
+					t.Fatal("independent reads did not reach the server concurrently")
+				}
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			_, err := r.ReadText(ctx, "synthetic@example.test", []byte("password"), contentSource())
+			cancel()
+			if adapterCode(err) != "timeout" || s.dials.Load() != int32(tc.want) {
+				t.Fatalf("scope cap exceeded: %s, dials=%d", adapterCode(err), s.dials.Load())
+			}
+			release.Do(func() { close(gate) })
+			for range tc.want {
+				if err := <-results; err != nil {
+					t.Fatal(err)
+				}
+			}
+			body, err := r.ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+			if err != nil || string(body) != "hello" || s.dials.Load() != int32(tc.want) {
+				t.Fatalf("parallel sessions not reusable: %s, dials=%d", adapterCode(err), s.dials.Load())
+			}
+			if tc.want > 1 {
+				p.mu.Lock()
+				for key, session := range p.sessions {
+					if key.slot == 0 {
+						session.created = time.Now().Add(-contentLifetime)
+					}
+				}
+				p.mu.Unlock()
+				body, err := r.ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+				if err != nil || string(body) != "hello" || s.dials.Load() != int32(tc.want) {
+					t.Fatal("spare socket created despite a healthy idle session")
+				}
+			}
+			p.Close()
+			s.wg.Wait()
+		})
+	}
+}
+
+func TestConcurrentContentPoolKeepsGlobalCapacityAndJoinsAllReaders(t *testing.T) {
+	s, c := newPoolServer(t, true)
+	s.stall = true
+	p := NewConcurrentContentPool(4)
+	defer p.Close()
+	results := make(chan error, 9)
+	for i := range 8 {
+		go func() {
+			scope := poolScope()
+			scope.OwnerID = fmt.Sprint(i / 4)
+			_, err := p.Reader(scope, c).ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+			results <- err
+		}()
+	}
+	deadline := time.Now().Add(time.Second)
+	for s.count("BODY.PEEK") < 8 && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if s.count("BODY.PEEK") != 8 || s.dials.Load() != 8 {
+		t.Fatal("eight independently blocked readers did not start")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	scope := poolScope()
+	scope.OwnerID = "third owner"
+	_, err := p.Reader(scope, c).ReadText(ctx, "synthetic@example.test", []byte("password"), contentSource())
+	cancel()
+	if adapterCode(err) != "timeout" || s.dials.Load() != 8 {
+		t.Fatalf("global cap exceeded: %s, dials=%d", adapterCode(err), s.dials.Load())
+	}
+	go func() {
+		_, err := p.Reader(poolScope(), c).ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+		results <- err
+	}()
+	if err := p.Close(); err != nil {
+		t.Fatal(err)
+	}
+	for range 9 {
+		select {
+		case err := <-results:
+			if adapterCode(err) != "cancelled" {
+				t.Fatalf("close lost cancellation: %s", adapterCode(err))
+			}
+		case <-time.After(time.Second):
+			t.Fatal("Close did not join all active readers and capacity waiter")
+		}
+	}
+	s.wg.Wait()
 }
 
 func TestContentPoolReusesLoginAndBatchesOnlyMissingUIDs(t *testing.T) {
@@ -156,10 +279,19 @@ func TestContentPoolFetchesPositiveBodyEveryTime(t *testing.T) {
 }
 
 func TestContentPoolIsolatesAuthenticationAndSourceScope(t *testing.T) {
+	testContentPoolScopeIsolation(t, NewContentPool)
+}
+
+func TestConcurrentContentPoolIsolatesAuthenticationAndSourceScope(t *testing.T) {
+	testContentPoolScopeIsolation(t, func() *ContentPool { return NewConcurrentContentPool(4) })
+}
+
+func testContentPoolScopeIsolation(t *testing.T, newPool func() *ContentPool) {
+	t.Helper()
 	for _, change := range []string{"owner", "account", "credential", "version", "provider", "host", "port", "login", "password", "folder", "generation"} {
 		t.Run(change, func(t *testing.T) {
 			s, c := newPoolServer(t, false)
-			p := NewContentPool()
+			p := newPool()
 			defer p.Close()
 			scope := poolScope()
 			source := contentSource()
@@ -371,10 +503,19 @@ func TestContentPoolExpiresMissingCacheAndRechecksGeneration(t *testing.T) {
 }
 
 func TestContentPoolSessionRetirementAndCapacity(t *testing.T) {
+	testContentPoolSessionRetirement(t, NewContentPool)
+}
+
+func TestConcurrentContentPoolSessionRetirementAndCapacity(t *testing.T) {
+	testContentPoolSessionRetirement(t, func() *ContentPool { return NewConcurrentContentPool(4) })
+}
+
+func testContentPoolSessionRetirement(t *testing.T, newPool func() *ContentPool) {
+	t.Helper()
 	for _, limit := range []string{"idle", "lifetime", "lifetime_margin", "uses", "wire"} {
 		t.Run(limit, func(t *testing.T) {
 			s, c := newPoolServer(t, false)
-			p := NewContentPool()
+			p := newPool()
 			defer p.Close()
 			r := p.Reader(poolScope(), c)
 			r.ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
@@ -403,7 +544,7 @@ func TestContentPoolSessionRetirementAndCapacity(t *testing.T) {
 		})
 	}
 	_, c := newPoolServer(t, false)
-	p := NewContentPool()
+	p := newPool()
 	defer p.Close()
 	for i := range 12 {
 		scope := poolScope()

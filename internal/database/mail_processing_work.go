@@ -25,9 +25,13 @@ type lockedProcessing struct {
 
 // Every worker transition locks user -> account -> run -> settings -> policy ->
 // models -> keys. The clock is read in a separate statement after all locks.
-func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx.Tx, lockedProcessing, error) {
+func (r *MailProcessingRepository) lockWork(ctx context.Context, id string, attempts ...string) (pgx.Tx, lockedProcessing, error) {
 	var w lockedProcessing
-	if !mailprocessing.ValidID(id) {
+	attempt := ""
+	if len(attempts) > 0 {
+		attempt = attempts[0]
+	}
+	if !mailprocessing.ValidID(id) || attempt != "" && !mailprocessing.ValidID(attempt) {
 		return nil, w, mailprocessing.ErrInvalid
 	}
 	e := r.pool.QueryRow(ctx, `SELECT owner_id,account_id FROM mail_processing_runs WHERE id=$1`, id).Scan(&w.work.OwnerID, &w.work.Run.AccountID)
@@ -94,17 +98,38 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 	} else if e != nil {
 		return fail(e)
 	}
-	// Choose immutable item identity before testing live folder availability.
-	e = tx.QueryRow(ctx, `SELECT i.id,i.message_id,m.folder_id,m.key_id,m.ciphertext FROM mail_processing_items i JOIN mail_discovered_messages m ON m.id=i.message_id AND m.owner_id=i.owner_id AND m.account_id=i.account_id WHERE i.run_id=$1 AND i.state=CASE WHEN $2='running' THEN 'running' ELSE 'queued' END ORDER BY i.created_at,i.id LIMIT 1`, id, w.state).Scan(&w.work.AttemptID, &w.work.MessageID, &w.work.FolderID, &w.work.Envelope.KeyID, &w.work.Envelope.Ciphertext)
+	if e = loadProcessingItem(ctx, tx, &w, id, attempt); e != nil {
+		return fail(e)
+	}
+	if e = tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_processing_runs WHERE id=$1`, id).Scan(&w.alive); e != nil {
+		return fail(e)
+	}
+	return tx, w, nil
+}
+
+// The run lock serializes every item transition; each worker supplies its
+// immutable attempt identity rather than choosing another running sibling.
+func loadProcessingItem(ctx context.Context, tx pgx.Tx, w *lockedProcessing, id, attempt string) error {
+	w.work.AttemptID, w.work.MessageID, w.work.FolderID, w.work.FolderName = "", "", "", ""
+	w.work.ReaderFolders = nil
+	w.protected = false
+	var selected *string
+	if attempt != "" {
+		selected = &attempt
+	}
+	e := tx.QueryRow(ctx, `SELECT i.id,i.message_id,m.folder_id,m.key_id,m.ciphertext FROM mail_processing_items i JOIN mail_discovered_messages m ON m.id=i.message_id AND m.owner_id=i.owner_id AND m.account_id=i.account_id WHERE i.run_id=$1 AND i.state=CASE WHEN $2='running' THEN 'running' ELSE 'queued' END AND ($3::uuid IS NULL OR i.id=$3::uuid) ORDER BY i.created_at,i.id LIMIT 1`, id, w.state, selected).Scan(&w.work.AttemptID, &w.work.MessageID, &w.work.FolderID, &w.work.Envelope.KeyID, &w.work.Envelope.Ciphertext)
 	if errors.Is(e, pgx.ErrNoRows) {
+		if attempt != "" {
+			return mailprocessing.ErrNotFound
+		}
 		w.valid = false
 	} else if e != nil {
-		return fail(e)
+		return e
 	}
 	if w.work.FolderID != "" {
 		if w.reanalysis {
 			if e = tx.QueryRow(ctx, `SELECT `+processingHistoricalDecision+` FROM mail_discovered_messages m WHERE m.id=$1 AND m.owner_id=$2`, w.work.MessageID, w.work.OwnerID).Scan(&w.protected); e != nil {
-				return fail(e)
+				return e
 			}
 		}
 		var available bool
@@ -114,20 +139,20 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 			// one label does not hide a message that retains another selected label.
 			rows, err := tx.Query(ctx, `SELECT f.name FROM mail_message_folder_memberships member JOIN mail_account_folders f ON f.id=member.folder_id AND f.account_id=member.account_id WHERE member.owner_id=$1 AND member.account_id=$2 AND member.message_id=$3 AND f.selected AND f.available AND f.selectable ORDER BY f.id FOR SHARE OF f`, w.work.OwnerID, w.work.Run.AccountID, w.work.MessageID)
 			if err != nil {
-				return fail(err)
+				return err
 			}
 			for rows.Next() {
 				var name string
 				if err := rows.Scan(&name); err != nil {
 					rows.Close()
-					return fail(err)
+					return err
 				}
 				w.work.ReaderFolders = append(w.work.ReaderFolders, name)
 			}
 			err = rows.Err()
 			rows.Close()
 			if err != nil {
-				return fail(err)
+				return err
 			}
 			available = len(w.work.ReaderFolders) > 0
 			if available {
@@ -139,21 +164,18 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string) (pgx
 		if errors.Is(e, pgx.ErrNoRows) {
 			w.valid = false
 		} else if e != nil {
-			return fail(e)
+			return e
 		}
 		w.valid = w.valid && available
 	}
 	if w.automation != "" && w.work.MessageID != "" {
 		var member bool
 		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_automation_messages WHERE automation_id=$1 AND generation=$2 AND message_id=$3 AND owner_id=$4 AND account_id=$5)`, w.automation, w.generation, w.work.MessageID, w.work.OwnerID, w.work.Run.AccountID).Scan(&member); e != nil {
-			return fail(e)
+			return e
 		}
 		w.valid = w.valid && member
 	}
-	if e = tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_processing_runs WHERE id=$1`, id).Scan(&w.alive); e != nil {
-		return fail(e)
-	}
-	return tx, w, nil
+	return nil
 }
 func (r *MailProcessingRepository) Claim(ctx context.Context) ([]mailprocessing.Lease, error) {
 	rows, e := r.pool.Query(ctx, `SELECT id FROM mail_processing_runs WHERE state='queued' OR (state IN ('leased','running') AND lease_until<=clock_timestamp()) ORDER BY created_at,id LIMIT 100`)
@@ -257,7 +279,7 @@ func skipProtectedReanalysis(ctx context.Context, tx pgx.Tx, l mailprocessing.Le
 		if _, e := tx.Exec(ctx, `UPDATE mail_processing_items SET state='cancelled',error_code='cancelled',finished_at=clock_timestamp() WHERE id=$1 AND state IN ('queued','running')`, w.work.AttemptID); e != nil {
 			return processingError(e)
 		}
-		if _, e := tx.Exec(ctx, `UPDATE mail_processing_runs SET state=CASE WHEN EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued') THEN 'queued' ELSE 'completed' END,lease_id=NULL,lease_until=NULL,finished_at=CASE WHEN EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued') THEN NULL ELSE clock_timestamp() END WHERE id=$1`, l.RunID); e != nil {
+		if e := settleProcessingRun(ctx, tx, l.RunID); e != nil {
 			return processingError(e)
 		}
 		if e := tx.Commit(ctx); e != nil {
@@ -300,13 +322,16 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 	if !mailprocessing.ValidID(l.LeaseID) || (stage != "classification" && stage != "extraction") {
 		return airuntime.Call{}, mailprocessing.ErrInvalid
 	}
-	tx, w, e := r.lockWork(ctx, l.RunID)
+	tx, w, e := r.lockWork(ctx, l.RunID, l.AttemptID)
 	if e != nil {
 		return airuntime.Call{}, e
 	}
 	defer tx.Rollback(ctx)
 	if w.state != "running" || w.lease != l.LeaseID {
 		return airuntime.Call{}, mailprocessing.ErrNotFound
+	}
+	if e = requireProcessingAttempt(ctx, tx, l); e != nil {
+		return airuntime.Call{}, e
 	}
 	if e = rejectProcessing(ctx, tx, l, w); e != nil {
 		return airuntime.Call{}, e
@@ -397,7 +422,7 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 	if !mailprocessing.ValidID(l.LeaseID) || !validProcessingCompletion(in) {
 		return mailprocessing.ErrInvalid
 	}
-	tx, w, e := r.lockWork(ctx, l.RunID)
+	tx, w, e := r.lockWork(ctx, l.RunID, l.AttemptID)
 	if errors.Is(e, mailprocessing.ErrNotFound) {
 		return nil
 	}
@@ -407,6 +432,12 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 	defer tx.Rollback(ctx)
 	if w.state != "running" || w.lease != l.LeaseID {
 		return nil
+	}
+	if e = requireProcessingAttempt(ctx, tx, l); e != nil {
+		if errors.Is(e, mailprocessing.ErrNotFound) {
+			return nil
+		}
+		return e
 	}
 	if e = rejectProcessing(ctx, tx, l, w); e != nil {
 		if errors.Is(e, mailprocessing.ErrNotFound) {
@@ -430,14 +461,6 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 		}
 		return processingError(tx.Commit(ctx))
 	}
-	var queued bool
-	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_processing_items WHERE run_id=$1 AND state='queued')`, l.RunID).Scan(&queued); e != nil {
-		return mailprocessing.ErrUnavailable
-	}
-	next := "completed"
-	if queued {
-		next = "queued"
-	}
 	// Ambiguous or recording failures terminate the run. Unsent items become
 	// selectable only through a later explicit request.
 	if in.State == "unknown" {
@@ -454,8 +477,11 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 		case "failed":
 			failed = 1
 		}
-		if _, e = tx.Exec(ctx, `UPDATE mail_processing_runs SET state=$2,completed_count=completed_count+1,related_count=related_count+$3,unrelated_count=unrelated_count+$4,failed_count=failed_count+$5,lease_id=NULL,lease_until=NULL,finished_at=CASE WHEN $2='completed' THEN clock_timestamp() ELSE NULL END WHERE id=$1`, l.RunID, next, related, unrelated, failed); e != nil {
+		if _, e = tx.Exec(ctx, `UPDATE mail_processing_runs SET completed_count=completed_count+1,related_count=related_count+$2,unrelated_count=unrelated_count+$3,failed_count=failed_count+$4 WHERE id=$1`, l.RunID, related, unrelated, failed); e != nil {
 			return mailprocessing.ErrUnavailable
+		}
+		if e = settleProcessingRun(ctx, tx, l.RunID); e != nil {
+			return e
 		}
 	}
 	return processingError(tx.Commit(ctx))

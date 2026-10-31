@@ -8,7 +8,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestMigrationVersion = 23
+const latestMigrationVersion = 24
 
 // assertMigrationRange checks every applied version, including direction and
 // count, so adding newer migrations does not weaken an older round-trip test.

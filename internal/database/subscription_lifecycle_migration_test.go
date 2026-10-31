@@ -40,14 +40,12 @@ func TestSubscriptionLifecycleMigrationPreservesLegacyAndRefusesLoss(t *testing.
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 22)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 23 || down[0].Direction != "down" || down[0].Error != nil {
-		t.Fatal("expected one successful down migration at version 23", down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 23)
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&after); e != nil || before != after {
 		t.Fatal("downgrade changed legacy contract", e)
 	}
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 23, 23)
+	assertMigrationRange(t, up, e, 23, latestMigrationVersion)
 	restored, e := r.Get(ctx, f.owner, s.ID)
 	if e != nil || restored.ContractKind != "unknown" || restored.AccessEndDate != nil || restored.EffectiveDate != nil {
 		t.Fatal("migration invented lifecycle facts", restored, e)

@@ -40,6 +40,7 @@ type contentKey struct {
 	port         int
 	generation   uint32
 	auth         [32]byte
+	slot         int
 }
 
 type contentSession struct {
@@ -56,7 +57,8 @@ type contentSession struct {
 }
 
 // ContentPool holds at most eight authenticated, read-only IMAP sessions.
-// Operations sharing a key serialize; all other sessions remain independent.
+// Each socket serves one operation at a time. Matching scopes may use a
+// bounded number of independent sockets when explicitly enabled.
 type ContentPool struct {
 	mu          sync.Mutex
 	sessions    map[contentKey]*contentSession
@@ -66,11 +68,20 @@ type ContentPool struct {
 	closed      bool
 	wg          sync.WaitGroup
 	janitorDone chan struct{}
+	parallelism int
 }
 
 func NewContentPool() *ContentPool {
 	ctx, cancel := context.WithCancel(context.Background())
-	return &ContentPool{sessions: make(map[contentKey]*contentSession), notify: make(chan struct{}), ctx: ctx, cancel: cancel}
+	return &ContentPool{sessions: make(map[contentKey]*contentSession), notify: make(chan struct{}), ctx: ctx, cancel: cancel, parallelism: 1}
+}
+
+// NewConcurrentContentPool allows up to four independent sessions per scope.
+// Credential, mailbox and UID generation boundaries remain part of that scope.
+func NewConcurrentContentPool(parallelism int) *ContentPool {
+	p := NewContentPool()
+	p.parallelism = min(max(parallelism, 1), 4)
+	return p
 }
 
 func (p *ContentPool) Reader(scope ContentScope, client *Client) mailcontent.Reader {
@@ -113,20 +124,31 @@ func (p *ContentPool) acquire(ctx context.Context, key contentKey) (*contentSess
 			return nil, ctx.Err()
 		}
 		now := time.Now()
-		if s := p.sessions[key]; s != nil && !s.busy {
-			// Reserve a full operation timeout before reusing the connection.
-			// Its hard lifetime deadline must not truncate a newly started read.
-			if now.Sub(s.idle) >= contentIdle || !now.Add(checkTimeout).Before(s.created.Add(contentLifetime)) || s.uses >= contentUses || s.wire.totalBytes() >= contentTotalWire {
-				delete(p.sessions, key)
-				s.close()
-			} else {
-				s.busy = true
-				s.uses++
-				p.mu.Unlock()
-				return s, nil
+		var available contentKey
+		canCreate := false
+		for slot := range p.parallelism {
+			candidate := key
+			candidate.slot = slot
+			s := p.sessions[candidate]
+			if s != nil && !s.busy {
+				// Reserve a full operation timeout before reusing the connection.
+				// Its hard lifetime deadline must not truncate a newly started read.
+				if now.Sub(s.idle) >= contentIdle || !now.Add(checkTimeout).Before(s.created.Add(contentLifetime)) || s.uses >= contentUses || s.wire.totalBytes() >= contentTotalWire {
+					delete(p.sessions, candidate)
+					s.close()
+					s = nil
+				} else {
+					s.busy = true
+					s.uses++
+					p.mu.Unlock()
+					return s, nil
+				}
+			}
+			if s == nil && !canCreate {
+				available, canCreate = candidate, true
 			}
 		}
-		if p.sessions[key] == nil {
+		if canCreate {
 			if len(p.sessions) >= contentPoolSize {
 				var oldest *contentSession
 				for _, s := range p.sessions {
@@ -140,8 +162,8 @@ func (p *ContentPool) acquire(ctx context.Context, key contentKey) (*contentSess
 				}
 			}
 			if len(p.sessions) < contentPoolSize {
-				s := &contentSession{key: key, busy: true, created: now, uses: 1}
-				p.sessions[key] = s
+				s := &contentSession{key: available, busy: true, created: now, uses: 1}
+				p.sessions[available] = s
 				if p.janitorDone == nil {
 					p.janitorDone = make(chan struct{})
 					go p.reap()

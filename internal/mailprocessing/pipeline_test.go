@@ -80,7 +80,7 @@ func pipelineFixture(t *testing.T) (*pipelineRepo, *secretstore.Keyring, Lease) 
 	if e != nil {
 		t.Fatal(e)
 	}
-	return &pipelineRepo{w: w}, k, Lease{w.Run.ID, uuid.NewString()}
+	return &pipelineRepo{w: w}, k, Lease{RunID: w.Run.ID, LeaseID: uuid.NewString()}
 }
 func TestExecuteGatesSecondCallAndKeepsSecretsTransient(t *testing.T) {
 	for _, label := range []string{"not_related", "subscription_related", "uncertain"} {

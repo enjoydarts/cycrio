@@ -160,8 +160,15 @@ type Result struct {
 	FinishedAt     time.Time  `json:"finished_at"`
 }
 type Lease struct {
-	RunID   string `json:"run_id"`
-	LeaseID string `json:"lease_id"`
+	RunID     string `json:"run_id"`
+	LeaseID   string `json:"lease_id"`
+	AttemptID string `json:"attempt_id,omitempty"`
+}
+
+// BatchRepository reserves distinct attempts atomically under one run lease.
+// Child calls must carry the returned Work.AttemptID in their Lease.
+type BatchRepository interface {
+	StartBatch(context.Context, Lease, int) ([]Work, error)
 }
 type Work struct {
 	ReaderFolders []string                       `json:"-"`

@@ -19,9 +19,14 @@ type Service struct {
 	readerCloser io.Closer
 	closeOnce    sync.Once
 	closeErr     error
+	batchSlots   chan struct{}
 }
 
 type Option func(*Service)
+
+func WithBatchConcurrency(limit int) Option {
+	return func(s *Service) { s.batchSlots = make(chan struct{}, max(1, min(limit, 4))) }
+}
 
 func WithReaderFactory(factory mailcontent.ReaderFactory) Option {
 	return func(s *Service) { s.factory = factory }

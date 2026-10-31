@@ -39,7 +39,7 @@ type contentReaderPool interface {
 
 func New(pool *pgxpool.Pool, keys *secretstore.Keyring) *Factory {
 	cs := credentials.NewService(database.NewCredentialRepository(pool), keys)
-	return &Factory{repo: database.NewMailOAuthRepository(pool, keys), resolve: cs.Resolve, client: mailoauth.NewClient(nil), readers: fastmail.NewContentPool()}
+	return &Factory{repo: database.NewMailOAuthRepository(pool, keys), resolve: cs.Resolve, client: mailoauth.NewClient(nil), readers: fastmail.NewConcurrentContentPool(4)}
 }
 
 type backend interface {

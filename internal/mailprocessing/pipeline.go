@@ -20,8 +20,11 @@ const classifierInstructions = subscriptionprompts.ClassifierInstructions
 const extractorInstructions = subscriptionprompts.ExtractorInstructions
 
 func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
-	if !ValidID(l.RunID) || !ValidID(l.LeaseID) {
+	if !ValidID(l.RunID) || !ValidID(l.LeaseID) || l.AttemptID != "" {
 		return ErrInvalid
+	}
+	if repo, ok := s.repo.(BatchRepository); ok && s.batchSlots != nil {
+		return s.executeBatch(ctx, l, repo)
 	}
 	w, e := s.repo.Start(ctx, l)
 	if errors.Is(e, ErrNotFound) || errors.Is(e, ErrConflict) {
@@ -30,6 +33,11 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 	if e != nil {
 		return safe(e)
 	}
+	return s.executeWork(ctx, l, w)
+}
+
+func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) {
+	var e error
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	completion := Completion{State: "failed", Events: []ai.Event{}}
