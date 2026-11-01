@@ -5,6 +5,7 @@
 !.env.sample
 *.pem
 *.key
+client_secret*.json
 
 # Private design drafts and mail evaluation data
 .local/
