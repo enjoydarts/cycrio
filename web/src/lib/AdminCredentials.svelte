@@ -360,129 +360,146 @@
                         ? 'Gmail の読み取り専用権限 gmail.readonly を利用します。個人・Workspace に対応します。Workspace では組織管理者の許可が必要な場合があります。'
                         : 'Microsoft Graph の Mail.Read と offline_access を利用します。個人の Outlook.com / Hotmail 向けアプリを登録してください。'}
                     </p>
-                    <label for={`client-id-${credential.provider}`}
-                      >Client ID</label
-                    >
-                    <input
-                      id={`client-id-${credential.provider}`}
-                      name="client_id"
-                      type="text"
-                      autocomplete="off"
-                      spellcheck="false"
-                      required
-                      disabled={busy}
-                    />
-                    <label for={`client-secret-${credential.provider}`}
-                      >Client Secret</label
-                    >
-                    <input
-                      id={`client-secret-${credential.provider}`}
-                      name="client_secret"
-                      type="password"
-                      autocomplete="new-password"
-                      spellcheck="false"
-                      required
-                      disabled={busy}
-                    />
-                    <label for={`redirect-uri-${credential.provider}`}
-                      >Redirect URI</label
-                    >
-                    <input
-                      id={`redirect-uri-${credential.provider}`}
-                      name="redirect_uri"
-                      type="url"
-                      value={`${apiBase.replace(/\/$/, '')}/v1/mail/oauth/callback/${mailProvider}`}
-                      autocomplete="off"
-                      spellcheck="false"
-                      required
-                      disabled={busy}
-                    />
-                    <p class="help">
-                      API の公開 URL を使い、認可サービスにも同じ URI
-                      を登録してください。HTTPS（ローカル開発は localhost /
-                      127.0.0.1 の
-                      HTTP）に対応します。更新時はすべての項目を再入力します。
-                    </p>
+                    <div class="credential-field">
+                      <label for={`client-id-${credential.provider}`}
+                        >Client ID</label
+                      >
+                      <input
+                        id={`client-id-${credential.provider}`}
+                        name="client_id"
+                        type="text"
+                        autocomplete="off"
+                        spellcheck="false"
+                        required
+                        disabled={busy}
+                      />
+                    </div>
+                    <div class="credential-field">
+                      <label for={`client-secret-${credential.provider}`}
+                        >Client Secret</label
+                      >
+                      <input
+                        id={`client-secret-${credential.provider}`}
+                        name="client_secret"
+                        type="password"
+                        autocomplete="new-password"
+                        spellcheck="false"
+                        required
+                        disabled={busy}
+                      />
+                    </div>
+                    <div class="credential-field">
+                      <label for={`redirect-uri-${credential.provider}`}
+                        >Redirect URI</label
+                      >
+                      <input
+                        id={`redirect-uri-${credential.provider}`}
+                        name="redirect_uri"
+                        type="url"
+                        value={`${apiBase.replace(/\/$/, '')}/v1/mail/oauth/callback/${mailProvider}`}
+                        autocomplete="off"
+                        spellcheck="false"
+                        required
+                        disabled={busy}
+                      />
+                      <p class="help">
+                        API の公開 URL を使い、認可サービスにも同じ URI
+                        を登録してください。HTTPS（ローカル開発は localhost /
+                        127.0.0.1 の
+                        HTTP）に対応します。更新時はすべての項目を再入力します。
+                      </p>
+                    </div>
                   {:else}
-                    <label for={`secret-${credential.provider}`}
-                      >{provider.label} の API キー</label
-                    >
-                    <input
-                      id={`secret-${credential.provider}`}
-                      name="secret"
-                      type="password"
-                      autocomplete="off"
-                      spellcheck="false"
-                      autocapitalize="off"
-                      minlength="8"
-                      maxlength="4096"
-                      required
-                      disabled={busy}
-                      aria-describedby="secret-help"
-                    />
+                    <div class="credential-field">
+                      <label for={`secret-${credential.provider}`}
+                        >{provider.label} の API キー</label
+                      >
+                      <input
+                        id={`secret-${credential.provider}`}
+                        name="secret"
+                        type="password"
+                        autocomplete="off"
+                        spellcheck="false"
+                        autocapitalize="off"
+                        minlength="8"
+                        maxlength="4096"
+                        required
+                        disabled={busy}
+                        aria-describedby="secret-help"
+                      />
+                      <p id="secret-help" class="help">
+                        キーは空白を含まない半角英数字・記号の 8〜4096
+                        文字で入力してください。送信時に入力欄を消去します。
+                      </p>
+                    </div>
                   {/if}
-                  <Button
-                    wrap
-                    variant="primary"
-                    class={['primary']}
-                    type="submit"
-                    disabled={busy}
-                    >{credential.state === 'configured'
-                      ? '設定を更新する'
-                      : '設定を登録する'}</Button
-                  >
+                  <div class="form-actions">
+                    <ActionGroup align="end">
+                      <Button
+                        wrap
+                        variant="primary"
+                        class={['primary']}
+                        type="submit"
+                        disabled={busy}
+                        >{credential.state === 'configured'
+                          ? '設定を更新する'
+                          : '設定を登録する'}</Button
+                      >
+                    </ActionGroup>
+                  </div>
                 </form>
                 {#if credential.state === 'configured'}
-                  {#if confirmation === credential.provider}
-                    <div
-                      class="confirmation"
-                      role="group"
-                      aria-label={`${provider.label} の無効化確認`}
-                    >
-                      <p>{provider.label} の API キーを無効化しますか？</p>
-                      <ActionGroup
-                        class={[
-                          'confirmation-actions',
-                          'part-AdminCredentials-confirmation-actions',
-                        ]}
+                  <section
+                    class="disable-section"
+                    aria-label={`${provider.label} の無効化`}
+                  >
+                    {#if confirmation === credential.provider}
+                      <div
+                        class="confirmation"
+                        role="group"
+                        aria-label={`${provider.label} の無効化確認`}
                       >
-                        <Button
-                          wrap
-                          id={`confirm-disable-${credential.provider}`}
-                          class={['danger', 'part-AdminCredentials-danger']}
-                          disabled={busy}
-                          onclick={() =>
-                            disable(credential.provider, credential.version)}
-                          >無効化を確定する</Button
-                        ><Button
-                          wrap
+                        <p>{provider.label} の API キーを無効化しますか？</p>
+                        <ActionGroup
                           class={[
-                            'secondary',
-                            'part-AdminCredentials-secondary',
+                            'confirmation-actions',
+                            'part-AdminCredentials-confirmation-actions',
                           ]}
-                          disabled={busy}
-                          onclick={() =>
-                            cancelConfirmation(credential.provider)}
-                          >キャンセル</Button
                         >
-                      </ActionGroup>
-                    </div>
-                  {:else}<Button
-                      wrap
-                      id={`disable-${credential.provider}`}
-                      class={['secondary', 'part-AdminCredentials-secondary']}
-                      disabled={busy}
-                      onclick={() => openConfirmation(credential.provider)}
-                      >{provider.label} を無効化する</Button
-                    >{/if}
+                          <Button
+                            wrap
+                            id={`confirm-disable-${credential.provider}`}
+                            class={['danger', 'part-AdminCredentials-danger']}
+                            disabled={busy}
+                            onclick={() =>
+                              disable(credential.provider, credential.version)}
+                            >無効化を確定する</Button
+                          ><Button
+                            wrap
+                            class={[
+                              'secondary',
+                              'part-AdminCredentials-secondary',
+                            ]}
+                            disabled={busy}
+                            onclick={() =>
+                              cancelConfirmation(credential.provider)}
+                            >キャンセル</Button
+                          >
+                        </ActionGroup>
+                      </div>
+                    {:else}<Button
+                        wrap
+                        id={`disable-${credential.provider}`}
+                        class={['secondary', 'part-AdminCredentials-secondary']}
+                        disabled={busy}
+                        onclick={() => openConfirmation(credential.provider)}
+                        >{provider.label} を無効化する</Button
+                      >{/if}
+                  </section>
                 {/if}
               </article>{/if}
           {/each}
         </div>
-        {#if selectedProvider}<p id="secret-help" class="help">
-            キーは空白を含まない半角英数字・記号の 8〜4096
-            文字で入力してください。送信時に入力欄を消去します。
-          </p>{/if}
       </div>
       <section hidden={!history} class="audit" aria-labelledby="audit-heading">
         <h2 id="audit-heading">操作履歴</h2>
@@ -539,6 +556,7 @@
   }
   :global(.part-AdminCredentials-service-row > span:first-child) {
     flex: 1;
+    min-width: 0;
   }
   :global(.part-AdminCredentials-service-row) small {
     display: block;
@@ -551,7 +569,7 @@
   }
   :global(.part-AdminCredentials-back) {
     width: auto;
-    margin: 0 0 1rem;
+    margin: 0;
   }
   .credentials {
     margin-bottom: 2rem;
@@ -573,6 +591,12 @@
     font-size: 0.85rem;
     line-height: 1.8;
     overflow-wrap: anywhere;
+  }
+  .feedback:has(p) {
+    margin-bottom: 1.25rem;
+  }
+  .feedback p {
+    margin: 0;
   }
   .error {
     color: var(--color-danger);
@@ -649,6 +673,22 @@
     background: var(--color-surface);
     font: inherit;
   }
+  form {
+    display: grid;
+    gap: 20px;
+  }
+  .credential-field {
+    min-width: 0;
+  }
+  .form-actions {
+    border-top: 1px solid var(--color-border);
+    padding-top: 16px;
+  }
+  .disable-section {
+    margin-top: 24px;
+    border-top: 1px solid var(--color-border);
+    padding-top: 20px;
+  }
   :global(.part-AdminCredentials-secondary) {
     background: var(--color-surface);
     color: var(--color-action);
@@ -670,18 +710,25 @@
     line-height: 1.8;
   }
   .confirmation p {
-    margin: 0;
+    margin: 0 0 12px;
   }
   :global(.part-AdminCredentials-confirmation-actions) {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-  }
-  :global(.part-AdminCredentials-confirmation-actions) :global(.ui-action) {
-    flex: 1 1 8rem;
+    justify-content: flex-end;
   }
   .help {
-    margin: 1rem 0 2rem;
+    margin: 8px 0 0;
+  }
+  form > .help {
+    margin: 0;
+  }
+  @media (max-width: 600px) {
+    .form-actions :global(.ui-action),
+    :global(.part-AdminCredentials-confirmation-actions) :global(.ui-action) {
+      width: 100%;
+    }
   }
   ol {
     list-style: none;
