@@ -135,6 +135,7 @@ export type Call = {
   profile_id: string;
   scope: (typeof scopes)[number];
   consuming_user_id: string | null;
+  mail_account_id?: string | null;
   initiated_by_user_id: string | null;
   provider: ModelProvider;
   model_id: string;
@@ -171,6 +172,17 @@ export type ConsumerCost = {
   unknown_calls: number;
   failures: number;
   totals: Totals[];
+  mail_accounts?: MailAccountCost[];
+};
+export type MailAccountCost = {
+  account_id: string | null;
+  label: string;
+  provider: string;
+  calls: number;
+  unknown_calls: number;
+  failures: number;
+  totals: Totals[];
+  stages: { stage: (typeof stages)[number]; totals: Totals[] }[];
 };
 export type Breakdown = {
   provider: ModelProvider;
@@ -195,6 +207,7 @@ export type CostReport = {
 export type CostFilter = {
   month: string;
   user_id?: string;
+  account_id?: string;
   scope?: (typeof scopes)[number] | '';
   provider?: ModelProvider | '';
   model_id?: string;
@@ -388,6 +401,10 @@ export function parseCall(value: unknown): Call {
     profile_id: uuid(v.profile_id),
     scope: choice(v.scope, scopes),
     consuming_user_id: nullable(v.consuming_user_id, uuid),
+    mail_account_id:
+      v.mail_account_id === undefined
+        ? null
+        : nullable(v.mail_account_id, uuid),
     initiated_by_user_id: nullable(v.initiated_by_user_id, uuid),
     provider: choice(v.provider, modelProviders),
     model_id: uuid(v.model_id),
@@ -443,6 +460,28 @@ export function parseCostReport(value: unknown): CostReport {
           unknown_calls: integer(u.unknown_calls),
           failures: integer(u.failures),
           totals: array(u.totals, parseTotals),
+          mail_accounts:
+            u.mail_accounts === undefined
+              ? []
+              : array(u.mail_accounts, (value) => {
+                  const account = object(value);
+                  return {
+                    account_id: nullable(account.account_id, uuid),
+                    label: str(account.label),
+                    provider: str(account.provider),
+                    calls: integer(account.calls),
+                    unknown_calls: integer(account.unknown_calls),
+                    failures: integer(account.failures),
+                    totals: array(account.totals, parseTotals),
+                    stages: array(account.stages, (value) => {
+                      const stage = object(value);
+                      return {
+                        stage: choice(stage.stage, stages),
+                        totals: array(stage.totals, parseTotals),
+                      };
+                    }),
+                  };
+                }),
         };
       },
       100,
@@ -547,6 +586,7 @@ export function createAIRuntimeAPI(
     });
     for (const key of [
       'user_id',
+      'account_id',
       'scope',
       'provider',
       'model_id',

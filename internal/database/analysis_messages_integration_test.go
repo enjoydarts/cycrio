@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/google/uuid"
@@ -133,12 +134,14 @@ func TestAnalysisMessagesIgnoresOtherOwnerCallLedger(t *testing.T) {
 	if _, e := f.repo.Request(ctx, f.owner, f.account, f.in); e != nil {
 		t.Fatal(e)
 	}
-	lease, work := f.start(t)
-	c, e := f.repo.BeginCall(ctx, lease, "classification")
+	// Attribution is immutable; create the foreign ledger row with its owner
+	// already set instead of rewriting a correctly attributed processing call.
+	_, work := f.start(t)
+	foreign, e := f.runtime.BeginCall(ctx, airuntime.BeginCallInput{OperationID: work.AttemptID, ProfileID: f.in.ProfileID, Scope: "user", ConsumingUserID: &f.other, Stage: "classification", AttemptNo: 1})
 	if e != nil {
 		t.Fatal(e)
 	}
-	if _, e = f.runtime.pool.Exec(ctx, `UPDATE ai_calls SET consuming_user_id=$2,status='succeeded',outcome='success' WHERE id=$1`, c.ID, f.other); e != nil {
+	if _, e = f.runtime.pool.Exec(ctx, `UPDATE ai_calls SET status='succeeded',outcome='success' WHERE id=$1`, foreign.ID); e != nil {
 		t.Fatal(e)
 	}
 	d, e := repo.AnalysisMessage(ctx, f.owner, work.MessageID)

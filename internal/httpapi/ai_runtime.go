@@ -162,6 +162,8 @@ func runtimeFilter(raw string) (airuntime.CostFilter, error) {
 			f.Month = values[0]
 		case "user_id":
 			f.UserID = values[0]
+		case "account_id":
+			f.AccountID = values[0]
 		case "scope":
 			f.Scope = values[0]
 		case "provider":

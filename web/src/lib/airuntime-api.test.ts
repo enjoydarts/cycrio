@@ -237,3 +237,100 @@ test('cancellation during token lookup never sends a stale private request', asy
   );
   assert.equal(fetches, 0);
 });
+
+test('mail account costs retain attribution, exact money and validated stage breakdowns', () => {
+  const totals = [
+    {
+      currency: 'USD',
+      amount: '0.000000000123',
+      estimated_amount: '0.000000000123',
+      reported_amount: '0',
+      calls: 2,
+      unknown_calls: 1,
+      failures: 1,
+    },
+  ];
+  const account = {
+    account_id: id,
+    label: '仕事用',
+    provider: 'gmail',
+    calls: 2,
+    unknown_calls: 1,
+    failures: 1,
+    totals,
+    stages: [{ stage: 'classification', totals }],
+  };
+  const user = {
+    user_id: id,
+    calls: 2,
+    unknown_calls: 1,
+    failures: 1,
+    totals,
+    mail_accounts: [
+      account,
+      { ...account, account_id: null, label: '', provider: '' },
+    ],
+  };
+  const parse = (value: unknown) =>
+    parseCostReport({ ...report(), users: [value], users_total: 1 });
+  assert.deepEqual(parse(user).users[0].mail_accounts, user.mail_accounts);
+  assert.deepEqual(
+    parse({ ...user, mail_accounts: undefined }).users[0].mail_accounts,
+    [],
+  );
+  for (const patch of [
+    { account_id: 'bad' },
+    { label: null },
+    { provider: 5 },
+    { calls: -1 },
+    { unknown_calls: 0.5 },
+    { failures: '1' },
+    { totals: [{ ...totals[0], amount: 1 }] },
+    { stages: [{ stage: 'other', totals }] },
+  ]) {
+    assert.throws(
+      () => parse({ ...user, mail_accounts: [{ ...account, ...patch }] }),
+      ApiError,
+    );
+  }
+  assert.throws(() => parse({ ...user, mail_accounts: null }), ApiError);
+  assert.equal(
+    parseCall({ ...call(), mail_account_id: id }).mail_account_id,
+    id,
+  );
+  assert.equal(parseCall(call()).mail_account_id, null);
+  assert.equal(
+    parseCall({ ...call(), mail_account_id: null }).mail_account_id,
+    null,
+  );
+  assert.throws(
+    () => parseCall({ ...call(), mail_account_id: 'bad' }),
+    ApiError,
+  );
+});
+
+test('mail account filters reach both costs and calls queries including unattributed calls', async () => {
+  const urls: string[] = [];
+  const api = createAIRuntimeAPI('', async (url) => {
+    urls.push(String(url));
+    return Response.json(
+      String(url).includes('/calls?') ? { calls: [], total: 0 } : report(),
+    );
+  });
+  await api.costs(
+    { month: '2026-10', user_id: id, account_id: id },
+    async () => 'token',
+  );
+  await api.calls(
+    { month: '2026-10', user_id: id, account_id: 'unattributed' },
+    async () => 'token',
+  );
+  assert.equal(
+    new URL(urls[0], 'https://test').searchParams.get('account_id'),
+    id,
+  );
+  assert.equal(
+    new URL(urls[1], 'https://test').searchParams.get('account_id'),
+    'unattributed',
+  );
+});

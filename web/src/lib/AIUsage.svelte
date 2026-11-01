@@ -11,6 +11,7 @@
     stages,
     type AIRuntimeAPI,
     type CostFilter,
+    type MailAccountCost,
   } from './airuntime-api';
   import {
     costSource,
@@ -29,6 +30,7 @@
   import { datetime, providerNames } from './model-catalog';
   import UsageOverview from './UsageOverview.svelte';
   import UsageAmounts from './UsageAmounts.svelte';
+  import UsageMailAccounts from './UsageMailAccounts.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   import MonthSelector from './MonthSelector.svelte';
@@ -43,6 +45,20 @@
   let view = $state<UsageView>(emptyUsageView());
   let controller: ReturnType<typeof createUsageController> | undefined;
   let purpose = $state<'overview' | 'users' | 'calls'>('overview');
+  let selectedAccountName = $state('');
+  let selectedAccount = $derived(
+    view.report?.users
+      .find((user) => user.user_id === view.filter.user_id)
+      ?.mail_accounts?.find(
+        (account) =>
+          (account.account_id ?? 'unattributed') === view.filter.account_id,
+      ),
+  );
+  let accountName = $derived(
+    view.filter.account_id === 'unattributed'
+      ? '接続先不明'
+      : selectedAccount?.label || selectedAccountName || '選択したメール接続',
+  );
   let busy = $derived(
     ['idle', 'loading', 'denied', 'disposed'].includes(view.status) ||
       Boolean(view.reconciling),
@@ -69,6 +85,14 @@
   function filter(patch: Partial<CostFilter>) {
     void controller?.filter(patch);
   }
+  function selectAccount(userID: string, account: MailAccountCost) {
+    selectedAccountName = account.label || '名称未設定のメール接続';
+    filter({
+      user_id: userID,
+      account_id: account.account_id ?? 'unattributed',
+    });
+    purpose = 'calls';
+  }
 </script>
 
 <section class="library-page" aria-labelledby="usage-heading" aria-busy={busy}>
@@ -76,18 +100,21 @@
     title="AI 利用原価"
     id="usage-heading"
     eyebrow="SETTINGS"
-    description="月別・使用ユーザー別に、保存された実利用の原価を確認できます。"
+    description="月別・使用ユーザー・メール接続別に、保存された実利用の原価を確認できます。"
   >
     {#snippet action()}
-      <Button wrap disabled={busy} onclick={() => controller?.load()}
-        >原価を再読み込み</Button
+      <Button
+        type="button"
+        wrap
+        disabled={busy}
+        onclick={() => controller?.load()}>原価を再読み込み</Button
       >
     {/snippet}
   </LibraryHeader>
   <LibraryPanel>
     <div class="catalog-ui usage-ui usage-body">
       <nav class="library-tabs" aria-label="原価の表示">
-        {#each [['overview', '概要'], ['users', 'ユーザー別'], ['calls', '呼出し履歴']] as [value, label]}<Button
+        {#each [['overview', '概要'], ['users', 'ユーザー・メール別'], ['calls', '呼出し履歴']] as [value, label]}<Button
             wrap
             variant="tab"
             type="button"
@@ -168,12 +195,30 @@
           </div>
         </details>
       </div>
-      {#if view.filter.user_id}<p>
-          選択中の消費利用者：<code>{view.filter.user_id}</code>
-        </p>
-        <Button wrap disabled={busy} onclick={() => filter({ user_id: '' })}
-          >利用者の絞り込みを解除</Button
-        >{/if}
+      {#if view.filter.user_id}
+        <div class="selected-consumer" aria-label="現在の集計対象">
+          <p>使用ユーザー：<code>{view.filter.user_id}</code></p>
+          {#if view.filter.account_id}<p>
+              メール接続：<strong>{accountName}</strong>
+            </p>{:else}<p>メール接続：すべて</p>{/if}
+          <ActionGroup>
+            {#if view.filter.account_id}<Button
+                type="button"
+                wrap
+                disabled={busy}
+                onclick={() => filter({ account_id: '' })}
+                >メールの絞り込みを解除</Button
+              >{/if}
+            <Button
+              type="button"
+              wrap
+              disabled={busy}
+              onclick={() => filter({ user_id: '' })}
+              >利用者の絞り込みを解除</Button
+            >
+          </ActionGroup>
+        </div>
+      {/if}
       <div
         class="feedback"
         class:has-feedback={busy || !!view.error}
@@ -199,13 +244,13 @@
       </section>
       <section
         class="library-content"
-        aria-label="使用ユーザー別"
+        aria-label="ユーザー・メール別"
         hidden={purpose !== 'users'}
       >
         {#if view.report}
-          <h2>使用ユーザー別</h2>
+          <h2>ユーザー・メール別</h2>
           <p class="muted">
-            {view.report.users_total} 人 · 呼出し 0 件の利用者も表示します。利用者を選ぶと、その利用者が消費した呼出しに絞り込みます。
+            {view.report.users_total} 人 · 呼出し 0 件の利用者も表示します。メール接続別の内訳を開くと、接続ごとの原価と呼出し履歴を確認できます。
           </p>
           <div class="usage-table">
             <DataTable responsive="cards" class={['table-AIUsage']}>
@@ -223,19 +268,36 @@
                       ><code>{user.user_id}</code></td
                     ><td data-label="呼出し / 失敗・結果不明"
                       >{user.calls} 件 / {user.failures}
-                      件</td
+                      件<span>原価不明 {user.unknown_calls} 件</span></td
                     ><td data-label="集計済みコスト"
                       ><UsageAmounts totals={user.totals} counts={false} /></td
                     ><td data-actions data-label="操作"
                       ><ActionGroup
                         ><Button
                           wrap
+                          type="button"
                           disabled={busy}
                           aria-label={`${user.user_id} の使用原価を表示`}
                           onclick={() => filter({ user_id: user.user_id })}
                           >この利用者を表示</Button
                         ></ActionGroup
                       ></td
+                    ></tr
+                  ><tr class="mail-detail-row"
+                    ><td colspan="4" data-label="メール接続別の内訳"
+                      ><details open={view.filter.user_id === user.user_id}>
+                        <summary
+                          >メール接続別の内訳（{user.mail_accounts?.length ?? 0} 接続）</summary
+                        ><UsageMailAccounts
+                          accounts={user.mail_accounts ?? []}
+                          {busy}
+                          selectedAccount={view.filter.user_id === user.user_id
+                            ? view.filter.account_id
+                            : undefined}
+                          onSelect={(account) =>
+                            selectAccount(user.user_id, account)}
+                        />
+                      </details></td
                     ></tr
                   >{:else}<tr><td colspan="4">対象の利用者はいません。</td></tr
                   >{/each}</tbody
@@ -347,12 +409,14 @@
                       ><ActionGroup
                         ><Button
                           wrap
+                          type="button"
                           disabled={busy}
                           aria-label={`${row.model_name} の原価履歴`}
                           onclick={() => controller?.revisions(row.id)}
                           >原価履歴</Button
                         >{#if row.provider === 'openrouter' && row.generation_id}<Button
                             wrap
+                            type="button"
                             disabled={busy}
                             aria-label={`${row.model_name} の原価を再照合`}
                             onclick={() => controller?.reconcile(row)}
@@ -417,6 +481,14 @@
   }
   .advanced-filters {
     align-self: end;
+  }
+  .selected-consumer {
+    padding: 1rem;
+    background: var(--color-surface-soft);
+    overflow-wrap: anywhere;
+  }
+  .mail-detail-row {
+    background: var(--color-surface-soft);
   }
   .advanced-filters > .usage-filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));

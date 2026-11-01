@@ -525,8 +525,16 @@ export function createUsageController(
     load,
     async filter(patch: Partial<CostFilter>) {
       if (disposed || view.status === 'denied' || reconciling) return;
+      const filter = { ...view.filter, ...patch };
+      if (
+        patch.user_id !== undefined &&
+        patch.user_id !== view.filter.user_id &&
+        patch.account_id === undefined
+      )
+        filter.account_id = '';
+      if (!filter.user_id) filter.account_id = '';
       publish({
-        filter: { ...view.filter, ...patch },
+        filter,
         usersOffset: 0,
         callsOffset: 0,
         report: null,

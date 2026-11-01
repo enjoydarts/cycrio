@@ -141,7 +141,7 @@ func TestMailReceivedAtMigrationPreservesLegacyAndRefusesLoss(t *testing.T) {
 	}
 	var received *time.Time
 	var version int
-	if err := f.runtime.pool.QueryRow(ctx, `SELECT received_at,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_items WHERE id=$1`, id).Scan(&received, &version); err != nil || received != nil || version != 25 {
+	if err := f.runtime.pool.QueryRow(ctx, `SELECT received_at,(SELECT max(version_id) FROM goose_db_version WHERE is_applied) FROM mail_processing_items WHERE id=$1`, id).Scan(&received, &version); err != nil || received != nil || version != latestMigrationVersion {
 		t.Fatal("upgrade fabricated historical receipt", received, version, err)
 	}
 	lease, works := processingBatch(t, f, 1)

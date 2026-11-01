@@ -124,6 +124,7 @@ type Call struct {
 	ProfileID         string     `json:"profile_id"`
 	Scope             string     `json:"scope"`
 	ConsumingUserID   *string    `json:"consuming_user_id"`
+	MailAccountID     *string    `json:"mail_account_id"`
 	InitiatedByUserID *string    `json:"initiated_by_user_id"`
 	Provider          string     `json:"provider"`
 	ModelID           string     `json:"model_id"`
@@ -147,8 +148,8 @@ type Call struct {
 	UpdatedAt         time.Time  `json:"updated_at"`
 }
 type CostFilter struct {
-	Month, UserID, Scope, Provider, ModelID, Stage string
-	Limit, Offset                                  int
+	Month, UserID, AccountID, Scope, Provider, ModelID, Stage string
+	Limit, Offset                                             int
 }
 type Totals struct {
 	Currency        *string `json:"currency"`
@@ -160,11 +161,26 @@ type Totals struct {
 	Failures        int64   `json:"failures"`
 }
 type ConsumerCost struct {
-	UserID       string   `json:"user_id"`
-	Calls        int64    `json:"calls"`
-	UnknownCalls int64    `json:"unknown_calls"`
-	Failures     int64    `json:"failures"`
-	Totals       []Totals `json:"totals"`
+	UserID       string            `json:"user_id"`
+	Calls        int64             `json:"calls"`
+	UnknownCalls int64             `json:"unknown_calls"`
+	Failures     int64             `json:"failures"`
+	Totals       []Totals          `json:"totals"`
+	MailAccounts []MailAccountCost `json:"mail_accounts"`
+}
+type MailAccountCost struct {
+	AccountID    *string     `json:"account_id"`
+	Label        string      `json:"label"`
+	Provider     string      `json:"provider"`
+	Calls        int64       `json:"calls"`
+	UnknownCalls int64       `json:"unknown_calls"`
+	Failures     int64       `json:"failures"`
+	Totals       []Totals    `json:"totals"`
+	Stages       []StageCost `json:"stages"`
+}
+type StageCost struct {
+	Stage  string   `json:"stage"`
+	Totals []Totals `json:"totals"`
 }
 type ScopeCost struct {
 	Scope  string   `json:"scope"`

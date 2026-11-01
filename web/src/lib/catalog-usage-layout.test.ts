@@ -124,9 +124,87 @@ test('usage opens the overview and keeps user UUIDs and calls in separate views'
   assert.match(html, /class="library-header/);
   assert.match(html, /class="library-panel/);
   assert.match(html, /aria-label="原価の表示"/);
-  assert.match(html, /<section[^>]*aria-label="使用ユーザー別"[^>]*hidden/);
+  assert.match(html, /<section[^>]*aria-label="ユーザー・メール別"[^>]*hidden/);
   assert.match(html, /<section[^>]*aria-label="呼出し履歴"[^>]*hidden/);
   assert.match(html, /<details[^>]*>[\s\S]*?<summary>詳細条件/);
+});
+
+test('usage expands user totals into labeled mail costs with stage details and a history action', async () => {
+  const totals = [
+    {
+      currency: 'USD',
+      amount: '0.123',
+      estimated_amount: '0.123',
+      reported_amount: '0',
+      calls: 3,
+      unknown_calls: 1,
+      failures: 1,
+    },
+  ];
+  const account = {
+    account_id: 'account-id',
+    label: '仕事用メール',
+    provider: 'gmail',
+    calls: 3,
+    unknown_calls: 1,
+    failures: 1,
+    totals,
+    stages: [
+      { stage: 'classification', totals },
+      { stage: 'extraction', totals },
+    ],
+  };
+  const state = {
+    ...emptyUsageView(),
+    status: 'ready',
+    filter: {
+      month: '2026-10',
+      user_id: 'consumer-id',
+      account_id: 'account-id',
+    },
+    report: {
+      ...report(),
+      users_total: 1,
+      users: [
+        {
+          user_id: 'consumer-id',
+          calls: 6,
+          unknown_calls: 2,
+          failures: 2,
+          totals,
+          mail_accounts: [
+            account,
+            { ...account, account_id: null, label: '', provider: '' },
+          ],
+        },
+      ],
+    },
+  };
+  const Component = (
+    await import(
+      await component('AIUsage', {
+        './ai-runtime-controller': override(
+          './ai-runtime-controller.ts',
+          'emptyUsageView',
+          state,
+        ),
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => null, onDenied: () => {} },
+  }).body;
+  assert.match(html, /ユーザー・メール別/);
+  assert.match(html, /メール接続別の内訳/);
+  assert.match(html, /仕事用メール/);
+  assert.match(html, /接続先不明/);
+  assert.match(html, /一次判定/);
+  assert.match(html, /二次処理/);
+  assert.match(html, /このメールの呼出し履歴/);
+  assert.match(html, /メールの絞り込みを解除/);
+  assert.match(html, /原価不明 1 件/);
+  assert.match(html, /失敗・結果不明 1 件/);
+  assert.doesNotMatch(html, /<h[1-6][^>]*>account-id/);
 });
 test('usage overview shows costs and all call counts before provider and model breakdown', async () => {
   const total = {

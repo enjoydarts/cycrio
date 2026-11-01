@@ -47,6 +47,9 @@ func ValidateFilter(f CostFilter) (CostFilter, error) {
 	if f.Scope != "" && f.Scope != "user" && f.Scope != "admin_test" && f.Scope != "system" {
 		return f, ErrInvalid
 	}
+	if f.AccountID != "" && (f.UserID == "" || f.AccountID != "unattributed" && !validID(f.AccountID)) {
+		return f, ErrInvalid
+	}
 	if f.Stage != "" && f.Stage != "classification" && f.Stage != "extraction" && f.Stage != "match" && f.Stage != "repair" {
 		return f, ErrInvalid
 	}

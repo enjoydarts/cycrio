@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/jackc/pgx/v5"
@@ -11,11 +12,25 @@ import (
 
 var _ airuntime.Repository = (*AIRuntimeRepository)(nil)
 
-const runtimeWhere = ` WHERE started_at >= $1 AND started_at < $2 AND ($3='' OR consuming_user_id=NULLIF($3,'')::uuid) AND ($4='' OR scope=$4) AND ($5='' OR provider=$5) AND ($6='' OR model_id=NULLIF($6,'')::uuid) AND ($7='' OR stage=$7)`
+const runtimeWhere = ` WHERE started_at >= $1 AND started_at < $2 AND ($3='' OR consuming_user_id=NULLIF($3,'')::uuid) AND ($4='' OR scope=$4) AND ($5='' OR provider=$5) AND ($6='' OR model_id=NULLIF($6,'')::uuid) AND ($7='' OR stage=$7) AND ($8='' OR ($8='unattributed' AND scope='user' AND mail_account_id IS NULL) OR mail_account_id=NULLIF(NULLIF($8,''),'unattributed')::uuid)`
 
 func runtimeFilterArgs(f airuntime.CostFilter) []any {
 	from, to, _ := airuntime.MonthRange(f.Month)
-	return []any{from, to, f.UserID, f.Scope, f.Provider, f.ModelID, f.Stage}
+	return []any{from, to, f.UserID, f.Scope, f.Provider, f.ModelID, f.Stage, f.AccountID}
+}
+
+func runtimeAccountFilter(ctx context.Context, tx pgx.Tx, f airuntime.CostFilter) error {
+	if f.AccountID == "" || f.AccountID == "unattributed" {
+		return nil
+	}
+	var id string
+	if err := tx.QueryRow(ctx, `SELECT id FROM mail_accounts WHERE owner_id=$1 AND id=$2`, f.UserID, f.AccountID).Scan(&id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return airuntime.ErrInvalid
+		}
+		return runtimeError(err)
+	}
+	return nil
 }
 
 const runtimeAggregate = `currency,COALESCE(sum(adopted_amount),0)::text,COALESCE(sum(adopted_amount) FILTER(WHERE cost_kind='estimated'),0)::text,COALESCE(sum(adopted_amount) FILTER(WHERE cost_kind='provider_reported'),0)::text,count(*),count(*) FILTER(WHERE cost_kind='unknown'),count(*) FILTER(WHERE status IN ('failed','unknown'))`
@@ -42,6 +57,9 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 		return report, runtimeError(err)
 	}
 	defer tx.Rollback(ctx)
+	if err := runtimeAccountFilter(ctx, tx, f); err != nil {
+		return report, err
+	}
 	args := runtimeFilterArgs(f)
 	if err := tx.QueryRow(ctx, `SELECT max(updated_at) FROM ai_calls`+runtimeWhere, args...).Scan(&report.UpdatedAt); err != nil {
 		return report, runtimeError(err)
@@ -94,7 +112,7 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 	}
 	// Limit users first, then aggregate only their calls. LEFT JOIN retains users
 	// with no usage and count(call.id) distinguishes them from unknown-cost calls.
-	userQuery := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + `),page AS (SELECT id FROM users WHERE ($3='' OR id=NULLIF($3,'')::uuid) ORDER BY id LIMIT $8 OFFSET $9) SELECT p.id,c.currency,COALESCE(sum(c.adopted_amount),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='estimated'),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='provider_reported'),0)::text,count(c.id),count(c.id) FILTER(WHERE c.cost_kind='unknown'),count(c.id) FILTER(WHERE c.status IN ('failed','unknown')) FROM page p LEFT JOIN filtered c ON c.consuming_user_id=p.id GROUP BY p.id,c.currency ORDER BY p.id,c.currency NULLS FIRST`
+	userQuery := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + `),page AS (SELECT id FROM users WHERE ($3='' OR id=NULLIF($3,'')::uuid) ORDER BY id LIMIT $9 OFFSET $10) SELECT p.id,c.currency,COALESCE(sum(c.adopted_amount),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='estimated'),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='provider_reported'),0)::text,count(c.id),count(c.id) FILTER(WHERE c.cost_kind='unknown'),count(c.id) FILTER(WHERE c.status IN ('failed','unknown')) FROM page p LEFT JOIN filtered c ON c.consuming_user_id=p.id GROUP BY p.id,c.currency ORDER BY p.id,c.currency NULLS FIRST`
 	rows, err = tx.Query(ctx, userQuery, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return report, runtimeError(err)
@@ -112,7 +130,7 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 		}
 		i := len(report.Users) - 1
 		if i < 0 || report.Users[i].UserID != id {
-			report.Users = append(report.Users, airuntime.ConsumerCost{UserID: id, Totals: []airuntime.Totals{}})
+			report.Users = append(report.Users, airuntime.ConsumerCost{UserID: id, Totals: []airuntime.Totals{}, MailAccounts: []airuntime.MailAccountCost{}})
 			i++
 		}
 		u := &report.Users[i]
@@ -128,7 +146,68 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 	if err != nil {
 		return report, runtimeError(err)
 	}
+	if err := runtimeMailAccountCosts(ctx, tx, f, &report); err != nil {
+		return report, err
+	}
 	return report, runtimeCommit(ctx, tx)
+}
+
+func runtimeMailAccountCosts(ctx context.Context, tx pgx.Tx, f airuntime.CostFilter, report *airuntime.CostReport) error {
+	if len(report.Users) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(report.Users))
+	users := map[string]int{}
+	for i, u := range report.Users {
+		ids = append(ids, u.UserID)
+		users[u.UserID] = i
+	}
+	// Restrict the grouped ledger to the selected user page in PostgreSQL.
+	query := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + ` AND scope='user' AND consuming_user_id=ANY($9::uuid[])), named AS (SELECT c.*,COALESCE(a.label,'') AS account_label,COALESCE(a.provider,'') AS account_provider FROM filtered c LEFT JOIN mail_accounts a ON a.owner_id=c.consuming_user_id AND a.id=c.mail_account_id) SELECT consuming_user_id,mail_account_id,account_label,account_provider,COALESCE(stage,''),GROUPING(stage)=1,` + runtimeAggregate + ` FROM named GROUP BY GROUPING SETS ((consuming_user_id,mail_account_id,account_label,account_provider,currency),(consuming_user_id,mail_account_id,account_label,account_provider,stage,currency)) ORDER BY consuming_user_id,mail_account_id NULLS LAST,GROUPING(stage) DESC,stage,currency NULLS FIRST`
+	rows, err := tx.Query(ctx, query, append(runtimeFilterArgs(f), ids)...)
+	if err != nil {
+		return runtimeError(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var user, label, provider, stage string
+		var account *string
+		var total bool
+		var t airuntime.Totals
+		if err := rows.Scan(&user, &account, &label, &provider, &stage, &total, &t.Currency, &t.Amount, &t.EstimatedAmount, &t.ReportedAmount, &t.Calls, &t.UnknownCalls, &t.Failures); err != nil {
+			return runtimeError(err)
+		}
+		if err := normalizeRuntimeTotals(&t); err != nil {
+			return err
+		}
+		u := &report.Users[users[user]]
+		i := len(u.MailAccounts) - 1
+		if i < 0 || !sameRuntimeAccount(u.MailAccounts[i].AccountID, account) {
+			u.MailAccounts = append(u.MailAccounts, airuntime.MailAccountCost{AccountID: account, Label: label, Provider: provider, Totals: []airuntime.Totals{}, Stages: []airuntime.StageCost{}})
+			i++
+		}
+		a := &u.MailAccounts[i]
+		if total {
+			a.Calls += t.Calls
+			a.UnknownCalls += t.UnknownCalls
+			a.Failures += t.Failures
+			a.Totals = append(a.Totals, t)
+		} else {
+			i := len(a.Stages) - 1
+			if i < 0 || a.Stages[i].Stage != stage {
+				a.Stages = append(a.Stages, airuntime.StageCost{Stage: stage, Totals: []airuntime.Totals{}})
+				i++
+			}
+			a.Stages[i].Totals = append(a.Stages[i].Totals, t)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return runtimeError(err)
+	}
+	return nil
+}
+func sameRuntimeAccount(a, b *string) bool {
+	return a == nil && b == nil || a != nil && b != nil && *a == *b
 }
 func (r *AIRuntimeRepository) Calls(ctx context.Context, f airuntime.CostFilter) (airuntime.CallPage, error) {
 	result := airuntime.CallPage{Calls: []airuntime.Call{}}
@@ -141,11 +220,14 @@ func (r *AIRuntimeRepository) Calls(ctx context.Context, f airuntime.CostFilter)
 		return result, runtimeError(err)
 	}
 	defer tx.Rollback(ctx)
+	if err := runtimeAccountFilter(ctx, tx, f); err != nil {
+		return result, err
+	}
 	args := runtimeFilterArgs(f)
 	if err := tx.QueryRow(ctx, `SELECT count(*) FROM ai_calls`+runtimeWhere, args...).Scan(&result.Total); err != nil {
 		return result, runtimeError(err)
 	}
-	rows, err := tx.Query(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls`+runtimeWhere+` ORDER BY started_at DESC,id DESC LIMIT $8 OFFSET $9`, append(args, f.Limit, f.Offset)...)
+	rows, err := tx.Query(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls`+runtimeWhere+` ORDER BY started_at DESC,id DESC LIMIT $9 OFFSET $10`, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return result, runtimeError(err)
 	}

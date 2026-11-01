@@ -13,12 +13,12 @@ import (
 	"regexp"
 )
 
-const runtimeCallColumns = `id,operation_id,run_id,profile_id,scope,consuming_user_id,initiated_by_user_id,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status,outcome,http_status,generation_id,actual_model_id,actual_provider,usage_doc,cost_kind,adopted_amount::text,currency,cost_reason,revision_id,started_at,finished_at,updated_at`
+const runtimeCallColumns = `id,operation_id,run_id,profile_id,scope,consuming_user_id,initiated_by_user_id,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status,outcome,http_status,generation_id,actual_model_id,actual_provider,usage_doc,cost_kind,adopted_amount::text,currency,cost_reason,revision_id,started_at,finished_at,updated_at,mail_account_id`
 
 func scanRuntimeCall(row interface{ Scan(...any) error }) (airuntime.Call, error) {
 	var c airuntime.Call
 	var usage []byte
-	err := row.Scan(&c.ID, &c.OperationID, &c.RunID, &c.ProfileID, &c.Scope, &c.ConsumingUserID, &c.InitiatedByUserID, &c.Provider, &c.ModelID, &c.ModelName, &c.RequestedModelID, &c.CredentialID, &c.PriceID, &c.Stage, &c.AttemptNo, &c.Status, &c.Outcome, &c.HTTPStatus, &c.GenerationID, &c.ActualModelID, &c.ActualProvider, &usage, &c.Cost.Status, &c.Cost.Amount, &c.Cost.Currency, &c.Cost.Reason, &c.RevisionID, &c.StartedAt, &c.FinishedAt, &c.UpdatedAt)
+	err := row.Scan(&c.ID, &c.OperationID, &c.RunID, &c.ProfileID, &c.Scope, &c.ConsumingUserID, &c.InitiatedByUserID, &c.Provider, &c.ModelID, &c.ModelName, &c.RequestedModelID, &c.CredentialID, &c.PriceID, &c.Stage, &c.AttemptNo, &c.Status, &c.Outcome, &c.HTTPStatus, &c.GenerationID, &c.ActualModelID, &c.ActualProvider, &usage, &c.Cost.Status, &c.Cost.Amount, &c.Cost.Currency, &c.Cost.Reason, &c.RevisionID, &c.StartedAt, &c.FinishedAt, &c.UpdatedAt, &c.MailAccountID)
 	if err != nil {
 		return c, runtimeError(err)
 	}

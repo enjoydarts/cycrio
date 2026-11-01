@@ -364,6 +364,36 @@ test('usage latest filters win, reset independent offsets, and exact money stays
 });
 test('month initializes in Asia/Tokyo across the UTC month boundary', () =>
   assert.equal(monthJST(new Date('2026-10-31T15:01:00Z')), '2026-11'));
+
+test('mail account filters follow their user, survive month changes and reset both pages', async () => {
+  const u = createUsageController(
+    fakeAPI(),
+    token,
+    () => {},
+    () => {},
+  );
+  const other = '00000000-0000-4000-8000-000000000002';
+  await u.filter({ user_id: id, account_id: other });
+  await u.usersPage(50);
+  await u.callsPage(100);
+  await u.filter({ month: '2026-12' });
+  assert.equal(u.state().filter.account_id, other);
+  assert.equal(u.state().filter.user_id, id);
+  assert.equal(u.state().usersOffset, 0);
+  assert.equal(u.state().callsOffset, 0);
+  await u.filter({ user_id: other });
+  assert.equal(u.state().filter.account_id, '');
+  await u.filter({ account_id: 'unattributed' });
+  assert.equal(u.state().filter.account_id, 'unattributed');
+  await u.filter({ account_id: '' });
+  assert.equal(u.state().filter.user_id, other);
+  await u.filter({ account_id: id });
+  await u.filter({ user_id: '' });
+  assert.equal(u.state().filter.account_id, '');
+  await u.filter({ account_id: id });
+  assert.equal(u.state().filter.account_id, '');
+  u.dispose();
+});
 test('stopping active execution preserves dirty input with its original baseline', async () => {
   const c = createRuntimeController(
     fakeAPI({
