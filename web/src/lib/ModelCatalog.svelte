@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import { onMount, tick } from 'svelte';
@@ -291,31 +292,15 @@
             <p class="muted price-note">
               料金は参考値です。条件別料金・割引は詳細で確認できます。「不明」は無料を意味しません。
             </p>
-            <ActionGroup
-              class={[
-                'actions pagination',
-                'part-ModelCatalog-actions',
-                'part-ModelCatalog-pagination',
-              ]}
-            >
-              <Button
-                wrap
-                disabled={busy || !(view.filter.offset ?? 0)}
-                onclick={() =>
-                  controller?.loadCatalog({
-                    ...view.filter,
-                    offset: Math.max(0, (view.filter.offset ?? 0) - 20),
-                  })}>前の 20 件</Button
-              ><Button
-                wrap
-                disabled={busy || (view.filter.offset ?? 0) + 20 >= view.total}
-                onclick={() =>
-                  controller?.loadCatalog({
-                    ...view.filter,
-                    offset: (view.filter.offset ?? 0) + 20,
-                  })}>次の 20 件</Button
-              >
-            </ActionGroup>
+            <Pagination
+              total={view.total}
+              offset={view.filter.offset ?? 0}
+              limit={20}
+              disabled={busy}
+              label="モデルカタログのページ"
+              onchange={(next) =>
+                controller?.loadCatalog({ ...view.filter, offset: next })}
+            />
           </div>
           {#if view.selected}
             {@const model = view.selected}

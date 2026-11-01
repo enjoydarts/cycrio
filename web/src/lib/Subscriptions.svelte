@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -358,13 +359,14 @@
             · {view.page.offset + 1}〜{view.page.offset +
               view.page.subscriptions.length} 件{/if}</span
         >
-        <div>
-          {#if filter.offset > 0}<a
-              href={link({ offset: Math.max(0, filter.offset - 20) })}>前へ</a
-            >{/if}{#if filter.offset + 20 < view.page.total}<a
-              href={link({ offset: filter.offset + 20 })}>次へ</a
-            >{/if}
-        </div>
+        <Pagination
+          total={view.page.total}
+          offset={view.page.offset}
+          limit={view.page.limit}
+          disabled={frozen}
+          label="サブスク一覧のページ"
+          href={(next) => link({ offset: next })}
+        />
       </footer>{/if}
   </LibraryPanel>
   <div class="footnote">
@@ -546,16 +548,14 @@
   }
   .list-footer {
     display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
     justify-content: space-between;
     align-items: center;
     padding: 16px 22px;
     border-top: 1px solid var(--color-border);
     font-size: 11px;
     color: var(--color-muted);
-  }
-  .list-footer div {
-    display: flex;
-    gap: 20px;
   }
   .footnote {
     display: flex;

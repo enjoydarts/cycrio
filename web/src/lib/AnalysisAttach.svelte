@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
@@ -191,17 +192,14 @@
     </ul>
     <ActionGroup class={['pager', 'part-AnalysisAttach-pager']}>
       <span>全 {view.page.total} 件</span>
-      <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
-        <Button
-          wrap
-          disabled={!offset || saving}
-          onclick={() => load(Math.max(0, offset - 20))}>前へ</Button
-        ><Button
-          wrap
-          disabled={offset + 20 >= view.page.total || saving}
-          onclick={() => load(offset + 20)}>次へ</Button
-        >
-      </ActionGroup>
+      <Pagination
+        total={view.page.total}
+        offset={view.page.offset}
+        limit={view.page.limit}
+        disabled={saving}
+        label="紐付け先サブスクのページ"
+        onchange={load}
+      />
     </ActionGroup>{/if}
   {#if conflict}<div class="notice" role="alert">
       <p>

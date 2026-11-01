@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import DataTable from './DataTable.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -248,27 +249,14 @@
               >
             </DataTable>
           </div>
-          <ActionGroup
-            class={[
-              'actions pagination',
-              'part-AIUsage-actions',
-              'part-AIUsage-pagination',
-            ]}
-          >
-            <Button
-              wrap
-              disabled={busy || view.usersOffset === 0}
-              onclick={() =>
-                controller?.usersPage(Math.max(0, view.usersOffset - 50))}
-              >利用者の前の50件</Button
-            ><Button
-              wrap
-              disabled={busy ||
-                view.usersOffset + 50 >= view.report.users_total}
-              onclick={() => controller?.usersPage(view.usersOffset + 50)}
-              >利用者の次の50件</Button
-            >
-          </ActionGroup>
+          <Pagination
+            total={view.report.users_total}
+            offset={view.usersOffset}
+            limit={50}
+            disabled={busy}
+            label="使用ユーザーのページ"
+            onchange={(next) => controller?.usersPage(next)}
+          />
         {/if}
       </section>
       <section
@@ -384,26 +372,14 @@
               >
             </DataTable>
           </div>
-          <ActionGroup
-            class={[
-              'actions pagination',
-              'part-AIUsage-actions',
-              'part-AIUsage-pagination',
-            ]}
-          >
-            <Button
-              wrap
-              disabled={busy || view.callsOffset === 0}
-              onclick={() =>
-                controller?.callsPage(Math.max(0, view.callsOffset - 50))}
-              >呼出しの前の50件</Button
-            ><Button
-              wrap
-              disabled={busy || view.callsOffset + 50 >= view.calls.total}
-              onclick={() => controller?.callsPage(view.callsOffset + 50)}
-              >呼出しの次の50件</Button
-            >
-          </ActionGroup>{/if}
+          <Pagination
+            total={view.calls.total}
+            offset={view.callsOffset}
+            limit={50}
+            disabled={busy}
+            label="AI 呼出し履歴のページ"
+            onchange={(next) => controller?.callsPage(next)}
+          />{/if}
         {#if view.revisionCallID}<section class="box" aria-label="原価履歴">
             <h4>使用量・原価の版履歴（最新 50 件）</h4>
             <details>

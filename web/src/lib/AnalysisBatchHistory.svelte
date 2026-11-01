@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
@@ -113,16 +114,13 @@
     />
     <ActionGroup class={['pager', 'part-AnalysisBatchHistory-pager']}>
       <span>全 {view.page.total} 件</span>
-      <ActionGroup class={['actions', 'part-AnalysisBatchHistory-actions']}>
-        {#if offset > 0}<Button
-            wrap
-            disabled={!!saving}
-            onclick={() => (offset = Math.max(0, offset - 20))}>前へ</Button
-          >{/if}{#if offset + 20 < view.page.total}<Button
-            wrap
-            disabled={!!saving}
-            onclick={() => (offset += 20)}>次へ</Button
-          >{/if}
-      </ActionGroup>
+      <Pagination
+        total={view.page.total}
+        offset={view.page.offset}
+        limit={view.page.limit}
+        disabled={!!saving}
+        label="解析履歴のページ"
+        onchange={(next) => (offset = next)}
+      />
     </ActionGroup>{/if}
 </div>

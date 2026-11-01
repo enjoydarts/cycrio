@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import ActionLink from './ActionLink.svelte';
@@ -315,24 +316,17 @@
                 />{:else}<p class="empty">
                   このページに {view.values.currency} の支払いはありません。
                 </p>{/if}
-              <nav class="pager" aria-label="支払いのページ">
-                <Button
-                  wrap
-                  type="button"
-                  disabled={view.payments.offset === 0}
-                  onclick={() =>
-                    controller?.loadPayments(
-                      Math.max(0, view.payments!.offset - 20),
-                    )}>前の支払い</Button
-                ><span>全 {view.payments.total} 件</span><Button
-                  wrap
-                  type="button"
-                  disabled={view.payments.offset + 20 >= view.payments.total}
-                  onclick={() =>
-                    controller?.loadPayments(view.payments!.offset + 20)}
-                  >次の支払い</Button
-                >
-              </nav>{/if}
+              <div class="pager">
+                <span>全 {view.payments.total} 件</span>
+                <Pagination
+                  total={view.payments.total}
+                  offset={view.payments.offset}
+                  limit={view.payments.limit}
+                  disabled={frozen}
+                  label="支払いのページ"
+                  onchange={(next) => controller?.loadPayments(next)}
+                />
+              </div>{/if}
           {/if}
         </section>{/if}
     </fieldset>
@@ -390,25 +384,17 @@
               label="この履歴に根拠を追加"
               disabled={frozen}
             />
-            <nav class="pager" aria-label="重複候補のページ">
-              <Button
-                wrap
-                type="button"
-                disabled={frozen || view.duplicates.offset === 0}
-                onclick={() =>
-                  controller?.preview(
-                    Math.max(0, view.duplicates!.offset - 20),
-                  )}>前の候補</Button
-              ><span>全 {view.duplicates.total} 件</span><Button
-                wrap
-                type="button"
-                disabled={frozen ||
-                  view.duplicates.offset + 20 >= view.duplicates.total}
-                onclick={() =>
-                  controller?.preview(view.duplicates!.offset + 20)}
-                >次の候補</Button
-              >
-            </nav>
+            <div class="pager">
+              <span>全 {view.duplicates.total} 件</span>
+              <Pagination
+                total={view.duplicates.total}
+                offset={view.duplicates.offset}
+                limit={view.duplicates.limit}
+                disabled={frozen}
+                label="重複候補のページ"
+                onchange={(next) => controller?.preview(next)}
+              />
+            </div>
             <label class="check"
               ><input
                 type="checkbox"
@@ -500,22 +486,17 @@
             label="この履歴を選ぶ"
             disabled={frozen}
           />{:else}<p class="empty">履歴はありません。</p>{/if}
-        <nav class="pager" aria-label="既存履歴のページ">
-          <Button
-            wrap
-            type="button"
-            disabled={frozen || view.records.offset === 0}
-            onclick={() =>
-              controller?.loadRecords(Math.max(0, view.records!.offset - 20))}
-            >前の履歴</Button
-          ><span>全 {view.records.total} 件</span><Button
-            wrap
-            type="button"
-            disabled={frozen || view.records.offset + 20 >= view.records.total}
-            onclick={() => controller?.loadRecords(view.records!.offset + 20)}
-            >次の履歴</Button
-          >
-        </nav>{/if}
+        <div class="pager">
+          <span>全 {view.records.total} 件</span>
+          <Pagination
+            total={view.records.total}
+            offset={view.records.offset}
+            limit={view.records.limit}
+            disabled={frozen}
+            label="既存履歴のページ"
+            onchange={(next) => controller?.loadRecords(next)}
+          />
+        </div>{/if}
     </section>{/if}
   {#if reuse && source}<aside class="billing-confirm">
       <h3>選択した履歴へ根拠を紐付ける</h3>

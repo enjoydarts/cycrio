@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -252,17 +253,13 @@
           class={['library-footer', 'part-AnalysisInbox-library-footer']}
         >
           <span>確認待ち {view.page.total.toLocaleString('ja-JP')} 件</span>
-          <ActionGroup class={['actions', 'part-AnalysisInbox-actions']}>
-            {#if filter.offset > 0}<ActionLink
-                wrap
-                class={['button']}
-                href={link(Math.max(0, filter.offset - 20))}>前へ</ActionLink
-              >{/if}{#if filter.offset + 20 < view.page.total}<ActionLink
-                wrap
-                class={['button']}
-                href={link(filter.offset + 20)}>次へ</ActionLink
-              >{/if}
-          </ActionGroup>
+          <Pagination
+            total={view.page.total}
+            offset={view.page.offset}
+            limit={view.page.limit}
+            label="確認待ち候補のページ"
+            href={(next) => link(next)}
+          />
         </ActionGroup>
       {:else if view.status === 'loading'}<p
           class="notice library-content"

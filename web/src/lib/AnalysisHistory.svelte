@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import Button from './Button.svelte';
   import { onMount } from 'svelte';
@@ -245,17 +246,14 @@
         class={['library-footer', 'part-AnalysisHistory-library-footer']}
       >
         <span>取り込み {count(view.page.total)} 回 · 実行日時は日本時間</span>
-        <ActionGroup class={['actions', 'part-AnalysisHistory-actions']}>
-          <Button
-            wrap
-            disabled={busy || offset === 0}
-            onclick={() => paginate(Math.max(0, offset - 20))}>前へ</Button
-          ><Button
-            wrap
-            disabled={busy || offset + 20 >= view.page.total}
-            onclick={() => paginate(offset + 20)}>次へ</Button
-          >
-        </ActionGroup>
+        <Pagination
+          total={view.page.total}
+          offset={view.page.offset}
+          limit={view.page.limit}
+          disabled={busy}
+          label="取り込み履歴のページ"
+          onchange={paginate}
+        />
       </ActionGroup>
     {:else if view.status === 'loading'}<p
         class="notice library-content"

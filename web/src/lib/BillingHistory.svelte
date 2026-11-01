@@ -1,7 +1,6 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
-  import ActionGroup from './ActionGroup.svelte';
-  import ActionLink from './ActionLink.svelte';
   import { onMount, untrack } from 'svelte';
   import { page } from '$app/state';
   import { beforeNavigate, goto } from '$app/navigation';
@@ -329,29 +328,21 @@
       </p>{:else}<p class="empty">
         履歴はまだありません。確認した明細を記録してください。
       </p>{/if}
-    <nav class="pager" aria-label="履歴のページ">
-      <ActionLink
-        wrap
-        class={['button']}
-        href={link({ offset: Math.max(0, filter.offset - 20) })}
-        aria-disabled={filter.offset === 0}
-        onclick={(event) => {
-          if (filter.offset === 0) event.preventDefault();
-        }}>前のページ</ActionLink
-      ><span
+    <div class="pager">
+      <span
         >全 {view.page.total} 件{view.page.events.length
           ? ` · ${filter.offset + 1}〜${filter.offset + view.page.events.length} 件`
           : ''}</span
-      ><ActionLink
-        wrap
-        class={['button']}
-        href={link({ offset: filter.offset + 20 })}
-        aria-disabled={filter.offset + 20 >= view.page.total}
-        onclick={(event) => {
-          if (filter.offset + 20 >= view.page!.total) event.preventDefault();
-        }}>次のページ</ActionLink
       >
-    </nav>
+      <Pagination
+        total={view.page.total}
+        offset={view.page.offset}
+        limit={view.page.limit}
+        disabled={busy}
+        label="履歴のページ"
+        href={(next) => link({ offset: next })}
+      />
+    </div>
   {/if}
   {#if subscription.sources.length}<details class="section">
       <summary>契約に紐付いた AI 抽出から履歴に記録</summary>

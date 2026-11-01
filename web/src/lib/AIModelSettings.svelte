@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Pagination from './Pagination.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import Button from './Button.svelte';
   import { onMount } from 'svelte';
@@ -237,29 +238,12 @@
       `${stage === 'primary' ? '一次判定' : '二次処理'}に ${model.display_name} を選択`}
     onselect={choose}
   />
-  <ActionGroup
-    class={[
-      'actions pagination',
-      'part-AIModelSettings-actions',
-      'part-AIModelSettings-pagination',
-    ]}
-  >
-    <Button
-      wrap
-      disabled={busy || !(view.filter.offset ?? 0)}
-      onclick={() =>
-        controller?.search({
-          ...view.filter,
-          offset: Math.max(0, (view.filter.offset ?? 0) - 20),
-        })}>前の 20 件</Button
-    ><Button
-      wrap
-      disabled={busy || (view.filter.offset ?? 0) + 20 >= view.total}
-      onclick={() =>
-        controller?.search({
-          ...view.filter,
-          offset: (view.filter.offset ?? 0) + 20,
-        })}>次の 20 件</Button
-    >
-  </ActionGroup>
+  <Pagination
+    total={view.total}
+    offset={view.filter.offset ?? 0}
+    limit={20}
+    disabled={busy}
+    label="設定用モデル一覧のページ"
+    onchange={(next) => controller?.search({ ...view.filter, offset: next })}
+  />
 </section>
