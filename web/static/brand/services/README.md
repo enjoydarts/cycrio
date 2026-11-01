@@ -8,6 +8,8 @@ Amazon Music（Unlimited・Primeを含む）、Kindle（Unlimitedを含む）、
 
 メール接続はYahoo!メール（日本）、Yahoo Mail（海外）、iCloud Mail、AOL Mail、Zoho Mail、GMX.com、mail.comの公式配信画像を補完しています。iCloud Mailは公式メールページのiCloudアイコンを使用します。Yahoo! JAPANの赤い画像と海外Yahooの画像は分離しています。IMAP接続では保存済みのサーバー名を既知の接続先と完全一致で照合し、個人の表示名やログイン名をロゴ検索へ送信しません。
 
+国内プロバイダーのOCN、BIGLOBE、So-net、@niftyも、公式メールサイトまたは公式サポートサイトが配信するアイコンを使用しています。利用プラン・IMAP申し込み・接続許可等の条件は接続プリセットの設定案内と公式ヘルプリンクで確認できます。
+
 補完画像について包括的な再利用ライセンスの付与は確認していません。各画像・商標の権利は各権利者に帰属します。これらを CC0 として配布するものではありません。製品識別に使用し、公式提携や権利者の推奨を示すものではありません。Prime Video は専用サイトのアイコン、Microsoft 365 は Office の製品アイコン、Adobe Creative Cloud は Adobe 企業サイトのアイコンで補完しています。Gmail は公式サイト配信のカラーアイコンを優先しています。
 
 通常カタログはビルド用の `simple-icons@16.36.0` からローカル生成します。Simple Icons 自体の CC0 ライセンスを生成先 `/service-logos/LICENSE.txt` に、個別ブランドの公式出典・ライセンス等の metadata を `/service-logos/catalog.json` に保存します。Simple Icons の CC0 はブランドの商標権等を許諾するものではありません。詳細は [Simple Icons の免責事項](https://github.com/simple-icons/simple-icons/blob/16.36.0/DISCLAIMER.md) を参照してください。

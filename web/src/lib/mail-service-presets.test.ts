@@ -1,6 +1,44 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+for (const [id, host, condition] of [
+  ['ocn', 'imap.ocn.ne.jp', /メールパスワード/],
+  ['biglobe', 'mail.biglobe.ne.jp', /スタンダード/],
+  ['sonet', 'imap.so-net.ne.jp', /有料.*IMAP|IMAP.*有料/],
+  ['nifty', 'imap.nifty.com', /メールソフト接続許可/],
+] as const) {
+  test(`domestic mail preset ${id} preserves official endpoint, requirements and strict account recognition`, async () => {
+    const { mailServicePresets, mailServiceForAccount } =
+      await import('./mail-service-presets.ts');
+    const { resolveMailLogo } = await import('./service-logos.ts');
+    const preset = mailServicePresets.find((p) => p.id === id);
+    assert.ok(preset, id);
+    assert.equal(preset.provider, 'imap');
+    assert.equal(preset.host, host);
+    assert.equal(preset.port, 993);
+    assert.match(preset.setup, condition);
+    assert.match(preset.helpUrl!, /^https:\/\//);
+    assert.equal(mailServiceForAccount({ provider: 'imap', host }).id, id);
+    assert.equal(resolveMailLogo('imap', host)?.slug, id);
+    assert.match(
+      resolveMailLogo('imap', host)!.src,
+      new RegExp(`^/brand/services/${id}\\.`),
+    );
+    for (const lookalike of [
+      `${host}.example.com`,
+      `fake-${host}`,
+      `https://${host}`,
+      `${host}:993`,
+    ]) {
+      assert.equal(
+        mailServiceForAccount({ provider: 'imap', host: lookalike }).id,
+        'imap',
+      );
+      assert.equal(resolveMailLogo('imap', lookalike), null);
+    }
+  });
+}
+
 test('major IMAP presets have separate Yahoo Japan and global endpoints with official setup instructions', async () => {
   const { mailServicePresets } = await import('./mail-service-presets.ts');
   for (const [id, host] of [

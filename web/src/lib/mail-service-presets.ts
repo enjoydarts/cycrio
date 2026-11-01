@@ -60,6 +60,50 @@ export const mailServicePresets: readonly MailServicePreset[] = [
     helpUrl: 'https://help.yahoo.com/kb/SLN4075.html',
   },
   {
+    id: 'ocn',
+    label: 'OCNメール',
+    provider: 'imap',
+    host: 'imap.ocn.ne.jp',
+    port: 993,
+    logoSlug: 'ocn',
+    setup:
+      '完全なメールアドレスとメールパスワードを入力してください。インターネット接続用のID・パスワードとは異なります。',
+    helpUrl: 'https://support.ocn.ne.jp/personal/purpose/detail/pid2990021006/',
+  },
+  {
+    id: 'biglobe',
+    label: 'BIGLOBEメール',
+    provider: 'imap',
+    host: 'mail.biglobe.ne.jp',
+    port: 993,
+    logoSlug: 'biglobe',
+    setup:
+      'スタンダードプランまたはスタンダード接続契約者プランが必要です。ライトプランでは利用できません。完全なメールアドレスとBIGLOBEパスワードを入力してください。',
+    helpUrl: 'https://faq.support.biglobe.ne.jp/faq_detail.html?faq_id=12403',
+  },
+  {
+    id: 'sonet',
+    label: 'So-netメール',
+    provider: 'imap',
+    host: 'imap.so-net.ne.jp',
+    port: 993,
+    logoSlug: 'sonet',
+    setup:
+      '有料のIMAPサービスへ事前に申し込んでください。完全なメールアドレスとメールアドレスパスワードを入力します。メールサービス（G）は対象外です。',
+    helpUrl: 'https://www.so-net.ne.jp/option/mail/imap/',
+  },
+  {
+    id: 'nifty',
+    label: '@niftyメール',
+    provider: 'imap',
+    host: 'imap.nifty.com',
+    port: 993,
+    logoSlug: 'nifty',
+    setup:
+      'メール設定一覧で「メールソフト接続許可（IMAP）」を「許可中」にしてください。完全なメールアドレスとメールパスワードを入力します。',
+    helpUrl: 'https://mail.nifty.com/cs/mail-faq/detail/200324000061/',
+  },
+  {
     id: 'icloudmail',
     label: 'iCloud Mail',
     provider: 'imap',

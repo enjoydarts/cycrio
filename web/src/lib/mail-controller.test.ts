@@ -86,6 +86,49 @@ test('preset selection leaves existing accounts and unknown choices untouched', 
   assert.equal(c.state().form?.app_password, '');
 });
 
+for (const [id, host] of [
+  ['ocn', 'imap.ocn.ne.jp'],
+  ['biglobe', 'mail.biglobe.ne.jp'],
+  ['sonet', 'imap.so-net.ne.jp'],
+  ['nifty', 'imap.nifty.com'],
+]) {
+  test(`domestic ${id} preset saves through generic IMAP without carrying old credentials`, async () => {
+    let sent: any;
+    const { controller: c } = setup({
+      list: async () => [],
+      save: async (_id, input) => {
+        sent = input;
+        return account({
+          provider: 'imap',
+          host: input.host,
+          port: input.port,
+        });
+      },
+    });
+    await c.refresh();
+    c.newAccount();
+    c.edit({
+      label: '個人メール',
+      login: 'old-user',
+      app_password: 'old-password',
+    });
+    c.chooseService(id);
+    assert.equal(c.state().form?.host, host);
+    assert.equal(c.state().form?.login, '');
+    assert.equal(c.state().form?.app_password, '');
+    c.edit({
+      login: 'synthetic-mail-login',
+      app_password: 'synthetic-password',
+    });
+    await c.save();
+    assert.equal(sent.provider, 'imap');
+    assert.equal(sent.host, host);
+    assert.equal(sent.port, 993);
+    assert.equal(sent.login, 'synthetic-mail-login');
+    assert.equal(sent.app_password, 'synthetic-password');
+  });
+}
+
 test('folder display and search use Japanese labels while fallback names remain searchable', () => {
   const folders = [
     {

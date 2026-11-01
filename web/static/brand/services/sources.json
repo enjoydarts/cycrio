@@ -408,5 +408,37 @@
     "sourceUrl": "https://s.uicdn.com/mail-int/mailint/1.513.0/assets/favicon.ico",
     "sha256": "33ca72f1eac56793d1fd811189cedef98004a067c85b1143083b564814a4b0db",
     "credit": "mail.com"
+  },
+  {
+    "slug": "ocn",
+    "title": "OCN",
+    "file": "ocn.png",
+    "sourceUrl": "https://support.ocn.ne.jp/image/ci_02.png",
+    "sha256": "c528fa4cd99d47840ea6943c3500e28cc0d21a415e649868245e1bf0d8f6e9d7",
+    "credit": "OCN"
+  },
+  {
+    "slug": "biglobe",
+    "title": "BIGLOBE",
+    "file": "biglobe.png",
+    "sourceUrl": "https://email.biglobe.ne.jp/favicons/apple-touch-icon.png",
+    "sha256": "fd3e2f6d000575844910a025f400512dcb92a8967a975a945bc252a81f341af8",
+    "credit": "BIGLOBE"
+  },
+  {
+    "slug": "sonet",
+    "title": "So-net",
+    "file": "sonet.png",
+    "sourceUrl": "https://www.so-net.ne.jp/assets/images/apple-touch-icon.png",
+    "sha256": "67d812a5f61a1dd72bf04847a9fc06d0b7fa4c0533702e669dd86603bb9079e8",
+    "credit": "Sony Network Communications So-net"
+  },
+  {
+    "slug": "nifty",
+    "title": "@nifty",
+    "file": "nifty.ico",
+    "sourceUrl": "https://mail.nifty.com/mailer/images/favicon.ico",
+    "sha256": "7f2bff677d18b76fdc882d627e949692ef198f944e1e9d373a5e3d54012c6a88",
+    "credit": "NIFTY"
   }
 ]
