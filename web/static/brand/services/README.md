@@ -4,7 +4,7 @@
 
 国内サービスは楽天マガジン、楽天ミュージック、LINE MUSIC、DMM TV、Lemino、TELASA、FOD、WOWOW、radiko、NHKオンデマンド、pixivFANBOX、マネーフォワード ME、freee、ABEMA、ニコニコ、noteを補完しています。楽天とLINEは企業ブランドと各製品の画像を分けています。既存カタログに含まれるサービスも、ここでは公式サイトのカラー画像を優先しています。
 
-Amazon Music（Unlimited・Primeを含む）、Kindle（Unlimitedを含む）、Amazon Kids+、Amazon Photos、Audible、Amazon Prime、Prime Gaming、Amazon Lunaも個別の公式配信画像を使います。Amazon共通画像とPrime専用画像は分離し、白いPrime・Photosの画像は濃い背景に表示します。音楽・読書のプランはそれぞれの製品ロゴを共用します。
+Amazon Music（Unlimited・Primeを含む）、Kindle（Kindle+・旧Kindle Unlimitedを含む）、Amazon Kids+、Amazon Photos、Audible、Amazon Prime、Prime Gaming、Amazon Lunaも個別の公式配信画像を使います。Amazon共通画像とPrime専用画像は分離し、白いPrime・Photosの画像は濃い背景に表示します。音楽・読書のプランはそれぞれの製品ロゴを共用します。Kindle+はKindle Plus・キンドルプラスや新旧名称の併記にも対応し、登録済みのサービス名を書き換えずに共通のKindle画像を表示します。名称変更は[Amazon公式案内](https://www.aboutamazon.jp/news/guide/how-to-buy-kindle-books)で確認しています。
 
 メール接続はYahoo!メール（日本）、Yahoo Mail（海外）、iCloud Mail、AOL Mail、Zoho Mail、GMX.com、mail.comの公式配信画像を補完しています。iCloud Mailは公式メールページのiCloudアイコンを使用します。Yahoo! JAPANの赤い画像と海外Yahooの画像は分離しています。IMAP接続では保存済みのサーバー名を既知の接続先と完全一致で照合し、個人の表示名やログイン名をロゴ検索へ送信しません。
 
