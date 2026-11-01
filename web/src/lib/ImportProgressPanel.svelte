@@ -2,6 +2,10 @@
   import type { MailAutomationState } from './mail-automation-api.ts';
   import { inclusiveEnd } from './mail-automation-api.ts';
   import { processingDate, processingReasons } from './mail-processing-text.ts';
+  import {
+    automationProgressStatus,
+    automationProgressDescription,
+  } from './mail-automation-progress.ts';
   let {
     entries,
     compact = false,
@@ -12,24 +16,16 @@
   const reason = (code: string) =>
     (processingReasons as Record<string, string>)[code] ??
     '接続や送信条件を確認してください。';
-  const status = (s: MailAutomationState) =>
-    s.state === 'stopped'
-      ? '停止中'
-      : s.state === 'needs_confirmation'
-        ? '条件の再確認が必要'
-        : s.retry_at
-          ? '接続の再試行待ち'
-          : !s.progress.bootstrap_complete
-            ? '取り込み準備中'
-            : !s.progress.historical_complete
-              ? 'メール探索中'
-              : s.progress.pending_count
-                ? '解析中'
-                : '新着メールを確認中';
+  const modeNames: Record<string, string> = {
+    bootstrap: '初回同期の準備',
+    historical: '指定期間のメール探索',
+    incremental: '新着メールの確認',
+    manual: '手動のメール探索',
+  };
   const runNames: Record<string, string> = {
     queued: '待機中',
     leased: '開始待ち',
-    running: '探索中',
+    running: '実行中',
     completed: '完了',
     limited: '続きの処理へ',
     failed: '失敗',
@@ -46,7 +42,7 @@
     {#each entries as { label, state: s } (s.account_id)}<li>
         <div class="heading">
           <h3>{label}</h3>
-          <span class="badge">{status(s)}</span>
+          <span class="badge">{automationProgressStatus(s)}</span>
         </div>
         {#if s.scope}<p class="secondary">
             対象期間：{s.scope.since} 〜 {inclusiveEnd(
@@ -70,9 +66,7 @@
               </div>{/each}
           </dl>{/if}
         <p class="secondary">
-          {s.progress.historical_complete
-            ? '指定期間の探索は完了しました。'
-            : '指定期間の探索は未完了です。総件数は探索が終わるまで確定しません。'}
+          {automationProgressDescription(s)}
         </p>
         <a href={'/import?account_id=' + s.account_id}
           >取り込みの設定・再開を確認</a
@@ -82,13 +76,13 @@
             <ul>
               {#each s.recent_sync_runs as run (run.id)}<li>
                   <p>
-                    {processingDate(run.created_at)}（日本時間） · {runNames[
-                      run.state
-                    ] ?? '状態を確認'}
+                    {processingDate(run.created_at)}（日本時間） · {modeNames[
+                      run.mode
+                    ] ?? 'メール確認'} · {runNames[run.state] ?? '状態を確認'}
                   </p>
-                  <p>
-                    確認 {run.examined_count} 件 · 発見 {run.added_count} 件
-                  </p>
+                  {#if run.mode !== 'bootstrap'}<p>
+                      確認 {run.examined_count} 件 · 発見 {run.added_count} 件
+                    </p>{/if}
                   {#if run.error_code}<p class="warning">
                       {reason(run.error_code)}
                     </p>{/if}

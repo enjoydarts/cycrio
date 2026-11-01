@@ -15,6 +15,10 @@
     emptyAutomationView,
   } from './mail-automation-controller.ts';
   import { processingDate, processingErrors } from './mail-processing-text.ts';
+  import {
+    automationProgressStatus,
+    automationProgressDescription,
+  } from './mail-automation-progress.ts';
   import { automationSetupLink } from './setup-readiness.ts';
   import MailProcessingModels from './MailProcessingModels.svelte';
   let {
@@ -193,15 +197,7 @@
     </header>
     {#if s}
       <p class="status" role="status">
-        {s.state === 'enabled'
-          ? s.retry_at
-            ? '接続を自動で再試行します'
-            : '自動処理中'
-          : s.state === 'stopped'
-            ? '停止中'
-            : s.state === 'needs_confirmation'
-              ? '条件の再確認が必要です'
-              : '初回の期間と送信条件を確認してください'}
+        {automationProgressStatus(s)}
       </p>
       {#if s.state === 'enabled' && s.retry_at}<p>
           メールの確認を一時的に待機しています。次の再試行：{processingDate(
@@ -237,9 +233,7 @@
           </div>
         </dl>
         <p class="muted">
-          {s.progress.historical_complete
-            ? '初回期間のメール探索は完了しました。解析結果は確認待ちに追加されます。'
-            : '初回期間のメールを順次探しています。探索が終わるまで総件数は確定しません。'}
+          {automationProgressDescription(s)}
         </p>
         <p class="muted">
           最終メール確認：{s.last_success_at

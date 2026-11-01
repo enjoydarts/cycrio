@@ -1,0 +1,28 @@
+import type { MailAutomationState } from './mail-automation-api.ts';
+
+export function automationProgressStatus(s: MailAutomationState): string {
+  if (s.state === 'stopped') return '停止中';
+  if (s.state === 'needs_confirmation') return '条件の再確認が必要';
+  if (s.state === 'not_configured') return '取り込み開始前';
+  if (s.retry_at) return '接続の再試行待ち';
+  if (!s.progress.bootstrap_complete) return '初回同期の準備中';
+  if (!s.progress.historical_complete) return 'メール探索中';
+  if (s.progress.pending_count) return '解析中';
+  return '新着メールを確認中';
+}
+
+export function automationProgressDescription(s: MailAutomationState): string {
+  if (s.state === 'stopped')
+    return '取り込み・解析は停止中です。再開すると進捗を引き継ぎます。';
+  if (s.state === 'needs_confirmation')
+    return '条件を確認して開始するまで、取り込み・解析は再開しません。';
+  if (s.state === 'not_configured')
+    return '初回の期間と送信条件を確認して取り込みを開始してください。';
+  if (s.retry_at)
+    return '接続確認を一時的に待機しています。進捗は保持しています。';
+  if (!s.progress.bootstrap_complete)
+    return 'メールサーバーの同期位置を確認しています。準備後に指定期間のメール探索と AI 解析が順次始まります。表示が0件でも、メールがないことを意味しません。';
+  if (!s.progress.historical_complete)
+    return '指定期間のメールを順次探しています。探索が終わるまで総件数は確定しません。';
+  return '指定期間の探索は完了しました。解析結果は確認待ちに追加されます。';
+}

@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
 import { render } from 'svelte/server';
 import { overviewFixture } from './overview-fixtures.ts';
+import { gettingStartedFixture } from './getting-started-fixtures.ts';
 const moduleURL = (code: string) =>
   `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 async function componentURL(name: string): Promise<string> {
@@ -164,7 +165,7 @@ test('import progress is visible before any AI run exists and shows discovery st
     entries: [{ label: 'Personal', state }],
   });
   assert.match(visible(body), /Personal/);
-  assert.match(visible(body), /取り込み準備中/);
+  assert.match(visible(body), /初回同期の準備中/);
   assert.match(visible(body), /解析待ち/);
   assert.match(visible(body), /期間全体の件数制限ではありません/);
   body = await html('ImportProgressPanel', {
@@ -194,6 +195,94 @@ test('import progress is visible before any AI run exists and shows discovery st
   assert.match(visible(body), /応答が取得上限を超え/);
   assert.match(body, /探索履歴/);
   assert.doesNotMatch(body, /実行履歴はありません/);
+});
+test('bootstrap preparation explains zero counts and separates preparation runs from email discovery', async () => {
+  const state = gettingStartedFixture().automation!;
+  state.id = 'automation';
+  state.state = 'enabled';
+  state.recent_sync_runs = [
+    {
+      id: 'bootstrap',
+      account_id: state.account_id,
+      mode: 'bootstrap',
+      state: 'running',
+      since: '',
+      before: '',
+      max_messages: 100,
+      examined_count: 0,
+      added_count: 0,
+      folder_count: 1,
+      completed_folders: 0,
+      error_code: '',
+      created_at: '2026-10-29T00:00:00Z',
+      started_at: '2026-10-29T00:00:01Z',
+      finished_at: null,
+    },
+  ];
+  for (const compact of [false, true]) {
+    const body = await html('ImportProgressPanel', {
+      entries: [{ label: 'Outlook', state }],
+      compact,
+    });
+    assert.match(visible(body), /初回同期の準備中/);
+    assert.match(visible(body), /同期位置/);
+    assert.match(visible(body), /0件でも.*メールがない/);
+    assert.doesNotMatch(visible(body), /メール探索中|解析中/);
+    assert.match(body, /初回同期の準備 · 実行中/);
+    assert.doesNotMatch(body, /確認 0 件 · 発見 0 件/);
+  }
+});
+test('import progress prioritizes stopped, confirmation and retry states over bootstrap activity', async () => {
+  const state = { ...gettingStartedFixture().automation!, id: 'automation' };
+  for (const [override, expected] of [
+    [{ state: 'stopped', reason: 'response_too_large' }, '停止中'],
+    [{ state: 'needs_confirmation' }, '条件の再確認が必要'],
+    [
+      { state: 'enabled', retry_at: '2026-10-29T01:00:00Z' },
+      '接続の再試行待ち',
+    ],
+  ] as const) {
+    const body = visible(
+      await html('ImportProgressPanel', {
+        entries: [{ label: 'Outlook', state: { ...state, ...override } }],
+      }),
+    );
+    assert.match(body, new RegExp(expected));
+    assert.doesNotMatch(body, /初回同期の準備中|同期位置を確認しています/);
+  }
+});
+test('import progress advances from bootstrap to discovery, analysis and new mail without stale preparation', async () => {
+  const state = {
+    ...gettingStartedFixture().automation!,
+    id: 'automation',
+    state: 'enabled',
+  };
+  for (const [historical, pending, expected] of [
+    [false, 0, 'メール探索中'],
+    [true, 2, '解析中'],
+    [true, 0, '新着メールを確認中'],
+  ] as const) {
+    const body = visible(
+      await html('ImportProgressPanel', {
+        entries: [
+          {
+            label: 'Outlook',
+            state: {
+              ...state,
+              progress: {
+                ...state.progress,
+                bootstrap_complete: true,
+                historical_complete: historical,
+                pending_count: pending,
+              },
+            },
+          },
+        ],
+      }),
+    );
+    assert.match(body, new RegExp(expected));
+    assert.doesNotMatch(body, /初回同期の準備中|同期位置/);
+  }
 });
 test('history rows retain visible failures and stop actions with optional run breakdowns', async () => {
   const body = await html('AnalysisHistoryPanel', {

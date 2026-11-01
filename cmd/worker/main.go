@@ -36,7 +36,7 @@ func main() {
 	}
 }
 
-func run() error {
+func run() (result error) {
 	keyringPath := flag.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	flag.Parse()
 	keyring, err := secretstore.Load(*keyringPath)
@@ -98,15 +98,18 @@ func run() error {
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
 		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
-	worker, err := client.NewWorker(name, hatchet.WithWorkflows(task, catalogTask, aiTask, mailTask, discoverTask, processingTask), hatchet.WithSlots(2))
+	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask})
+	cleanup, err := startWorkerGroups(groups, func(group workerGroup) (workerStarter, error) {
+		return client.NewWorker(group.name, hatchet.WithWorkflows(group.workflows...), hatchet.WithSlots(group.slots))
+	})
 	if err != nil {
-		return errors.New("Hatchet worker registration failed")
+		return err
 	}
-	cleanup, err := worker.Start()
-	if err != nil {
-		return errors.New("Hatchet worker start failed")
+	defer func() { result = errors.Join(result, cleanup()) }()
+	workerNames := make([]string, 0, len(groups))
+	for _, group := range groups {
+		workerNames = append(workerNames, group.name)
 	}
-	defer func() { _ = cleanup() }()
 	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
 	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
 	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
@@ -135,7 +138,7 @@ func run() error {
 			return errors.New("database unavailable")
 		}
 		workers, err := client.Workers().List(ctx)
-		if err != nil || workers.Rows == nil || !infrastructure.WorkerReady(name, *workers.Rows, time.Now()) {
+		if err != nil || workers.Rows == nil || !infrastructure.WorkersReady(workerNames, *workers.Rows, time.Now()) {
 			return errors.New("worker unavailable")
 		}
 		return nil
