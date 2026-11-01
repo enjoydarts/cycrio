@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import type { ProcessingEvent } from './mail-processing-api.ts';
   import { eventNames, cycle, money } from './daily-text.ts';
   let { event }: { event: ProcessingEvent } = $props();
@@ -7,7 +8,10 @@
 <dl class="field-grid">
   <div>
     <dt>サービス</dt>
-    <dd>{event.service ?? 'サービス名未確認'}</dd>
+    <dd class="service-heading">
+      <BrandIcon name={event.service} size="small" />{event.service ??
+        'サービス名未確認'}
+    </dd>
   </div>
   <div>
     <dt>プラン</dt>
@@ -66,3 +70,11 @@
     <dd>{cycle(event.interval_unit, event.interval_count)}</dd>
   </div>
 </dl>
+
+<style>
+  .service-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+</style>

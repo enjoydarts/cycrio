@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import DataTable from './DataTable.svelte';
   import Button from './Button.svelte';
@@ -28,8 +29,12 @@
     ><tbody>
       {#each page.candidates as candidate (`${candidate.result_id}/${candidate.event_index}`)}
         <tr
-          ><td
-            ><strong>{candidate.event.service ?? 'サービス名未確認'}</strong
+          ><td data-primary
+            ><strong class="service-heading"
+              ><BrandIcon
+                name={candidate.event.service}
+                size="small"
+              />{candidate.event.service ?? 'サービス名未確認'}</strong
             ><span class="secondary"
               >{candidate.event.plan ?? 'プラン不明'} · {eventNames[
                 candidate.event.event_type
@@ -65,6 +70,11 @@
   </div>{/if}
 
 <style>
+  .service-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   :global(.part-CandidatesPanel-candidate-table) th:first-child {
     width: 50%;
   }

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
   import DataTable from './DataTable.svelte';
@@ -113,9 +114,10 @@
                 ></thead
               ><tbody
                 >{#each report.upcoming as item (item.id)}<tr
-                    ><td
-                      ><strong
-                        ><a href={`/subscriptions/${item.id}`}>{item.service}</a
+                    ><td data-primary
+                      ><strong class="service-heading"
+                        ><BrandIcon name={item.service} size="small" />
+                        <a href={`/subscriptions/${item.id}`}>{item.service}</a
                         ></strong
                       ><span class="secondary"
                         >{item.plan ??
@@ -199,6 +201,11 @@
 </section>
 
 <style>
+  .service-heading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .overview {
     min-width: 0;
   }

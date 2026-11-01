@@ -21,6 +21,8 @@ build/
 dist/
 bin/
 coverage/
+web/static/service-logos/
+web/src/lib/generated/service-logo-index.ts
 *.test
 *.out
 

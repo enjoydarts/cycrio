@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -179,7 +180,7 @@
                 latest = null;
                 error = null;
               }}
-            /><span
+            /><BrandIcon name={s.service} size="small" /><span
               ><strong>{s.service}</strong><span class="secondary"
                 >{s.plan ?? 'プラン不明'} · {money(s.amount, s.currency)} · {s.status ===
                 'active'

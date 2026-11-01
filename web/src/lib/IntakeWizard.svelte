@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
   import { onMount } from 'svelte';
@@ -180,7 +181,7 @@
                   pendingChoice = a.id;
                   controller?.choose(a.id);
                 }}
-                ><span class="source-icon" aria-hidden="true">@</span><span
+                ><BrandIcon provider={a.provider} /><span
                   ><strong>{a.label}</strong><small
                     >{a.provider === 'gmail'
                       ? 'Gmail / Google Workspace'
@@ -213,7 +214,12 @@
       {:else if view.step === 2 && account}
         <section class="stage">
           <h2>取り込むフォルダを選ぶ</h2>
-          <p>{account.label}</p>
+          <p class="chosen-account">
+            <BrandIcon
+              provider={account.provider}
+              size="small"
+            />{account.label}
+          </p>
           {#if account.state !== 'ready' || probePending(account.latest_probe) || view.mail.uncertain}<div
               class="notice"
             >
@@ -394,12 +400,11 @@
     color: var(--color-muted);
     margin-top: 0.3rem;
   }
-  .source-icon {
-    background: var(--color-surface-soft);
-    padding: 0.5rem;
-    border-radius: 0.6rem;
-    font-size: 1.4rem;
-    color: var(--color-action);
+  .chosen-account {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    overflow-wrap: anywhere;
   }
   :global(.part-IntakeWizard-add) {
     width: 100%;

@@ -63,14 +63,18 @@ test('both themes keep normal text, actions and errors above AA contrast against
     }
   }
 });
-test('mail provider initials use the contrast-checked action foreground and background together', async () => {
+test('brand icons preserve original colors on a white plate and use contrast-checked fallback tokens', async () => {
   const source = await readFile(
-    new URL('./AppShell.svelte', import.meta.url),
+    new URL('./BrandIcon.svelte', import.meta.url),
     'utf8',
   );
-  const icon = source.match(/\.mail-logo\.fastmail\s*\{([^}]+)\}/)![1];
-  assert.match(icon, /color:\s*var\(--color-on-action\)/);
-  assert.match(icon, /background:\s*var\(--color-action\)/);
+  const icon = source.match(/\.brand-icon\s*\{([^}]+)\}/)![1];
+  assert.match(icon, /color:\s*var\(--color-action\)/);
+  assert.match(icon, /background:\s*var\(--color-surface-soft\)/);
+  const plate = source.match(/\.brand-icon\.branded\s*\{([^}]+)\}/)![1];
+  assert.match(plate, /background:\s*#fff(?:fff)?;/);
+  assert.match(source, /object-fit:\s*contain/);
+  assert.doesNotMatch(source, /filter:|mix-blend-mode:/);
 });
 test('legacy settings typography and action colors use readable shared tokens', async () => {
   for (const filename of [

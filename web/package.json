@@ -13,9 +13,13 @@
     "core-js@3.47.0": false
   },
   "scripts": {
-    "test": "node --test src/lib/*.test.ts",
+    "pretest": "node scripts/generate-service-logos.mjs",
+    "test": "node --test scripts/*.test.mjs src/lib/*.test.ts",
+    "predev": "node scripts/generate-service-logos.mjs",
     "dev": "vite dev --host 0.0.0.0 --port 5173",
+    "precheck": "node scripts/generate-service-logos.mjs",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "prebuild": "node scripts/generate-service-logos.mjs",
     "build": "vite build",
     "lint": "prettier --check .",
     "format": "prettier --write ."
@@ -31,6 +35,7 @@
     "@types/node": "26.6.5",
     "prettier": "3.9.10",
     "prettier-plugin-svelte": "4.1.1",
+    "simple-icons": "16.36.0",
     "svelte": "5.57.2",
     "svelte-check": "4.7.7",
     "typescript": "6.0.3",

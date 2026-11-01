@@ -1,0 +1,170 @@
+[
+  {
+    "slug": "amazon",
+    "title": "Amazon",
+    "file": "amazonprime.ico",
+    "sourceUrl": "https://www.amazon.com/favicon.ico",
+    "sha256": "5866636f18764cd66366ae6eb682e972b4eae1771512cd76b304b6dd3c0f1d2d",
+    "credit": "Amazon"
+  },
+  {
+    "slug": "adobe",
+    "title": "Adobe",
+    "file": "adobecreativecloud.ico",
+    "sourceUrl": "https://www.adobe.com/favicon.ico",
+    "sha256": "3dcf3ebe68870413aa75129af059ed0a0bbcbaf1c0995508953a3828de4d880b",
+    "credit": "Adobe"
+  },
+  {
+    "slug": "slack",
+    "title": "Slack",
+    "file": "slack.ico",
+    "sourceUrl": "https://slack.com/favicon.ico",
+    "sha256": "4fd3cddc170cb38ff02baae1fb10f032b1c91c5f6ed02258e8d28a3f1bdd9054",
+    "credit": "Slack"
+  },
+  {
+    "slug": "nintendo",
+    "title": "Nintendo",
+    "file": "nintendo.ico",
+    "sourceUrl": "https://www.nintendo.com/favicon.ico",
+    "sha256": "5289f7b89eba936a06c69ad896a45901fd4e60b41cd765028b997f97203f9a7c",
+    "credit": "Nintendo"
+  },
+  {
+    "slug": "xbox",
+    "title": "Xbox",
+    "file": "xbox.ico",
+    "sourceUrl": "https://www.xbox.com/favicon.ico",
+    "sha256": "22823e24a35a71c3055b9a56d9d673388f69f1049b0015cfa0eecf3aee974cab",
+    "credit": "Microsoft Xbox"
+  },
+  {
+    "slug": "hulu",
+    "title": "Hulu",
+    "file": "hulu.png",
+    "sourceUrl": "https://www.hulu.jp/favicon.ico",
+    "sha256": "a51d1e3b0a6be38ef09e095790497c588097ea03f39c1331c049663a2395d34b",
+    "credit": "Hulu Japan"
+  },
+  {
+    "slug": "unext",
+    "title": "U-NEXT",
+    "file": "unext.ico",
+    "sourceUrl": "https://video.unext.jp/favicon.ico",
+    "sha256": "0ea9e7b47c4ec0b5ea23e493599eb53d1373b937fd00bccce957fe44a6770619",
+    "credit": "U-NEXT"
+  },
+  {
+    "slug": "danimestore",
+    "title": "dアニメストア",
+    "file": "danimestore.ico",
+    "sourceUrl": "https://animestore.docomo.ne.jp/favicon.ico",
+    "sha256": "6beb292f3030d216d113bf54583e9e2cf00423e077e159fc5263fd20e8600f3c",
+    "credit": "NTT DOCOMO dアニメストア"
+  },
+  {
+    "slug": "gmail",
+    "title": "Gmail",
+    "file": "gmail.ico",
+    "sourceUrl": "https://ssl.gstatic.com/ui/v1/icons/mail/rfr/gmail.ico",
+    "sha256": "2a5c83dd7f4634810218ba70e3fe9550fb5d887e349cb46d77419eb1c74bc299",
+    "credit": "Google"
+  },
+  {
+    "slug": "outlook",
+    "title": "Outlook",
+    "file": "outlook.svg",
+    "sourceUrl": "https://res.cdn.office.net/files/fabric-cdn-prod_20230815.002/assets/brand-icons/product/svg/outlook_48x1.svg",
+    "sha256": "0884e0478f7e073163febe67eaff20be97ae38373b0866c9668f81c2f6bd26c2",
+    "credit": "Microsoft"
+  },
+  {
+    "slug": "fastmail",
+    "title": "Fastmail",
+    "file": "fastmail.ico",
+    "sourceUrl": "https://www.fastmail.com/favicon.ico",
+    "sha256": "646794381c85c482f1632791c0f740ebe51246ffba1aafdee7fc18283fdf609b",
+    "credit": "Fastmail"
+  },
+  {
+    "slug": "openai",
+    "title": "OpenAI",
+    "file": "openai.ico",
+    "sourceUrl": "https://cdn.oaistatic.com/assets/favicon-eex17e9e.ico",
+    "sha256": "def0730c050afcd86acd21bd1edf54f0ee3638c9e642f0e4107f7d666bc292a9",
+    "credit": "OpenAI"
+  },
+  {
+    "slug": "googleone",
+    "title": "Google One",
+    "file": "googleone.png",
+    "sourceUrl": "https://one.google.com/about/public/favicon-32x32.png",
+    "sha256": "fbe79ef18c43d57c2a638fdf888f34ae7ab3b6017594bde1e62af68c5a4a1c88",
+    "credit": "Google"
+  },
+  {
+    "slug": "googleworkspace",
+    "title": "Google Workspace",
+    "file": "googleworkspace.ico",
+    "sourceUrl": "https://workspace.google.com/favicon.ico",
+    "sha256": "6da5620880159634213e197fafca1dde0272153be3e4590818533fab8d040770",
+    "credit": "Google"
+  },
+  {
+    "slug": "amazonprime",
+    "title": "Amazon Prime",
+    "file": "amazonprime.ico",
+    "sourceUrl": "https://www.amazon.com/favicon.ico",
+    "sha256": "5866636f18764cd66366ae6eb682e972b4eae1771512cd76b304b6dd3c0f1d2d",
+    "credit": "Amazon (corporate site icon)"
+  },
+  {
+    "slug": "amazonprimevideo",
+    "title": "Amazon Prime Video",
+    "file": "amazonprimevideo.ico",
+    "sourceUrl": "https://www.primevideo.com/favicon.ico",
+    "sha256": "be49c84879168dead59c66fa0777e1307bd2ab889a9600c497f64c7428bc3c81",
+    "credit": "Amazon (Prime Video site icon)"
+  },
+  {
+    "slug": "amazonwebservices",
+    "title": "Amazon Web Services",
+    "file": "amazonwebservices.ico",
+    "sourceUrl": "https://aws.amazon.com/favicon.ico",
+    "sha256": "4f56a75f3860c7136ab3a07347e57a7ef06dd84d324d19af0dac6b5f3268e023",
+    "credit": "Amazon Web Services"
+  },
+  {
+    "slug": "microsoft365",
+    "title": "Microsoft 365",
+    "file": "microsoft365.svg",
+    "sourceUrl": "https://res.cdn.office.net/files/fabric-cdn-prod_20230815.002/assets/brand-icons/product/svg/office_48x1.svg",
+    "sha256": "de7f30877534dd6734da6c8899c7a3fc1662a28c76fa3cd2e68b2a3aeea0c3a2",
+    "credit": "Microsoft (Office product icon)"
+  },
+  {
+    "slug": "onedrive",
+    "title": "OneDrive",
+    "file": "onedrive.svg",
+    "sourceUrl": "https://res.cdn.office.net/files/fabric-cdn-prod_20230815.002/assets/brand-icons/product/svg/onedrive_48x1.svg",
+    "sha256": "393fe3509c33de52e4dcfb7aece1a5ea41d8114ac1be0d68b13948cc28962f6a",
+    "credit": "Microsoft"
+  },
+  {
+    "slug": "adobecreativecloud",
+    "title": "Adobe Creative Cloud",
+    "file": "adobecreativecloud.ico",
+    "sourceUrl": "https://www.adobe.com/favicon.ico",
+    "sha256": "3dcf3ebe68870413aa75129af059ed0a0bbcbaf1c0995508953a3828de4d880b",
+    "credit": "Adobe (corporate site icon)"
+  },
+  {
+    "slug": "disneyplus",
+    "title": "Disney+",
+    "file": "disneyplus.ico",
+    "sourceUrl": "https://www.disneyplus.com/favicon.ico",
+    "sha256": "9ed7d0dea2d3bdf1e60430939e9d99e5f8cdfec196def106c56c486b4d743e21",
+    "credit": "Disney"
+  }
+]

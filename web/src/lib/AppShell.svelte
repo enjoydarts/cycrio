@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
@@ -280,12 +281,7 @@
                 ? 'location'
                 : undefined}
             >
-              <span
-                class="mail-logo"
-                class:fastmail={account.provider === 'fastmail'}
-                aria-hidden="true"
-                >{providers[account.provider].slice(0, 1)}</span
-              >
+              <BrandIcon provider={account.provider} size="small" />
               <span class="source-meta"
                 ><strong>{providers[account.provider]}</strong><small
                   >{account.label}</small
@@ -504,21 +500,6 @@
     color: var(--color-rail-muted);
     font-size: 10px;
     overflow-wrap: anywhere;
-  }
-  .mail-logo {
-    display: grid;
-    place-items: center;
-    background: #fff;
-    color: #4269ba;
-    width: 29px;
-    height: 29px;
-    border-radius: 8px;
-    flex-shrink: 0;
-    font-weight: 800;
-  }
-  .mail-logo.fastmail {
-    color: var(--color-on-action);
-    background: var(--color-action);
   }
   .source-state {
     width: 6px;

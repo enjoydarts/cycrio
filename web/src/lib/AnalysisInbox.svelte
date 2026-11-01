@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import Pagination from './Pagination.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
@@ -204,7 +205,12 @@
           </p>
           <ul class="compact-list">
             {#each accounts as item}<li>
-                <a href={link(0, item.id)}>{item.label}</a>
+                <a class="account-choice" href={link(0, item.id)}
+                  ><BrandIcon
+                    provider={item.provider}
+                    size="small"
+                  />{item.label}</a
+                >
               </li>{/each}
           </ul>
           {#if loadedAccounts && !accounts.length}<ActionLink
@@ -288,6 +294,11 @@
 </Modal>
 
 <style>
+  .account-choice {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
   .review-note {
     font-size: 12px;
     color: var(--color-muted);

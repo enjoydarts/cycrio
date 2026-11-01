@@ -1,4 +1,5 @@
 <script lang="ts">
+  import BrandIcon from './BrandIcon.svelte';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
@@ -287,6 +288,7 @@
         <ul>
           {#each view.accounts as row (row.id)}<li>
               <div class="mail-account-row">
+                <BrandIcon provider={row.provider} size="medium" />
                 <div class="mail-account-name">
                   <strong>{row.label}</strong><span
                     >{providerNames[row.provider]} · 対象 {row.folders.filter(
@@ -416,7 +418,12 @@
             </p>
             <div class="mail-fields">
               <label for="mail-provider"
-                >メールサービス<select
+                ><strong class="mail-provider-heading"
+                  ><BrandIcon
+                    provider={view.form.provider}
+                    size="small"
+                  />メールサービス</strong
+                ><select
                   id="mail-provider"
                   value={view.form.provider}
                   disabled={busy || !!account}
@@ -854,6 +861,11 @@
   .mail-fields label:first-child {
     grid-column: 1 / -1;
   }
+  .mail-provider-heading {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
   .mail-fields label,
   .mail-filter {
     display: flex;
@@ -982,11 +994,14 @@
     }
     .mail-account-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-columns: auto minmax(0, 1fr) auto;
       gap: 10px;
     }
     .mail-account-name {
-      grid-column: 1 / -1;
+      grid-column: 2 / -1;
+    }
+    .mail-badge {
+      grid-column: 2;
     }
   }
 </style>
