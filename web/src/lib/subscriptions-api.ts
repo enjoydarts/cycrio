@@ -52,7 +52,13 @@ export type SubscriptionFilter = {
   account_id?: string;
   q: string;
   status: 'all' | 'active' | 'ended' | 'unknown';
-  sort: 'next_billing' | 'service' | 'updated';
+  sort:
+    | 'next_billing'
+    | 'next_billing_desc'
+    | 'service'
+    | 'service_desc'
+    | 'updated'
+    | 'updated_asc';
   limit: number;
   offset: number;
 };
@@ -216,14 +222,21 @@ export function createSubscriptionsAPI(
       const query = input(
         () =>
           new URLSearchParams({
-            q: text(filter.q, 200, true),
+            q: text(filter.q.trim(), 200, true),
             status: choice(filter.status, [
               'all',
               'active',
               'ended',
               'unknown',
             ]),
-            sort: choice(filter.sort, ['next_billing', 'service', 'updated']),
+            sort: choice(filter.sort, [
+              'next_billing',
+              'next_billing_desc',
+              'service',
+              'service_desc',
+              'updated',
+              'updated_asc',
+            ]),
             limit: String(integer(filter.limit, 1, 100)),
             offset: String(integer(filter.offset)),
           }),

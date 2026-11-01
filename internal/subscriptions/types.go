@@ -89,6 +89,8 @@ type Page struct {
 }
 type AnalysisFilter struct {
 	AccountID string
+	Query     string
+	Sort      string
 	State     string
 	Review    string
 	Limit     int

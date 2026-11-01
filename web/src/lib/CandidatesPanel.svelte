@@ -10,10 +10,14 @@
     page,
     onSelect,
     onDismiss = () => {},
+    filtered = false,
+    onClear = () => {},
   }: {
     page: CandidatePage;
     onSelect: (candidate: Candidate) => void;
     onDismiss?: (candidate: Candidate) => void;
+    filtered?: boolean;
+    onClear?: () => void;
   } = $props();
 </script>
 
@@ -69,8 +73,16 @@
     >
   </DataTable>
 {:else}<div class="empty library-content">
-    <h2>確認待ちの候補はありません</h2>
-    <p>メールから契約情報が見つかると、ここで確認・承認できます。</p>
+    <h2>
+      {filtered
+        ? '条件に一致する候補はありません'
+        : '確認待ちの候補はありません'}
+    </h2>
+    {#if filtered}<p>サービス名やプラン名を変更して検索してください。</p>
+      <Button wrap type="button" onclick={onClear}>条件を解除する</Button>
+    {:else}<p>
+        メールから契約情報が見つかると、ここで確認・承認できます。
+      </p>{/if}
   </div>{/if}
 
 <style>

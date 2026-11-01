@@ -114,7 +114,13 @@ test('library summary shows counts without monthly payment totals and source sco
     scoped,
     /href="\/import\?account_id=11111111-1111-4111-8111-111111111111"/,
   );
-  assert.match(scoped, /status=active[^"<>]*account_id=11111111/);
+  const statusLink = [...scoped.matchAll(/href="([^\"]+)"/g)]
+    .map((match) => new URL(match[1].replaceAll('&amp;', '&'), 'https://test'))
+    .find((url) => url.searchParams.get('status') === 'active');
+  assert.equal(
+    statusLink?.searchParams.get('account_id'),
+    '11111111-1111-4111-8111-111111111111',
+  );
   assert.doesNotMatch(
     await libraryHTML('', false),
     /今月の支払実績|すべて<span>/,

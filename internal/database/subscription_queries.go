@@ -24,7 +24,7 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 		}
 	}
 	// Search text is literal; '%' and '_' in service names are ordinary characters.
-	search := "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(f.Query)) + "%"
+	search := subscriptionSearch(f.Query)
 	const where = ` WHERE owner_id=$1 AND deleted_at IS NULL AND ($2 IN ('','all') OR status=$2) AND (service ILIKE $3 OR COALESCE(plan,'') ILIKE $3)
 	 AND ($4='' OR EXISTS (
 	  SELECT 1 FROM subscription_sources src
@@ -38,10 +38,16 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 	}
 	order := `next_billing_date ASC NULLS LAST,service ASC,id ASC`
 	switch f.Sort {
+	case "next_billing_desc":
+		order = `next_billing_date DESC NULLS LAST,service ASC,id ASC`
 	case "service":
 		order = `service ASC,id ASC`
+	case "service_desc":
+		order = `service DESC,id ASC`
 	case "updated":
-		order = `updated_at DESC,id DESC`
+		order = `updated_at DESC NULLS LAST,id DESC`
+	case "updated_asc":
+		order = `updated_at ASC NULLS LAST,id ASC`
 	}
 	rows, e := tx.Query(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions`+where+` ORDER BY `+order+` LIMIT $5 OFFSET $6`, owner, f.Status, search, f.AccountID, f.Limit, f.Offset)
 	if e != nil {
@@ -66,4 +72,8 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 		}
 	}
 	return out, nil
+}
+
+func subscriptionSearch(query string) string {
+	return "%" + strings.NewReplacer(`\`, `\\`, "%", `\%`, "_", `\_`).Replace(strings.TrimSpace(query)) + "%"
 }

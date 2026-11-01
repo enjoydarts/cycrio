@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"slices"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -110,5 +111,6 @@ func subscriptionFilter(raw string) (subscriptions.Filter, error) {
 	if e != nil || subscriptions.InvalidFilter(f) {
 		return f, subscriptions.ErrInvalid
 	}
+	f.Query = strings.TrimSpace(f.Query)
 	return f, nil
 }

@@ -15,6 +15,7 @@
     createApprovalAPI,
     type Candidate,
     type CandidatePage,
+    type CandidateFilter,
   } from './approval-api.ts';
   import { createFeed, type FeedView } from './daily-controller.ts';
   import type { MailAccount } from './mail-api.ts';
@@ -23,6 +24,12 @@
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   import CandidatesPanel from './CandidatesPanel.svelte';
+  import ListSearchSort from './ListSearchSort.svelte';
+  import {
+    candidateFilter,
+    candidateSorts,
+    listURL,
+  } from './list-search-sort.ts';
   import CandidateDetail from './CandidateDetail.svelte';
   import AnalysisHistory from './AnalysisHistory.svelte';
   import Modal from './Modal.svelte';
@@ -44,14 +51,7 @@
     error: null,
   });
   let controller =
-    $state<
-      ReturnType<
-        typeof createFeed<
-          CandidatePage,
-          { account_id: string; limit: number; offset: number }
-        >
-      >
-    >();
+    $state<ReturnType<typeof createFeed<CandidatePage, CandidateFilter>>>();
   let abort: AbortController | undefined,
     disposed = false;
   const history = $derived(
@@ -60,20 +60,13 @@
   );
   const account = $derived(page.url.searchParams.get('account_id') ?? '');
   const currentAccount = $derived(accounts.find((a) => a.id === account));
-  const filter = $derived({
-    account_id: account,
-    limit: 20,
-    offset: /^\d+$/.test(page.url.searchParams.get('offset') ?? '')
-      ? Number(page.url.searchParams.get('offset'))
-      : 0,
-  });
+  const filter = $derived(candidateFilter(page.url));
   function link(offset = 0, id = account) {
-    const p = new URLSearchParams({
+    return listURL(page.url, {
       tab: history ? 'history' : 'attention',
-      offset: String(offset),
+      offset,
+      account_id: id,
     });
-    if (id) p.set('account_id', id);
-    return `/analysis?${p}`;
   }
   function denied() {
     selected = null;
@@ -236,6 +229,16 @@
           ></label
         ><Button wrap onclick={() => controller?.load(filter)}>更新</Button>
       </div>
+      <ListSearchSort
+        q={filter.q ?? ''}
+        sort={filter.sort ?? 'received_desc'}
+        options={candidateSorts}
+        disabled={busy}
+        onSearch={(q) => goto(listURL(page.url, { q }))}
+        onSort={(sort) => goto(listURL(page.url, { sort }))}
+        onClear={() =>
+          goto(listURL(page.url, { q: '', sort: 'received_desc' }))}
+      />
       <p class="library-content review-note">
         見つかった契約情報を確認してください。承認したものがサブスクに表示されます。
       </p>
@@ -247,6 +250,9 @@
         </p>{/if}
       {#if view.page}<CandidatesPanel
           page={view.page}
+          filtered={!!filter.q}
+          onClear={() =>
+            goto(listURL(page.url, { q: '', sort: 'received_desc' }))}
           onSelect={(candidate) => {
             initialAction = null;
             selected = candidate;

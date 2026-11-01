@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
@@ -81,8 +82,14 @@ func InvalidFilter(f Filter) bool {
 	if f.AccountID != "" && !ValidID(f.AccountID) {
 		return true
 	}
-	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || !utf8.ValidString(f.Query) || strings.ContainsRune(f.Query, 0) || utf8.RuneCountInString(f.Query) > 200 || !slices.Contains([]string{"", "all", "active", "ended", "unknown"}, f.Status) || !slices.Contains([]string{"", "next_billing", "service", "updated"}, f.Sort)
+	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || invalidSearch(f.Query) || !slices.Contains([]string{"", "all", "active", "ended", "unknown"}, f.Status) || !slices.Contains([]string{"", "next_billing", "next_billing_desc", "service", "service_desc", "updated", "updated_asc"}, f.Sort)
+}
+func invalidSearch(query string) bool {
+	return !utf8.ValidString(query) || strings.ContainsFunc(query, unicode.IsControl) || utf8.RuneCountInString(strings.TrimSpace(query)) > 200
+}
+func InvalidCandidateFilter(f AnalysisFilter) bool {
+	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || f.AccountID != "" && !ValidID(f.AccountID) || f.State != "" || f.Review != "" || invalidSearch(f.Query) || !slices.Contains([]string{"", "received_desc", "received_asc", "service", "service_desc"}, f.Sort)
 }
 func InvalidAnalysisFilter(f AnalysisFilter) bool {
-	return f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || f.AccountID != "" && !ValidID(f.AccountID) || !slices.Contains([]string{"", "all", "related", "failed", "unknown", "not_related"}, f.State) || !slices.Contains([]string{"", "all", "pending", "registered", "attention"}, f.Review) || (f.Review == "pending" || f.Review == "registered") && f.State != "related"
+	return f.Query != "" || f.Sort != "" || f.Limit < 1 || f.Limit > 100 || f.Offset < 0 || f.AccountID != "" && !ValidID(f.AccountID) || !slices.Contains([]string{"", "all", "related", "failed", "unknown", "not_related"}, f.State) || !slices.Contains([]string{"", "all", "pending", "registered", "attention"}, f.Review) || (f.Review == "pending" || f.Review == "registered") && f.State != "related"
 }

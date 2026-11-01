@@ -23,7 +23,7 @@ const candidateCTE = `WITH current_items AS (
 
 func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f subscriptions.AnalysisFilter) (subscriptions.CandidatePage, error) {
 	out := subscriptions.CandidatePage{Candidates: []subscriptions.Candidate{}, Limit: f.Limit, Offset: f.Offset}
-	if subscriptions.InvalidAnalysisFilter(f) || f.State != "" || f.Review != "" {
+	if subscriptions.InvalidCandidateFilter(f) {
 		return out, subscriptions.ErrInvalid
 	}
 	tx, e := r.begin(ctx, owner)
@@ -34,10 +34,21 @@ func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f
 	if e = analysisAccount(ctx, tx, owner, f.AccountID); e != nil {
 		return out, e
 	}
-	if e = tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidates`, owner, f.AccountID).Scan(&out.Total); e != nil {
+	search := subscriptionSearch(f.Query)
+	const searchWhere = ` WHERE (COALESCE(c.event->>'service','') ILIKE $3 OR COALESCE(c.event->>'plan','') ILIKE $3)`
+	if e = tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidates c`+searchWhere, owner, f.AccountID, search).Scan(&out.Total); e != nil {
 		return out, subscriptionError(e)
 	}
-	rows, e := tx.Query(ctx, candidateCTE+`SELECT c.result_id,c.event_index,c.account_id,a.label,c.event,c.received_at FROM candidates c JOIN mail_accounts a ON a.id=c.account_id AND a.owner_id=$1 ORDER BY c.result_id,c.event_index LIMIT $3 OFFSET $4`, owner, f.AccountID, f.Limit, f.Offset)
+	order := `c.received_at DESC NULLS LAST,c.result_id ASC,c.event_index ASC`
+	switch f.Sort {
+	case "received_asc":
+		order = `c.received_at ASC NULLS LAST,c.result_id ASC,c.event_index ASC`
+	case "service":
+		order = `COALESCE(c.event->>'service','') ASC,c.result_id ASC,c.event_index ASC`
+	case "service_desc":
+		order = `COALESCE(c.event->>'service','') DESC,c.result_id ASC,c.event_index ASC`
+	}
+	rows, e := tx.Query(ctx, candidateCTE+`SELECT c.result_id,c.event_index,c.account_id,a.label,c.event,c.received_at FROM candidates c JOIN mail_accounts a ON a.id=c.account_id AND a.owner_id=$1`+searchWhere+` ORDER BY `+order+` LIMIT $4 OFFSET $5`, owner, f.AccountID, search, f.Limit, f.Offset)
 	if e != nil {
 		return out, subscriptionError(e)
 	}

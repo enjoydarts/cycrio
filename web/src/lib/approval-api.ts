@@ -1,6 +1,7 @@
 import type { TokenProvider } from './api.ts';
 import {
   array,
+  choice,
   createDailyRequest,
   input,
   integer,
@@ -25,6 +26,8 @@ export type Candidate = {
   mail_count: number;
 };
 export type CandidateFilter = {
+  q?: string;
+  sort?: 'received_desc' | 'received_asc' | 'service' | 'service_desc';
   account_id: string;
   limit: number;
   offset: number;
@@ -56,6 +59,13 @@ export function createApprovalAPI(base: string, fetcher: typeof fetch = fetch) {
       const q = input(
         () =>
           new URLSearchParams({
+            q: text((f.q ?? '').trim(), 200, true),
+            sort: choice(f.sort ?? 'received_desc', [
+              'received_desc',
+              'received_asc',
+              'service',
+              'service_desc',
+            ]),
             ...(f.account_id ? { account_id: uuid(f.account_id) } : {}),
             limit: String(integer(f.limit, 1, 100)),
             offset: String(integer(f.offset)),

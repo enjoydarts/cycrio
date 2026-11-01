@@ -39,6 +39,12 @@
   import SubscriptionListPanel from './SubscriptionListPanel.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
+  import ListSearchSort from './ListSearchSort.svelte';
+  import {
+    subscriptionFilter,
+    subscriptionSorts,
+    listURL,
+  } from './list-search-sort.ts';
   import './daily.css';
   const session = getAppSession(),
     workspace = getWorkspace(),
@@ -63,7 +69,6 @@
     frozen = $state(false),
     dirty = $state(false),
     formKey = $state(0),
-    search = $state(''),
     layout = $state<'list' | 'cards'>('list'),
     navigationMessage = $state('');
   let leaveTo = $state('');
@@ -87,22 +92,7 @@
     goto,
     (target) => (leaveTo = target),
   );
-  const filter = $derived.by((): SubscriptionFilter => {
-    const p = page.url.searchParams,
-      offset = Number(p.get('offset') ?? 0);
-    return {
-      q: p.get('q') ?? '',
-      status: ['active', 'ended', 'unknown'].includes(p.get('status') ?? '')
-        ? (p.get('status') as SubscriptionFilter['status'])
-        : 'all',
-      sort: ['service', 'updated'].includes(p.get('sort') ?? '')
-        ? (p.get('sort') as SubscriptionFilter['sort'])
-        : 'next_billing',
-      account_id: p.get('account_id') || undefined,
-      limit: 20,
-      offset: Number.isSafeInteger(offset) && offset >= 0 ? offset : 0,
-    };
-  });
+  const filter = $derived(subscriptionFilter(page.url));
   const overview = $derived(
     workspace
       ? workspace.view.overview.status === 'ready'
@@ -119,15 +109,8 @@
     workspace?.view.accounts.value?.find((x) => x.id === filter.account_id),
   );
   function link(patch: Partial<SubscriptionFilter>) {
-    const f = { ...filter, ...patch };
-    const params = new URLSearchParams({
-      q: f.q,
-      status: f.status,
-      sort: f.sort,
-      offset: String(f.offset),
-    });
-    if (f.account_id) params.set('account_id', f.account_id);
-    return `/subscriptions?${params}`;
+    const { limit: _limit, ...conditions } = filter;
+    return listURL(page.url, { ...conditions, ...patch });
   }
   const importURL = $derived(
     `/import${filter.account_id ? `?account_id=${encodeURIComponent(filter.account_id)}` : ''}`,
@@ -188,7 +171,6 @@
     };
   });
   $effect(() => {
-    search = filter.q;
     void controller?.load(filter);
   });
   $effect(() => {
@@ -277,34 +259,16 @@
         }}>手動で追加</Button
       >
     </div>
-    <form
-      class="library-toolbar"
-      onsubmit={(event) => {
-        event.preventDefault();
-        void goto(link({ q: search, offset: 0 }));
-      }}
+    <ListSearchSort
+      q={filter.q}
+      sort={filter.sort}
+      options={subscriptionSorts}
+      disabled={frozen}
+      onSearch={(q) => goto(link({ q, offset: 0 }))}
+      onSort={(sort) =>
+        goto(link({ sort: sort as SubscriptionFilter['sort'], offset: 0 }))}
+      onClear={() => goto(link({ q: '', sort: 'next_billing', offset: 0 }))}
     >
-      <label class="search"
-        ><span class="sr">サービス・プランを検索</span><input
-          type="search"
-          placeholder="サービス名やプランを検索"
-          bind:value={search}
-        /></label
-      ><Button wrap type="submit">検索</Button><label
-        ><span class="sr">並び順</span><select
-          value={filter.sort}
-          onchange={(event) =>
-            goto(
-              link({
-                sort: event.currentTarget.value as SubscriptionFilter['sort'],
-                offset: 0,
-              }),
-            )}
-          ><option value="next_billing">次回の請求日順</option><option
-            value="service">サービス名順</option
-          ><option value="updated">更新順</option></select
-        ></label
-      >
       <div class="view-switch" aria-label="表示方法">
         <Button
           wrap
@@ -322,7 +286,7 @@
           onclick={() => (layout = 'cards')}>▦</Button
         >
       </div>
-    </form>
+    </ListSearchSort>
     {#if view.status === 'loading'}<p role="status" class="empty">
         サブスクを読み込んでいます…
       </p>{:else if view.error}<div class="empty" role="alert">
@@ -529,19 +493,6 @@
     white-space: nowrap;
     margin-right: 22px;
   }
-  .library-toolbar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 18px 22px;
-  }
-  .search {
-    flex: 1;
-    max-width: 390px;
-  }
-  .search input {
-    width: 100%;
-  }
   .view-switch {
     display: flex;
     margin-left: auto;
@@ -581,13 +532,6 @@
     color: var(--color-muted);
     font-size: 12px;
   }
-  .sr {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-  }
   @media (max-width: 650px) {
     .summary {
       padding: 18px 0;
@@ -619,15 +563,6 @@
     }
     :global(.part-Subscriptions-manual) {
       font-size: 10px;
-    }
-    .library-toolbar {
-      flex-wrap: wrap;
-      padding: 14px;
-      gap: 8px;
-    }
-    .search {
-      flex-basis: calc(100% - 60px);
-      max-width: none;
     }
     .footnote {
       font-size: 10px;
