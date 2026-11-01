@@ -4,16 +4,18 @@
   let {
     name,
     provider,
+    host,
     size = 'large',
   }: {
     name?: string | null;
     provider?: string;
+    host?: string;
     size?: 'small' | 'medium' | 'large';
   } = $props();
 
   const logo = $derived(
     provider !== undefined
-      ? resolveMailLogo(provider)
+      ? resolveMailLogo(provider, host)
       : resolveServiceLogo(name),
   );
   const pixels = $derived({ small: 28, medium: 32, large: 42 }[size]);
@@ -21,6 +23,7 @@
   $effect(() => {
     name;
     provider;
+    host;
     failed = false;
   });
 </script>

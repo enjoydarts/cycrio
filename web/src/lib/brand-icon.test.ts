@@ -48,3 +48,17 @@ test('light-colored brands select a dark plate without changing the logo color',
   const ordinary = render(BrandIcon, { props: { name: 'Spotify' } }).body;
   assert.doesNotMatch(ordinary, /class="[^"]*\bdark\b/);
 });
+
+test('IMAP account host selects the local service image without rendering connection metadata', async () => {
+  const { default: BrandIcon } = await import('./BrandIcon.svelte');
+  const html = render(BrandIcon, {
+    props: {
+      provider: 'imap',
+      host: 'imap.mail.yahoo.co.jp',
+      name: 'personal-label',
+    },
+  }).body;
+  assert.match(html, /<img/);
+  assert.match(html, /yahoojp/);
+  assert.doesNotMatch(html, /imap\.mail|personal-label|https?:/);
+});

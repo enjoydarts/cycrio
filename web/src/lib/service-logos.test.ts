@@ -308,6 +308,32 @@ test('mail providers are independent from personal connection labels', async () 
   assert.equal(resolveMailLogo('imap'), null);
 });
 
+test('major mail services resolve from IMAP endpoints and keep Japanese Yahoo distinct', async () => {
+  const { resolveMailLogo } = await import('./service-logos.ts');
+  for (const [host, slug] of [
+    ['imap.mail.yahoo.co.jp', 'yahoojp'],
+    ['imap.mail.yahoo.com', 'yahoomail'],
+    ['imap.mail.me.com', 'icloudmail'],
+    ['imap.aol.com', 'aolmail'],
+    ['imap.zoho.com', 'zohomail'],
+    ['imap.gmx.com', 'gmx'],
+    ['imap.mail.com', 'maildotcom'],
+  ])
+    assert.equal(resolveMailLogo('imap', host)?.slug, slug, host);
+  assert.notEqual(
+    resolveMailLogo('imap', 'imap.mail.yahoo.co.jp')?.src,
+    resolveMailLogo('imap', 'imap.mail.yahoo.com')?.src,
+  );
+  assert.equal(
+    resolveMailLogo('imap', 'imap.mail.yahoo.co.jp.example.com'),
+    null,
+  );
+  assert.equal(
+    resolveMailLogo('gmail', 'imap.mail.yahoo.co.jp')?.slug,
+    'gmail',
+  );
+});
+
 test('known domains and URLs map deliberately without trusting misleading hosts or partial names', async () => {
   const { resolveServiceLogo } = await import('./service-logos.ts');
   assert.equal(

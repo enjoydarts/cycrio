@@ -1,5 +1,9 @@
 <script lang="ts">
   import BrandIcon from './BrandIcon.svelte';
+  import {
+    mailServicePresets,
+    mailServiceForAccount,
+  } from './mail-service-presets.ts';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
@@ -57,6 +61,7 @@
     gmail: 'Gmail / Google Workspace',
     outlook: 'Outlook.com / Hotmail',
   };
+  const service = $derived(view.form ? mailServiceForAccount(view.form) : null);
   const oauth = $derived(
     view.form?.provider === 'gmail' || view.form?.provider === 'outlook',
   );
@@ -288,10 +293,14 @@
         <ul>
           {#each view.accounts as row (row.id)}<li>
               <div class="mail-account-row">
-                <BrandIcon provider={row.provider} size="medium" />
+                <BrandIcon
+                  provider={row.provider}
+                  host={row.host}
+                  size="medium"
+                />
                 <div class="mail-account-name">
                   <strong>{row.label}</strong><span
-                    >{providerNames[row.provider]} · 対象 {row.folders.filter(
+                    >{mailServiceForAccount(row).label} · 対象 {row.folders.filter(
                       (folder) => folder.selected,
                     ).length} フォルダー</span
                   >
@@ -393,7 +402,7 @@
         <div class="mail-section-heading">
           <h3>
             {account
-              ? `${providerNames[account.provider]} の接続設定`
+              ? `${mailServiceForAccount(account).label} の接続設定`
               : '接続情報'}
           </h3>
           {#if account}<span class="mail-badge">{states[account.state]}</span
@@ -421,24 +430,35 @@
                 ><strong class="mail-provider-heading"
                   ><BrandIcon
                     provider={view.form.provider}
+                    host={view.form.host}
                     size="small"
                   />メールサービス</strong
                 ><select
                   id="mail-provider"
-                  value={view.form.provider}
-                  disabled={busy || !!account}
+                  value={service?.id ?? 'imap'}
+                  disabled={busy || view.uncertain || !!account}
                   onchange={(event) =>
-                    controller?.edit({
-                      provider: event.currentTarget
-                        .value as MailAccount['provider'],
-                    })}
+                    controller?.chooseService(event.currentTarget.value)}
                 >
-                  {#each Object.entries(providerNames) as [value, label]}<option
-                      {value}>{label}</option
+                  {#each mailServicePresets as preset}<option value={preset.id}
+                      >{preset.label}</option
                     >{/each}
                 </select><span>登録後は同じメールサービスで再接続します。</span
                 ></label
               >
+              {#if !oauth && service?.setup}
+                <div class="mail-service-help" aria-live="polite">
+                  <p>{service.setup}</p>
+                  {#if service.helpUrl}<a
+                      href={service.helpUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      >公式の設定手順を確認する<span class="sr-only"
+                        >（新しいタブ）</span
+                      ></a
+                    >{/if}
+                </div>
+              {/if}
               <label for="mail-label"
                 >表示名<input
                   id="mail-label"
@@ -865,6 +885,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
+  }
+  .mail-service-help {
+    grid-column: 1 / -1;
+    padding: 12px;
+    border-radius: 8px;
+    background: var(--color-surface-soft);
+    overflow-wrap: anywhere;
+    font-size: 0.875rem;
+  }
+  .mail-service-help p {
+    margin: 0 0 8px;
   }
   .mail-fields label,
   .mail-filter {

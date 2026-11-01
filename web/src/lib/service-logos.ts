@@ -1,5 +1,6 @@
 import { serviceLogoIndex } from './generated/service-logo-index.ts';
 import { normalizeBrandName } from './service-logo-normalize.ts';
+import { mailServiceForAccount } from './mail-service-presets.ts';
 
 export type ServiceLogo = {
   slug: string;
@@ -377,7 +378,10 @@ export function resolveServiceLogo(
   return null;
 }
 
-export function resolveMailLogo(provider: string): ServiceLogo | null {
+export function resolveMailLogo(
+  provider: string,
+  host?: string,
+): ServiceLogo | null {
   const slug: Record<string, string> = {
     gmail: 'gmail',
     google: 'gmail',
@@ -388,7 +392,8 @@ export function resolveMailLogo(provider: string): ServiceLogo | null {
     hotmail: 'outlook',
     fastmail: 'fastmail',
   };
-  return Object.hasOwn(slug, provider)
-    ? lookup(normalizeBrandName(slug[provider]))
-    : null;
+  if (Object.hasOwn(slug, provider))
+    return lookup(normalizeBrandName(slug[provider]));
+  const service = mailServiceForAccount({ provider, host });
+  return service.logoSlug ? lookup(normalizeBrandName(service.logoSlug)) : null;
 }

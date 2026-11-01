@@ -29,6 +29,63 @@ function setup(overrides: Partial<MailAPI> = {}) {
   return { controller, api, denied: () => denied };
 }
 
+test('preset selection fills IMAP endpoint, clears credentials on service changes and saves through the existing API', async () => {
+  let sent: any;
+  const { controller: c } = setup({
+    list: async () => [],
+    save: async (_id, input) => {
+      sent = input;
+      return account({ provider: 'imap', host: input.host, port: input.port });
+    },
+  });
+  await c.refresh();
+  c.newAccount();
+  c.edit({
+    label: '自分用',
+    login: 'old@example.com',
+    app_password: 'old-secret',
+  });
+  c.chooseService('yahoojp');
+  assert.equal(c.state().form?.provider, 'imap');
+  assert.equal(c.state().form?.host, 'imap.mail.yahoo.co.jp');
+  assert.equal(c.state().form?.port, 993);
+  assert.equal(c.state().form?.label, '自分用');
+  assert.equal(c.state().form?.login, '');
+  assert.equal(c.state().form?.app_password, '');
+  c.edit({ login: 'owner@yahoo.co.jp', app_password: 'new-secret' });
+  c.chooseService('yahoojp');
+  assert.equal(c.state().form?.app_password, 'new-secret');
+  await c.save();
+  assert.equal(sent.provider, 'imap');
+  assert.equal(sent.host, 'imap.mail.yahoo.co.jp');
+  assert.equal(sent.port, 993);
+  assert.equal(sent.login, 'owner@yahoo.co.jp');
+});
+
+test('preset selection leaves existing accounts and unknown choices untouched', async () => {
+  const { controller: c } = setup({
+    list: async () => [
+      account({ provider: 'imap', host: 'imap.mail.yahoo.co.jp', port: 993 }),
+    ],
+  });
+  await c.refresh();
+  c.select(ids.account);
+  const existing = c.state().form;
+  c.chooseService('yahoo');
+  assert.equal(c.state().form, existing);
+  c.newAccount();
+  const draft = c.state().form;
+  c.chooseService('__proto__');
+  assert.equal(c.state().form, draft);
+  c.chooseService('yahoojp');
+  c.edit({ login: 'owner', app_password: 'secret' });
+  c.chooseService('gmail');
+  assert.equal(c.state().form?.provider, 'gmail');
+  assert.equal(c.state().form?.host, '');
+  assert.equal(c.state().form?.login, '');
+  assert.equal(c.state().form?.app_password, '');
+});
+
 test('folder display and search use Japanese labels while fallback names remain searchable', () => {
   const folders = [
     {

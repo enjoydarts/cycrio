@@ -352,5 +352,61 @@
     "sourceUrl": "https://m.media-amazon.com/images/G/01/T/TC05316420/A07531864/brand/icon_192x192.png",
     "sha256": "317d68dc830a8ca11a556c9c9b9250d43c2c1fa4a31220e4103c9de7d8d2b0de",
     "credit": "Amazon Luna"
+  },
+  {
+    "slug": "yahoojp",
+    "title": "Yahoo!メール（日本）",
+    "file": "yahoojp.ico",
+    "sourceUrl": "https://s.yimg.jp/images/mail/icon/favicon.ico",
+    "sha256": "0a242d7665cef7991fbae89bc9764164c06cf82690decb475b6a7cd6b0a14393",
+    "credit": "LY Corporation Yahoo! JAPAN Mail"
+  },
+  {
+    "slug": "yahoomail",
+    "title": "Yahoo Mail",
+    "file": "yahoomail.ico",
+    "sourceUrl": "https://s.yimg.com/cv/apiv2/default/hp/favicon.ico",
+    "sha256": "699b7caaa71789195c58ac2542795c3b9e883090b7943f172d9d5b069edd65fe",
+    "credit": "Yahoo Mail"
+  },
+  {
+    "slug": "icloudmail",
+    "title": "iCloud Mail",
+    "file": "icloudmail.png",
+    "sourceUrl": "https://www.icloud.com/system/icloud.com/2640Build24/favicons/default-favicon-light-180x180.png",
+    "sha256": "75587923b33c96fd83dce9970412d620d69efb46ff77460c64bcc8a07b0349a2",
+    "credit": "Apple iCloud Mail site icon"
+  },
+  {
+    "slug": "aolmail",
+    "title": "AOL Mail",
+    "file": "aolmail.ico",
+    "sourceUrl": "https://s.yimg.com/nq/nr/img/aol_favicon_afYliGTEgGH181tujkoqqgnZUo0MWJfO0YO89iYimHY_v1.ico",
+    "sha256": "b4e888b93630c467392ef8ef002fc08b860d0d3da20244ff4638407bbfb1a6ff",
+    "credit": "AOL Mail"
+  },
+  {
+    "slug": "zohomail",
+    "title": "Zoho Mail",
+    "file": "zohomail.svg",
+    "sourceUrl": "https://www.zohowebstatic.com/sites/zweb/images/productlogos/mail.svg",
+    "sha256": "3cb38a0c323bd83d2233453d98e049ab2543e198076d636e17ee126640609d3d",
+    "credit": "Zoho Mail"
+  },
+  {
+    "slug": "gmx",
+    "title": "GMX",
+    "file": "gmx.ico",
+    "sourceUrl": "https://s.uicdn.com/mail-int/mailint/1.513.0/assets/favicon_gmxcom.ico",
+    "sha256": "ec16b4f46cfa2ee185077885a7af4e144c4442242c30f1e2f0d1234e1b67c4f4",
+    "credit": "GMX.com"
+  },
+  {
+    "slug": "maildotcom",
+    "title": "mail.com",
+    "file": "mailcom.ico",
+    "sourceUrl": "https://s.uicdn.com/mail-int/mailint/1.513.0/assets/favicon.ico",
+    "sha256": "33ca72f1eac56793d1fd811189cedef98004a067c85b1143083b564814a4b0db",
+    "credit": "mail.com"
   }
 ]

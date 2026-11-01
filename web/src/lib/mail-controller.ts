@@ -1,4 +1,8 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
+import {
+  mailServicePresets,
+  mailServiceForAccount,
+} from './mail-service-presets.ts';
 import type {
   MailAPI,
   MailAccount,
@@ -247,6 +251,24 @@ export function createMailController(
         success: null,
         uncertain: false,
         disconnectConfirmation: null,
+      });
+    },
+    chooseService(id: string) {
+      if (!allowed() || mutating || view.uncertain || !view.form || selected())
+        return;
+      const preset = mailServicePresets.find((p) => p.id === id);
+      if (!preset || mailServiceForAccount(view.form).id === id) return;
+      publish({
+        form: {
+          ...view.form,
+          provider: preset.provider,
+          host: preset.host ?? '',
+          port: preset.port ?? 993,
+          login: '',
+          app_password: '',
+          credentialsDirty: true,
+        },
+        success: null,
       });
     },
     edit(

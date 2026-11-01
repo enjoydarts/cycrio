@@ -208,6 +208,7 @@
                 <a class="account-choice" href={link(0, item.id)}
                   ><BrandIcon
                     provider={item.provider}
+                    host={item.host}
                     size="small"
                   />{item.label}</a
                 >

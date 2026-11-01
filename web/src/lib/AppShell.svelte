@@ -1,5 +1,6 @@
 <script lang="ts">
   import BrandIcon from './BrandIcon.svelte';
+  import { mailServiceForAccount } from './mail-service-presets.ts';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
@@ -97,12 +98,6 @@
       ? workspaceView.overview.value
       : null,
   );
-  const providers = {
-    gmail: 'Gmail',
-    outlook: 'Outlook',
-    fastmail: 'Fastmail',
-    imap: 'IMAP',
-  };
   async function openMenu() {
     menuOpen = true;
     await tick();
@@ -281,9 +276,13 @@
                 ? 'location'
                 : undefined}
             >
-              <BrandIcon provider={account.provider} size="small" />
+              <BrandIcon
+                provider={account.provider}
+                host={account.host}
+                size="small"
+              />
               <span class="source-meta"
-                ><strong>{providers[account.provider]}</strong><small
+                ><strong>{mailServiceForAccount(account).label}</strong><small
                   >{account.label}</small
                 ></span
               >

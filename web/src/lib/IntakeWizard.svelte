@@ -1,5 +1,6 @@
 <script lang="ts">
   import BrandIcon from './BrandIcon.svelte';
+  import { mailServiceForAccount } from './mail-service-presets.ts';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
   import { onMount } from 'svelte';
@@ -181,15 +182,9 @@
                   pendingChoice = a.id;
                   controller?.choose(a.id);
                 }}
-                ><BrandIcon provider={a.provider} /><span
+                ><BrandIcon provider={a.provider} host={a.host} /><span
                   ><strong>{a.label}</strong><small
-                    >{a.provider === 'gmail'
-                      ? 'Gmail / Google Workspace'
-                      : a.provider === 'outlook'
-                        ? 'Outlook.com / Hotmail'
-                        : a.provider === 'fastmail'
-                          ? 'Fastmail'
-                          : 'IMAP'} · {a.state === 'ready'
+                    >{mailServiceForAccount(a).label} · {a.state === 'ready'
                       ? '接続確認済み'
                       : a.state === 'disconnected'
                         ? '解除済み'
@@ -207,8 +202,9 @@
             onclick={() => (connecting = true)}>＋ メールを追加する</Button
           >
           {#if !view.mail.accounts.length && view.mail.status === 'ready'}<p>
-              Gmail・Google Workspace・Outlook.com・Fastmail・IMAP
-              に対応しています。
+              Gmail・Google
+              Workspace・Outlook.com・Fastmail・Yahoo!メール・iCloud
+              MailなどのIMAP に対応しています。
             </p>{/if}
         </section>
       {:else if view.step === 2 && account}
@@ -217,6 +213,7 @@
           <p class="chosen-account">
             <BrandIcon
               provider={account.provider}
+              host={account.host}
               size="small"
             />{account.label}
           </p>
