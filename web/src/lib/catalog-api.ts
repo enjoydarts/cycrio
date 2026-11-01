@@ -10,7 +10,7 @@ export type ModelProvider = (typeof modelProviders)[number];
 export type Price = {
   id: string;
   model_id: string;
-  source: 'api' | 'manual';
+  source: 'api' | 'manual' | 'research';
   currency: string;
   rates: Record<
     string,
@@ -22,6 +22,8 @@ export type Price = {
   source_url: string;
 };
 export type Model = {
+  research_checked_at?: string | null;
+  deleted_at?: string | null;
   id: string;
   provider: ModelProvider;
   model_id: string;
@@ -166,7 +168,7 @@ export function parsePrice(value: unknown): Price {
   return {
     id: uuid(v.id),
     model_id: uuid(v.model_id),
-    source: choice(v.source, ['api', 'manual']),
+    source: choice(v.source, ['api', 'manual', 'research']),
     currency:
       typeof v.currency === 'string' && /^[A-Z]{3}$/.test(v.currency)
         ? v.currency
@@ -206,6 +208,12 @@ export function parsePrice(value: unknown): Price {
 export function parseModel(value: unknown): Model {
   const v = record(value);
   return {
+    ...(v.research_checked_at === undefined
+      ? {}
+      : { research_checked_at: nullable(v.research_checked_at, timestamp) }),
+    ...(v.deleted_at === undefined
+      ? {}
+      : { deleted_at: nullable(v.deleted_at, timestamp) }),
     id: uuid(v.id),
     provider: choice(v.provider, modelProviders),
     model_id: str(v.model_id),
@@ -318,7 +326,7 @@ export function createCatalogAPI(base: string, fetcher: typeof fetch = fetch) {
                     ? 'conflict'
                     : 'dependency_unavailable',
         );
-      return await response.json();
+      return response.status === 204 ? null : await response.json();
     } catch (error) {
       if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       if (error instanceof ApiError) throw error;
@@ -326,6 +334,20 @@ export function createCatalogAPI(base: string, fetcher: typeof fetch = fetch) {
     }
   }
   return {
+    async remove(
+      id: string,
+      expected_version: number,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) {
+      await request(
+        `catalog/${encodeURIComponent(id)}`,
+        token,
+        signal,
+        'DELETE',
+        { expected_version },
+      );
+    },
     async list(
       filter: CatalogFilter,
       token: TokenProvider,

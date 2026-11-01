@@ -19,24 +19,29 @@ func (w namedWorkflow) GetName() string { return w.name }
 func TestWorkerGroupsReserveControlCapacity(t *testing.T) {
 	workflow := func(name string) hatchet.WorkflowBase { return namedWorkflow{name: name} }
 	groups := workerGroups("process", workerTasks{
-		check: workflow("check"), catalog: workflow("catalog"), aiTest: workflow("ai-test"),
+		check: workflow("check"), catalog: workflow("catalog"), priceResearch: workflow("research"), aiTest: workflow("ai-test"),
 		mailProbe: workflow("probe"), mailDiscovery: workflow("discover"), mailProcessing: workflow("processing"),
 	})
-	if len(groups) != 2 {
-		t.Fatalf("worker groups = %d, want separate control and processing workers", len(groups))
+	if len(groups) != 3 {
+		t.Fatalf("worker groups = %d, want separate control, processing and maintenance workers", len(groups))
 	}
 	got := make(map[string][]string)
 	for _, group := range groups {
-		if group.slots != 2 {
-			t.Fatalf("%s slots = %d, want 2", group.name, group.slots)
+		wantSlots := 2
+		if strings.HasSuffix(group.name, "-maintenance") {
+			wantSlots = 1
+		}
+		if group.slots != wantSlots {
+			t.Fatalf("%s slots = %d, want %d", group.name, group.slots, wantSlots)
 		}
 		for _, task := range group.workflows {
 			got[group.name] = append(got[group.name], task.GetName())
 		}
 	}
 	want := map[string][]string{
-		"process-control":    {"check", "catalog", "ai-test", "probe", "discover"},
-		"process-processing": {"processing"},
+		"process-control":     {"check", "ai-test", "probe", "discover"},
+		"process-processing":  {"processing"},
+		"process-maintenance": {"catalog", "research"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("workflow routing = %v, want %v", got, want)

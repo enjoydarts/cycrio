@@ -24,6 +24,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailprocessingruntime"
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
 	"github.com/enjoydarts/cycrio/internal/mailsyncruntime"
+	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
 	"github.com/enjoydarts/cycrio/internal/routesruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -77,7 +78,7 @@ func run() error {
 	overviewRepository := database.NewOverviewRepository(pool)
 	mailAutomationService := mailautomation.NewService(database.NewMailAutomationRepository(pool))
 	mailOAuthService := mailoauth.NewService(database.NewMailOAuthRepository(pool, keyring), credentialService.Resolve, mailoauth.NewClient(nil))
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithOverview(overviewRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithOverview(overviewRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithPriceResearch(priceresearchruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

@@ -50,7 +50,7 @@ func ValidateFilter(f CostFilter) (CostFilter, error) {
 	if f.AccountID != "" && (f.UserID == "" || f.AccountID != "unattributed" && !validID(f.AccountID)) {
 		return f, ErrInvalid
 	}
-	if f.Stage != "" && f.Stage != "classification" && f.Stage != "extraction" && f.Stage != "match" && f.Stage != "repair" {
+	if f.Stage != "" && f.Stage != "classification" && f.Stage != "extraction" && f.Stage != "match" && f.Stage != "repair" && f.Stage != "price_research" {
 		return f, ErrInvalid
 	}
 	return f, nil

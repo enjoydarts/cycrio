@@ -129,7 +129,7 @@ func (r *ModelCatalogRepository) List(ctx context.Context, f modelcatalog.Filter
 		return result, modelcatalog.ErrInvalid
 	}
 	// Search uses position rather than LIKE, so administrator text is literal.
-	where := ` WHERE ($1='' OR provider=$1) AND ($2 OR (doc->>'enabled')::boolean) AND ($3='' OR position(lower($3) in lower(model_id||' '||(doc->>'display_name')))>0)`
+	where := ` WHERE coalesce(doc->>'deleted_at','')='' AND ($1='' OR provider=$1) AND ($2 OR (doc->>'enabled')::boolean) AND ($3='' OR position(lower($3) in lower(model_id||' '||(doc->>'display_name')))>0)`
 	if r.pool.QueryRow(ctx, `SELECT count(*) FROM model_catalog`+where, f.Provider, f.IncludeDisabled, f.Search).Scan(&result.Total) != nil {
 		return result, modelcatalog.ErrUnavailable
 	}
@@ -183,6 +183,9 @@ func (r *ModelCatalogRepository) UpdateModel(ctx context.Context, actor, id stri
 		return m, err
 	}
 	if !validRevision(in.ExpectedVersion) || m.Version != in.ExpectedVersion {
+		return m, modelcatalog.ErrConflict
+	}
+	if m.DeletedAt != nil {
 		return m, modelcatalog.ErrConflict
 	}
 	m.CustomDisplayName = nil
@@ -342,7 +345,7 @@ func (r *ModelCatalogRepository) RequestSync(ctx context.Context, actor, provide
 		return modelcatalog.SyncState{}, modelcatalog.ErrUnavailable
 	}
 	defer tx.Rollback(ctx)
-	s, err := scanSync(tx.QueryRow(ctx, `UPDATE catalog_sync SET status=CASE WHEN provider='liquid' THEN 'manual_only' WHEN status='running' AND lease_until>clock_timestamp() THEN 'running' ELSE 'queued' END,next_sync_at=CASE WHEN provider='liquid' THEN NULL WHEN status='running' AND lease_until>clock_timestamp() THEN next_sync_at ELSE clock_timestamp() END WHERE provider=$1 RETURNING `+syncColumns, provider))
+	s, err := scanSync(tx.QueryRow(ctx, `UPDATE catalog_sync SET status=CASE WHEN status='running' AND lease_until>clock_timestamp() THEN 'running' ELSE 'queued' END,next_sync_at=CASE WHEN status='running' AND lease_until>clock_timestamp() THEN next_sync_at ELSE clock_timestamp() END WHERE provider=$1 RETURNING `+syncColumns, provider))
 	if err != nil {
 		return s, err
 	}
@@ -364,7 +367,7 @@ func (r *ModelCatalogRepository) ConfigureSync(ctx context.Context, actor, provi
 	if !validRevision(in.ExpectedVersion) || s.Version != in.ExpectedVersion {
 		return s, modelcatalog.ErrConflict
 	}
-	s, err = scanSync(tx.QueryRow(ctx, `UPDATE catalog_sync SET automatic_enabled=$2,interval_hours=$3,workspace_id=$4,version=version+1,lease_id=NULL,lease_until=NULL,status=CASE WHEN provider='liquid' THEN 'manual_only' WHEN status='running' THEN 'queued' ELSE status END,next_sync_at=CASE WHEN provider='liquid' THEN NULL WHEN $2 OR status IN ('running','queued') THEN now() ELSE next_sync_at END WHERE provider=$1 RETURNING `+syncColumns, provider, in.AutomaticEnabled, in.IntervalHours, in.WorkspaceID))
+	s, err = scanSync(tx.QueryRow(ctx, `UPDATE catalog_sync SET automatic_enabled=$2,interval_hours=$3,workspace_id=$4,version=version+1,lease_id=NULL,lease_until=NULL,status=CASE WHEN status='running' THEN 'queued' ELSE status END,next_sync_at=CASE WHEN $2 OR status IN ('running','queued') THEN now() ELSE next_sync_at END WHERE provider=$1 RETURNING `+syncColumns, provider, in.AutomaticEnabled, in.IntervalHours, in.WorkspaceID))
 	if err != nil {
 		return s, err
 	}
@@ -381,7 +384,7 @@ func (r *ModelCatalogRepository) ClaimDue(ctx context.Context) ([]modelcatalog.S
 	}
 	defer tx.Rollback(ctx)
 	var provider string
-	err = tx.QueryRow(ctx, `SELECT provider FROM catalog_sync WHERE provider<>'liquid' AND (lease_until IS NULL OR lease_until<=now()) AND ((status='queued') OR (automatic_enabled AND next_sync_at<=now()) OR status='running') ORDER BY next_sync_at NULLS FIRST,provider FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&provider)
+	err = tx.QueryRow(ctx, `SELECT provider FROM catalog_sync WHERE (lease_until IS NULL OR lease_until<=now()) AND ((status='queued') OR (automatic_enabled AND next_sync_at<=now()) OR status='running') ORDER BY next_sync_at NULLS FIRST,provider FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&provider)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return items, nil
 	}
@@ -500,6 +503,11 @@ func (r *ModelCatalogRepository) ApplySync(ctx context.Context, provider, lease 
 			m.TextInputOverride = old.TextInputOverride
 			m.StructuredOutputOverride = old.StructuredOutputOverride
 			m.ManualPrice = old.ManualPrice
+			m.DeletedAt = old.DeletedAt
+			m.ResearchCheckedAt = old.ResearchCheckedAt
+			if old.APIPrice != nil && old.APIPrice.Source == "research" && e.Price == nil {
+				m.APIPrice = old.APIPrice
+			}
 			m.UpdatedAt = now
 		}
 		if e.Price != nil {
@@ -626,7 +634,7 @@ func (r *ModelCatalogRepository) SaveSettings(ctx context.Context, actor string,
 		models[id] = m
 	}
 	primary, secondary := models[in.PrimaryModelID], models[in.SecondaryModelID]
-	if !primary.Available || !primary.Enabled || primary.Provider != "liquid" || !(primary.ModelID == "d1" || strings.HasPrefix(primary.ModelID, "d1-") || strings.HasPrefix(primary.ModelID, "d1/") || strings.HasPrefix(primary.ModelID, "d1.")) || !secondary.Available || !secondary.Enabled || secondary.Provider == "liquid" {
+	if primary.DeletedAt != nil || secondary.DeletedAt != nil || !primary.Available || !primary.Enabled || primary.Provider != "liquid" || !(primary.ModelID == "d1" || strings.HasPrefix(primary.ModelID, "d1-") || strings.HasPrefix(primary.ModelID, "d1/") || strings.HasPrefix(primary.ModelID, "d1.")) || !secondary.Available || !secondary.Enabled || secondary.Provider == "liquid" {
 		return modelcatalog.SettingsState{}, modelcatalog.ErrInvalid
 	}
 	id := uuid.NewString()

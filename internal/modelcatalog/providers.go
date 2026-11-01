@@ -28,7 +28,7 @@ func NewFetcher(transport http.RoundTripper, resolve CredentialResolver) *Fetche
 	return &Fetcher{client: &http.Client{Transport: transport, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}, resolve: resolve}
 }
 func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]CatalogEntry, error) {
-	if !ValidProvider(provider) || provider == "liquid" || !ValidWorkspace(provider, workspaceID) {
+	if !ValidProvider(provider) || !ValidWorkspace(provider, workspaceID) {
 		return nil, ErrInvalid
 	}
 	var key []byte
@@ -49,7 +49,7 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 			return nil, ErrCredentialsRequired
 		}
 	}
-	endpoints := map[string]string{"openrouter": "https://openrouter.ai/api/v1/models", "openai": "https://api.openai.com/v1/models", "anthropic": "https://api.anthropic.com/v1/models"}
+	endpoints := map[string]string{"openrouter": "https://openrouter.ai/api/v1/models", "openai": "https://api.openai.com/v1/models", "anthropic": "https://api.anthropic.com/v1/models", "liquid": "https://api.liquid.ai/decisions/v1/models"}
 	entries := []CatalogEntry{}
 	seen := map[string]bool{}
 	cursors := map[string]bool{}
@@ -100,10 +100,17 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 		}
 		var envelope struct {
 			Data    json.RawMessage `json:"data"`
+			Models  json.RawMessage `json:"models"`
 			HasMore *bool           `json:"has_more"`
 			LastID  string          `json:"last_id"`
 		}
-		if decodeJSON(raw, &envelope) != nil || len(envelope.Data) == 0 || bytes.Equal(bytes.TrimSpace(envelope.Data), []byte("null")) {
+		if decodeJSON(raw, &envelope) != nil {
+			return nil, ErrUnavailable
+		}
+		if provider == "liquid" {
+			envelope.Data = envelope.Models
+		}
+		if len(envelope.Data) == 0 || bytes.Equal(bytes.TrimSpace(envelope.Data), []byte("null")) {
 			return nil, ErrUnavailable
 		}
 		var records []json.RawMessage
@@ -121,7 +128,7 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 				return nil, ErrUnavailable
 			}
 		}
-		if provider == "openai" {
+		if provider == "openai" || provider == "liquid" {
 			return entries, nil
 		}
 		if provider == "openrouter" {
@@ -174,14 +181,15 @@ func parseEntry(provider string, raw json.RawMessage) (CatalogEntry, error) {
 		return CatalogEntry{}, ErrInvalid
 	}
 	var v struct {
-		ID             string  `json:"id"`
-		Name           string  `json:"name"`
-		DisplayName    string  `json:"display_name"`
-		CanonicalSlug  *string `json:"canonical_slug"`
-		ContextLength  *int64  `json:"context_length"`
-		MaxInputTokens *int64  `json:"max_input_tokens"`
-		MaxTokens      *int64  `json:"max_tokens"`
-		Architecture   *struct {
+		ID              string    `json:"id"`
+		Name            string    `json:"name"`
+		InputModalities *[]string `json:"input_modalities"`
+		DisplayName     string    `json:"display_name"`
+		CanonicalSlug   *string   `json:"canonical_slug"`
+		ContextLength   *int64    `json:"context_length"`
+		MaxInputTokens  *int64    `json:"max_input_tokens"`
+		MaxTokens       *int64    `json:"max_tokens"`
+		Architecture    *struct {
 			Input  []string `json:"input_modalities"`
 			Output []string `json:"output_modalities"`
 		} `json:"architecture"`
@@ -194,7 +202,13 @@ func parseEntry(provider string, raw json.RawMessage) (CatalogEntry, error) {
 		} `json:"capabilities"`
 		Pricing json.RawMessage `json:"pricing"`
 	}
-	if decodeJSON(raw, &v) != nil || !validText(v.ID, 256) {
+	if decodeJSON(raw, &v) != nil {
+		return CatalogEntry{}, ErrInvalid
+	}
+	if provider == "liquid" {
+		v.ID = v.Name
+	}
+	if !validText(v.ID, 256) {
 		return CatalogEntry{}, ErrInvalid
 	}
 	for _, limit := range []*int64{v.ContextLength, v.MaxInputTokens, v.MaxTokens} {
@@ -227,6 +241,10 @@ func parseEntry(provider string, raw json.RawMessage) (CatalogEntry, error) {
 			m.DisplayName = v.DisplayName
 		}
 		m.StructuredOutput = v.Capabilities["structured_outputs"].Supported
+	}
+	if provider == "liquid" && v.InputModalities != nil {
+		b := contains(*v.InputModalities, "text")
+		m.TextInput = &b
 	}
 	if !validText(m.DisplayName, 512) || m.MaxOutputTokens != nil && *m.MaxOutputTokens < 0 {
 		return CatalogEntry{}, ErrInvalid

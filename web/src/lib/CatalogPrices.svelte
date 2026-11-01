@@ -288,7 +288,12 @@
     <h4>価格履歴（最新 50 件）</h4>
     <ol>
       {#each prices as price (price.id)}<li class="box">
-          <strong>{price.source === 'api' ? 'API 取得' : '手入力'}</strong
+          <strong
+            >{price.source === 'api'
+              ? 'API 取得'
+              : price.source === 'research'
+                ? '公式価格調査'
+                : '手入力'}</strong
           >{@render priceDetails(price)}
         </li>{/each}
     </ol>

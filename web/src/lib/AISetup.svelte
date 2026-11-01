@@ -259,7 +259,14 @@
               取得（日本時間）：{datetime(price.captured_at)}{price.source ===
               'manual'
                 ? ' · 手入力の上書き価格'
-                : ''}
+                : price.source === 'research'
+                  ? ' · 公式価格調査'
+                  : ''}
+            </p>{/if}
+          {#if model.research_checked_at}<p class="muted">
+              公式料金の確認日（日本時間）：{datetime(
+                model.research_checked_at,
+              )}
             </p>{/if}
           {#if view.runtime?.active}{@const frozen =
               label === '一次判定'
@@ -382,6 +389,13 @@
           </p>{/if}
         {#if pane === 'models' && selection}
           <h3>モデルと料金</h3>
+          <ActionGroup
+            ><ActionLink wrap href="/settings/catalog"
+              >モデルカタログ・API 同期を開く</ActionLink
+            ><ActionLink wrap href="/settings/catalog?tab=price-research"
+              >公式価格の料金調査を開く</ActionLink
+            ></ActionGroup
+          >
           <div class="setup-grid">
             <label
               >一次判定<select

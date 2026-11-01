@@ -118,11 +118,14 @@ func EstimateCost(provider string, p *modelcatalog.Price, u Usage) Cost {
 	if !u.Present || !u.Valid {
 		return unknownCost("invalid_usage")
 	}
-	if u.InputTokens > 100000 {
+	if u.InputTokens > 100000 && (p == nil || p.Source != "research") {
 		return unknownCost("unsupported_pricing_conditions")
 	}
 	if p == nil || len(p.Currency) != 3 || !strings.Contains(currencyCodes, " "+p.Currency+" ") {
 		return unknownCost("missing_price")
+	}
+	if p.Source == "research" && !supportedResearchConditions(p.RawPricing, u.InputTokens) {
+		return unknownCost("unsupported_pricing_conditions")
 	}
 	if len(p.RawPricing) > 0 {
 		v, e := decodeJSON(p.RawPricing)
@@ -171,4 +174,34 @@ func EstimateCost(provider string, p *modelcatalog.Price, u Usage) Cost {
 	}
 	s, c := normalized(total), p.Currency
 	return Cost{Status: "estimated", Amount: &s, Currency: &c}
+}
+
+// Research prices describe only the verified lowest input tier. Never extend
+// that price to a longer request or silently discard unfamiliar conditions.
+func supportedResearchConditions(raw json.RawMessage, input int64) bool {
+	v, err := decodeJSON(raw)
+	if err != nil {
+		return false
+	}
+	m := obj(v)
+	if m["research_version"] != "v1" || m["pricing_scope"] != "standard_global" {
+		return false
+	}
+	for key, value := range m {
+		s, ok := value.(string)
+		if !ok {
+			return false
+		}
+		switch key {
+		case "research_version", "pricing_scope", "source", "evidence":
+		case "max_input_tokens":
+			limit, err := strconv.ParseInt(s, 10, 64)
+			if err != nil || limit <= 0 || input > limit {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

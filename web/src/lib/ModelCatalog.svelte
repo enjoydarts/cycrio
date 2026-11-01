@@ -27,6 +27,9 @@
   } from './model-catalog';
   import CatalogPrices from './CatalogPrices.svelte';
   import CatalogSync from './CatalogSync.svelte';
+  import PriceResearch from './PriceResearch.svelte';
+  import CatalogChanges from './CatalogChanges.svelte';
+  import Modal from './Modal.svelte';
   import ModelList from './ModelList.svelte';
   import ModelSearch from './ModelSearch.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -36,20 +39,33 @@
     api,
     token,
     onDenied,
-  }: { api: CatalogAPI; token: TokenProvider; onDenied: () => void } = $props();
+    apiBase = '',
+  }: {
+    api: CatalogAPI;
+    token: TokenProvider;
+    onDenied: () => void;
+    apiBase?: string;
+  } = $props();
   let view = $state<CatalogState>(emptyCatalogState());
   let controller: ReturnType<typeof createCatalogController> | undefined;
   let modelDraft = $state<RevisionDraft<
     Omit<ModelUpdate, 'expected_version'>
   > | null>(null);
   let draftModelID = $state<string | null>(null);
-  let purpose = $state<'catalog' | 'sync' | 'add'>('catalog');
+  let purpose = $state<
+    'catalog' | 'sync' | 'add' | 'price-research' | 'changes'
+  >('catalog');
+  let researchMounted = $state(false),
+    changesMounted = $state(false),
+    researchDirty = $state(false),
+    researchBusy = $state(false),
+    deleteModel = $state<Model | null>(null);
   let priceDirty = $state(false),
     syncDirty = $state(false),
     addDirty = $state(false),
     uncertainWrite = $state(false);
   const editorDirty = $derived(!!modelDraft?.dirty || priceDirty);
-  const dirty = $derived(editorDirty || syncDirty || addDirty);
+  const dirty = $derived(editorDirty || syncDirty || addDirty || researchDirty);
   $effect(() => {
     const model = view.selected;
     if (!model) {
@@ -75,6 +91,7 @@
   beforeNavigate((navigation) => {
     if (
       view.status === 'saving' ||
+      researchBusy ||
       uncertainWrite ||
       (dirty &&
         !window.confirm('保存していない入力があります。破棄して移動しますか？'))
@@ -90,6 +107,16 @@
     }
   });
   onMount(() => {
+    if (
+      new URL(window.location.href).searchParams.get('tab') === 'price-research'
+    ) {
+      purpose = 'price-research';
+      researchMounted = true;
+    }
+    if (new URL(window.location.href).searchParams.get('tab') === 'changes') {
+      purpose = 'changes';
+      changesMounted = true;
+    }
     controller = createCatalogController(
       api,
       token,
@@ -107,7 +134,7 @@
         void controller?.pollSync();
     }, 3000);
     const leave = (event: BeforeUnloadEvent) => {
-      if (dirty || view.status === 'saving' || uncertainWrite) {
+      if (dirty || view.status === 'saving' || uncertainWrite || researchBusy) {
         event.preventDefault();
         event.returnValue = '';
       }
@@ -198,6 +225,20 @@
     if (view.status === 'saving' || view.status === 'loading') return;
     if (await succeeded(controller?.loadCatalog())) uncertainWrite = false;
   }
+  function changeTab(value: typeof purpose) {
+    if (researchBusy) return;
+    purpose = value;
+    if (value === 'price-research') researchMounted = true;
+    if (value === 'changes') changesMounted = true;
+  }
+  async function removeModel() {
+    if (!deleteModel || busy) return;
+    if (await succeeded(controller?.remove(deleteModel), true)) {
+      deleteModel = null;
+      modelDraft = null;
+      priceDirty = false;
+    }
+  }
 </script>
 
 <section
@@ -246,14 +287,14 @@
           </p>{/if}{#if view.success}<p class="success">{view.success}</p>{/if}
       </div>
       <nav class="library-tabs" aria-label="カタログの表示">
-        {#each [['catalog', 'モデル一覧'], ['sync', '同期・更新'], ['add', 'モデルを追加']] as [value, label]}
+        {#each [['catalog', 'モデル一覧'], ['sync', '同期・更新'], ['price-research', '料金調査'], ['changes', '変更履歴'], ['add', 'モデルを追加']] as [value, label]}
           <Button
             wrap
             variant="tab"
             type="button"
             aria-pressed={purpose === value}
-            disabled={view.status === 'saving'}
-            onclick={() => (purpose = value as typeof purpose)}>{label}</Button
+            disabled={view.status === 'saving' || researchBusy}
+            onclick={() => changeTab(value as typeof purpose)}>{label}</Button
           >
         {/each}
       </nav>
@@ -316,6 +357,14 @@
                 'api'
                   ? 'API'
                   : '手入力'}
+              </p>
+              <p>
+                公式料金の確認日（日本時間）：{model.research_checked_at
+                  ? new Date(model.research_checked_at).toLocaleString(
+                      'ja-JP',
+                      { timeZone: 'Asia/Tokyo' },
+                    )
+                  : '未確認'}
               </p>
               <details>
                 <summary>モデル設定を編集</summary>
@@ -433,6 +482,17 @@
               <Button wrap disabled={busy} onclick={() => openModel(null)}
                 >詳細を閉じる</Button
               >
+              <ActionGroup
+                ><Button
+                  wrap
+                  type="button"
+                  variant="danger"
+                  disabled={busy || editorDirty}
+                  onclick={() => {
+                    deleteModel = model;
+                  }}>このモデルを削除</Button
+                ></ActionGroup
+              >
             </section>
           {/if}
         </div>
@@ -454,6 +514,28 @@
           reload={() => succeeded(controller?.loadCatalog())}
           onDirty={(value) => (syncDirty = value)}
         />
+      </section>
+      <section
+        class="library-content"
+        aria-label="料金調査"
+        hidden={purpose !== 'price-research'}
+      >
+        {#if researchMounted}<PriceResearch
+            catalog={api}
+            {apiBase}
+            {token}
+            {onDenied}
+            onDirty={(value) => (researchDirty = value)}
+            onBusy={(value) => (researchBusy = value)}
+            onSync={() => changeTab('sync')}
+          />{/if}
+      </section>
+      <section
+        class="library-content"
+        aria-label="変更履歴"
+        hidden={purpose !== 'changes'}
+      >
+        {#if changesMounted}<CatalogChanges {apiBase} {token} {onDenied} />{/if}
       </section>
       <section
         class="library-content"
@@ -508,6 +590,44 @@
     </div>
   </LibraryPanel>
 </section>
+
+<Modal
+  open={deleteModel !== null}
+  title="モデルを削除"
+  {busy}
+  onclose={() => {
+    deleteModel = null;
+  }}
+>
+  <p>
+    「{deleteModel?.display_name}」をモデル一覧から削除します。API
+    同期しても復活しません。過去の価格・利用履歴は保持します。
+  </p>
+  <p>
+    現在利用中のモデルは削除できません。先にメール解析と料金調査の設定を変更してください。
+  </p>
+  {#if view.error}<p class="error" role="alert">
+      {view.error === 'conflict'
+        ? '現在の設定で参照されているか、別の操作でモデルが更新されています。設定と保存状態を確認してください。'
+        : catalogErrors[view.error]}
+    </p>{/if}
+  <ActionGroup
+    ><Button
+      wrap
+      type="button"
+      disabled={busy}
+      onclick={() => {
+        deleteModel = null;
+      }}>キャンセル</Button
+    ><Button
+      wrap
+      type="button"
+      variant="danger"
+      disabled={busy || uncertainWrite}
+      onclick={removeModel}>モデルを削除する</Button
+    ></ActionGroup
+  >
+</Modal>
 
 <style>
   [hidden] {

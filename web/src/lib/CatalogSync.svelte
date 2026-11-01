@@ -91,8 +91,9 @@
 
 <section aria-label="カタログの同期と自動更新">
   <p class="muted">
-    OpenRouter はモデルと価格を取得します。OpenAI / Anthropic は登録済み API
-    キーでモデルを取得し、価格は手入力します。Liquid AI は手入力のみです。推論
+    OpenRouter はモデルと価格を取得します。Liquid AI / OpenAI / Anthropic
+    は登録済み API
+    キーでモデルを取得します。公式価格は「料金調査」で確認でき、手入力の上書きも使えます。モデル一覧の同期では推論
     API は呼び出しません。
   </p>
   <DataTable class={['table-CatalogSync']} aria-label="提供元の同期状態">
@@ -167,7 +168,7 @@
                 oninput={() => {
                   draft.dirty = true;
                 }}
-                disabled={busy || row.provider === 'liquid'}
+                disabled={busy}
               />自動同期を有効にする</label
             >
             <label for={`sync-hours-${row.provider}`}
@@ -182,7 +183,7 @@
               oninput={() => {
                 draft.dirty = true;
               }}
-              disabled={busy || row.provider === 'liquid'}
+              disabled={busy}
             />
             {#if row.provider === 'anthropic'}<label for="anthropic-workspace"
                 >Anthropic ワークスペース ID（任意）</label
@@ -195,16 +196,11 @@
                 disabled={busy}
               />{/if}
             <ActionGroup class={['actions', 'part-CatalogSync-actions']}>
-              <Button
-                wrap
-                type="submit"
-                disabled={busy || row.provider === 'liquid'}
-                >同期設定を保存</Button
+              <Button wrap type="submit" disabled={busy}>同期設定を保存</Button
               ><Button
                 wrap
                 type="button"
                 disabled={busy ||
-                  row.provider === 'liquid' ||
                   row.status === 'queued' ||
                   row.status === 'running'}
                 onclick={() => request(row.provider)}>今すぐ同期を依頼</Button
@@ -213,7 +209,7 @@
             <Button
               wrap
               type="button"
-              disabled={busy || row.provider === 'liquid'}
+              disabled={busy}
               onclick={() => reloadDraft(row.provider)}
               >最新の同期設定を読み直す（入力を破棄）</Button
             >

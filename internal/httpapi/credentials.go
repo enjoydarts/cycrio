@@ -24,6 +24,7 @@ type handlerOptions struct {
 	integrations    IntegrationService
 	credentials     CredentialService
 	catalog         ModelCatalogService
+	priceResearch   PriceResearchService
 	runtime         AIRuntimeService
 	routes          AIRoutesService
 	mail            MailAccountService

@@ -37,6 +37,7 @@ export const stageNames = {
   extraction: '二次抽出',
   match: '照合',
   repair: '修復',
+  price_research: '公式価格調査',
 };
 export const testStateNames = {
   queued: '待機中',

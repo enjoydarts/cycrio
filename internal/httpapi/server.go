@@ -76,6 +76,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerOverview(mux, settings.overview, protect)
 	registerIntegrations(mux, settings.integrations, protect)
 	registerModelCatalog(mux, settings.catalog, protect)
+	registerPriceResearch(mux, settings.priceResearch, protect)
 	registerAIRuntime(mux, settings.runtime, protect)
 	registerAIRoutes(mux, settings.routes, protect)
 	registerMailAccounts(mux, settings.mail, protect)

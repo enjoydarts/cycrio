@@ -69,7 +69,7 @@ func TestProviderRejectsPartialMalformedSecretsAndRedirects(t *testing.T) {
 	if _, err := f.Fetch(context.Background(), "openai", ""); !errors.Is(err, ErrCredentialsRequired) {
 		t.Fatal(err)
 	}
-	if _, err := f.Fetch(context.Background(), "liquid", ""); !errors.Is(err, ErrInvalid) {
+	if _, err := f.Fetch(context.Background(), "unknown", ""); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 }

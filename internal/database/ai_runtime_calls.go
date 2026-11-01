@@ -145,7 +145,7 @@ func runtimeNormalizeCost(c ai.Cost) (ai.Cost, error) {
 		c.Reason = c.Status
 	}
 	switch c.Reason {
-	case "unknown", "estimated", "provider_reported", "not_recorded", "missing_usage", "missing_reported_cost", "invalid_reported_cost", "invalid_usage", "unsupported_pricing_conditions", "refusal_pricing_unsupported", "missing_price", "unknown_cache_write_ttl", "missing_rate", "invalid_price":
+	case "unknown", "estimated", "provider_reported", "not_recorded", "missing_usage", "missing_reported_cost", "invalid_reported_cost", "invalid_usage", "unsupported_pricing_conditions", "refusal_pricing_unsupported", "missing_price", "unknown_cache_write_ttl", "missing_rate", "invalid_price", "unknown_search_charge":
 	default:
 		return c, airuntime.ErrInvalid
 	}

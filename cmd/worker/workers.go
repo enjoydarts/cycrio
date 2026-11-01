@@ -8,7 +8,7 @@ import (
 )
 
 type workerTasks struct {
-	check, catalog, aiTest, mailProbe, mailDiscovery, mailProcessing hatchet.WorkflowBase
+	check, catalog, priceResearch, aiTest, mailProbe, mailDiscovery, mailProcessing hatchet.WorkflowBase
 }
 
 type workerGroup struct {
@@ -21,8 +21,9 @@ type workerGroup struct {
 // Separate control slots allow discovery and probes to run during long batches.
 func workerGroups(name string, tasks workerTasks) []workerGroup {
 	return []workerGroup{
-		{name: name + "-control", slots: 2, workflows: []hatchet.WorkflowBase{tasks.check, tasks.catalog, tasks.aiTest, tasks.mailProbe, tasks.mailDiscovery}},
+		{name: name + "-control", slots: 2, workflows: []hatchet.WorkflowBase{tasks.check, tasks.aiTest, tasks.mailProbe, tasks.mailDiscovery}},
 		{name: name + "-processing", slots: 2, workflows: []hatchet.WorkflowBase{tasks.mailProcessing}},
+		{name: name + "-maintenance", slots: 1, workflows: []hatchet.WorkflowBase{tasks.catalog, tasks.priceResearch}},
 	}
 }
 

@@ -55,6 +55,8 @@ type Model struct {
 	CurrentPrice             *Price          `json:"current_price"`
 	CreatedAt                time.Time       `json:"created_at"`
 	UpdatedAt                time.Time       `json:"updated_at"`
+	ResearchCheckedAt        *time.Time      `json:"research_checked_at"`
+	DeletedAt                *time.Time      `json:"deleted_at"`
 }
 type Filter struct {
 	Provider        string

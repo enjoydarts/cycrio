@@ -121,7 +121,7 @@ type Call struct {
 	ID                string     `json:"id"`
 	OperationID       string     `json:"operation_id"`
 	RunID             *string    `json:"run_id"`
-	ProfileID         string     `json:"profile_id"`
+	ProfileID         *string    `json:"profile_id"`
 	Scope             string     `json:"scope"`
 	ConsumingUserID   *string    `json:"consuming_user_id"`
 	MailAccountID     *string    `json:"mail_account_id"`

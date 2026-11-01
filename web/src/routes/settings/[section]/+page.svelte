@@ -72,6 +72,7 @@
       {:else if section === 'catalog'}
         <ModelCatalog
           api={session.catalogAPI}
+          apiBase={PUBLIC_API_BASE_URL}
           token={session.token}
           onDenied={session.onDenied}
         />

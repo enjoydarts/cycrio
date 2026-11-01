@@ -21,6 +21,17 @@ import {
   report,
 } from './airuntime-test-fixtures.ts';
 
+test('system price research calls have no email profile and a Japanese stage label', () => {
+  const parsed = parseCall({
+    ...call(),
+    profile_id: null,
+    stage: 'price_research',
+    scope: 'system',
+  });
+  assert.equal(parsed.profile_id, null);
+  assert.equal(parsed.stage, 'price_research');
+});
+
 test('runtime DTOs strictly validate nullable fields, enums, UUIDs and timestamps', () => {
   assert.equal(
     parseRuntimeState(runtime()).draft?.primary.credential_version,

@@ -146,7 +146,7 @@ func TestServiceManualMoneyAndInputValidation(t *testing.T) {
 	if _, err := s.ConfigureSync(context.Background(), actor, "openai", SyncConfigInput{IntervalHours: 24, WorkspaceID: "workspace"}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
-	if _, err := s.ConfigureSync(context.Background(), actor, "liquid", SyncConfigInput{IntervalHours: 24, AutomaticEnabled: true}); !errors.Is(err, ErrInvalid) {
+	if _, err := s.ConfigureSync(context.Background(), actor, "liquid", SyncConfigInput{IntervalHours: 0, AutomaticEnabled: true}); !errors.Is(err, ErrInvalid) {
 		t.Fatal(err)
 	}
 }

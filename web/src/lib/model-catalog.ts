@@ -319,6 +319,21 @@ export function createCatalogController(
         (s) => api.savePrice(model.id, input, token, s),
         '手入力価格を保存しました。',
       ),
+    remove: (model: Model) =>
+      run(
+        'saving',
+        async (signal) => {
+          await api.remove(model.id, model.version, token, signal);
+          if (signal.aborted) throw Error();
+          state = { ...state, selected: null, prices: [] };
+          return {
+            ...(await readCatalog(signal)),
+            success:
+              'モデルを削除しました。過去の価格・利用履歴は保持しています。',
+          };
+        },
+        readCatalog,
+      ),
     resetPrice: (model: Model, expected_version: number) =>
       mutate(
         (s) => api.resetPrice(model.id, expected_version, token, s),

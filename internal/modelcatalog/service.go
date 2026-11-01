@@ -30,6 +30,18 @@ func (s *Service) GetModel(ctx context.Context, id string) (Model, error) {
 	}
 	return s.repo.GetModel(ctx, id)
 }
+func (s *Service) DeleteModel(ctx context.Context, actor, id string, expected int64) (Model, error) {
+	if !validUUID(actor) || !validUUID(id) || !validVersion(expected) {
+		return Model{}, ErrInvalid
+	}
+	repo, ok := s.repo.(interface {
+		DeleteModel(context.Context, string, string, int64) (Model, error)
+	})
+	if !ok {
+		return Model{}, ErrUnavailable
+	}
+	return repo.DeleteModel(ctx, actor, id, expected)
+}
 func validUUID(id string) bool  { _, err := uuid.Parse(id); return err == nil }
 func validVersion(v int64) bool { return v >= 0 && v < math.MaxInt64 }
 func (s *Service) List(ctx context.Context, f Filter) (ListResult, error) {
@@ -118,7 +130,7 @@ func (s *Service) RequestSync(ctx context.Context, actor, provider string) (Sync
 	return s.repo.RequestSync(ctx, actor, provider)
 }
 func (s *Service) ConfigureSync(ctx context.Context, actor, provider string, in SyncConfigInput) (SyncState, error) {
-	if !validUUID(actor) || !ValidProvider(provider) || !validVersion(in.ExpectedVersion) || in.IntervalHours < 1 || in.IntervalHours > 168 || !ValidWorkspace(provider, in.WorkspaceID) || provider == "liquid" && in.AutomaticEnabled {
+	if !validUUID(actor) || !ValidProvider(provider) || !validVersion(in.ExpectedVersion) || in.IntervalHours < 1 || in.IntervalHours > 168 || !ValidWorkspace(provider, in.WorkspaceID) {
 		return SyncState{}, ErrInvalid
 	}
 	return s.repo.ConfigureSync(ctx, actor, provider, in)
@@ -127,7 +139,7 @@ func (s *Service) ClaimDue(ctx context.Context) ([]SyncLease, error) { return s.
 func (s *Service) SyncProvider(ctx context.Context, provider, leaseID string) error {
 	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	if !ValidProvider(provider) || provider == "liquid" || !validUUID(leaseID) {
+	if !ValidProvider(provider) || !validUUID(leaseID) {
 		return ErrInvalid
 	}
 	if err := s.repo.ValidateLease(ctx, provider, leaseID); err != nil {

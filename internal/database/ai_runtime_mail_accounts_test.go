@@ -332,11 +332,9 @@ func TestAIRuntimeMailAccountMigrationBackfill(t *testing.T) {
 		t.Fatal(err)
 	}
 	down, err := p.DownTo(ctx, 25)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 26 || down[0].Direction != "down" {
-		t.Fatal("migration down", down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 26)
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 26, 26)
+	assertMigrationRange(t, up, err, 26, latestMigrationVersion)
 	var account *string
 	if err = f.runtime.pool.QueryRow(ctx, `SELECT mail_account_id FROM ai_calls WHERE id=$1`, c.ID).Scan(&account); err != nil || account == nil || *account != f.account {
 		t.Fatal("legacy backfill", err)
@@ -362,6 +360,11 @@ func TestAIRuntimeMailAccountDowngradeLocksReconstructionSource(t *testing.T) {
 	p, err := goose.NewProvider(goose.DialectPostgres, db, files)
 	if err != nil {
 		t.Fatal(err)
+	}
+	// Isolate the v26 lock assertion from newer independent DDL locks.
+	down, err := p.DownTo(ctx, 26)
+	if err != nil || len(down) != 2 || down[0].Source.Version != 28 || down[1].Source.Version != 27 || down[0].Direction != "down" || down[1].Direction != "down" {
+		t.Fatal("prepare v26 schema", down, err)
 	}
 	blocker, err := f.runtime.pool.Begin(ctx)
 	if err != nil {

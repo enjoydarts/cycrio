@@ -8,6 +8,7 @@ import { modelFixture as model, syncFixture } from './catalog-test-fixtures.ts';
 import { emptyCatalogState } from './model-catalog.ts';
 import { emptyUsageView } from './ai-runtime-controller.ts';
 import { report } from './airuntime-test-fixtures.ts';
+import { emptyPriceResearchView } from './price-research-controller.ts';
 
 const moduleURL = (code: string) =>
   `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
@@ -69,6 +70,135 @@ test('catalog starts with model browsing and separates provider sync and manual 
   assert.match(html, /aria-label="カタログの表示"/);
   assert.match(html, /<section[^>]*aria-label="同期・更新"[^>]*hidden/);
   assert.match(html, /<section[^>]*aria-label="モデルを追加"[^>]*hidden/);
+  assert.match(html, /<section[^>]*aria-label="料金調査"[^>]*hidden/);
+  assert.doesNotMatch(html, /Web検索テストを実行/);
+  assert.match(html, /<section[^>]*aria-label="変更履歴"[^>]*hidden/);
+  assert.doesNotMatch(html, /公式のリリース日とは異なります/);
+});
+test('catalog changes shows detected timestamps, readable differences, safe sources and numbered pages', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const before = {
+    display_name: 'Future',
+    enabled: true,
+    available: true,
+    text_input: null,
+    structured_output: null,
+    context_length: 200000,
+    max_input_tokens: null,
+    max_output_tokens: null,
+    price: null,
+  };
+  const state = {
+    status: 'ready',
+    changes: [
+      {
+        id,
+        model_id: id,
+        provider: 'openai',
+        model_name: 'Future',
+        upstream_model_id: 'future',
+        kind: 'updated',
+        occurred_at: '2026-11-01T00:00:00Z',
+        source_url: 'https://openai.com/api/pricing/',
+        before,
+        after: { ...before, context_length: 400000 },
+      },
+    ],
+    total: 45,
+    limit: 20,
+    offset: 0,
+    filter: {},
+    error: null,
+  };
+  const Component = (
+    await import(
+      await component('CatalogChanges', {
+        './catalog-changes-controller.ts': override(
+          './catalog-changes-controller.ts',
+          'emptyCatalogChangesView',
+          state,
+        ),
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { token: async () => null, onDenied: () => {} },
+  }).body;
+  assert.match(html, /公式のリリース日とは異なります/);
+  assert.match(html, /検知日時（日本時間）/);
+  assert.match(html, /Future/);
+  assert.match(html, /200,000/);
+  assert.match(html, /400,000/);
+  assert.match(html, /<details/);
+  assert.match(html, /href="https:\/\/openai.com\/api\/pricing\/"/);
+  assert.match(html, /aria-label="2ページへ"/);
+});
+test('price research displays unknown prices, pending results, official evidence and ready guards', async () => {
+  const id = '11111111-1111-4111-8111-111111111111';
+  const saved = {
+    version: 1,
+    provider: 'openai',
+    model_id: id,
+    automatic_enabled: true,
+    interval_hours: 24,
+    next_run_at: null,
+    ready: false,
+    latest_run: {
+      id,
+      kind: 'update',
+      target_provider: 'liquid',
+      state: 'unknown',
+      error_code: 'lease_expired',
+      created_at: '2026-11-01T00:00:00Z',
+      started_at: null,
+      finished_at: null,
+      updated_count: 2,
+      unresolved_count: 3,
+      call_id: null,
+      sources: ['https://docs.liquid.ai/pricing'],
+    },
+  };
+  const Component = (
+    await import(
+      await component('PriceResearch', {
+        './price-research-controller.ts': override(
+          './price-research-controller.ts',
+          'emptyPriceResearchView',
+          {
+            ...emptyPriceResearchView(),
+            status: 'ready',
+            saved,
+            draft: {
+              expected_version: 1,
+              model_id: id,
+              automatic_enabled: true,
+              interval_hours: 24,
+            },
+            models: [{ ...model(), provider: 'openai' }],
+            total: 1,
+          },
+        ),
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: {
+      catalog: {},
+      token: async () => null,
+      onDenied: () => {},
+      onSync: () => {},
+    },
+  }).body;
+  assert.match(html, /料金未取得/);
+  assert.match(html, /定期更新は\s+Web検索テストの成功まで保留/);
+  assert.match(html, /結果不明です。自動で再送しません/);
+  assert.match(html, /2 件 \/ 3 件/);
+  assert.match(html, /href="https:\/\/docs.liquid.ai\/pricing"/);
+  assert.match(
+    html,
+    /<button[^>]*disabled[^>]*>[^]*?選んだ提供元の公式価格を更新/,
+  );
+  assert.doesNotMatch(html, /<input[^>]*(?:name|id)="[^"]*model/);
 });
 test('catalog price technical identity is disclosed separately from the current reference rates', async () => {
   const Component = (await import(await component('CatalogPrices'))).default;

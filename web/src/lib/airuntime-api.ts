@@ -14,6 +14,7 @@ export const stages = [
   'extraction',
   'match',
   'repair',
+  'price_research',
 ] as const;
 export const scopes = ['user', 'admin_test', 'system'] as const;
 export const outcomes = [
@@ -132,7 +133,7 @@ export type Call = {
   id: string;
   operation_id: string;
   run_id: string | null;
-  profile_id: string;
+  profile_id: string | null;
   scope: (typeof scopes)[number];
   consuming_user_id: string | null;
   mail_account_id?: string | null;
@@ -398,7 +399,7 @@ export function parseCall(value: unknown): Call {
     id: uuid(v.id),
     operation_id: uuid(v.operation_id),
     run_id: nullable(v.run_id, uuid),
-    profile_id: uuid(v.profile_id),
+    profile_id: nullable(v.profile_id, uuid),
     scope: choice(v.scope, scopes),
     consuming_user_id: nullable(v.consuming_user_id, uuid),
     mail_account_id:

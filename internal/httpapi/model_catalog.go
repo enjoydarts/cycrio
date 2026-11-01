@@ -63,8 +63,34 @@ func registerModelCatalog(mux *http.ServeMux, service ModelCatalogService, prote
 		}
 		return service.List(r.Context(), filter)
 	})
+	register("GET /v1/admin/ai/catalog-changes", func(_ http.ResponseWriter, r *http.Request, _ database.Principal) (any, error) {
+		filter, err := catalogChangesFilter(r.URL.RawQuery)
+		if err != nil {
+			return nil, err
+		}
+		changes, ok := service.(catalogChangesService)
+		if !ok {
+			return nil, modelcatalog.ErrUnavailable
+		}
+		return changes.CatalogChanges(r.Context(), filter)
+	})
 	register("GET /v1/admin/ai/catalog/{id}", func(_ http.ResponseWriter, r *http.Request, _ database.Principal) (any, error) {
 		return service.GetModel(r.Context(), r.PathValue("id"))
+	})
+	register("DELETE /v1/admin/ai/catalog/{id}", func(w http.ResponseWriter, r *http.Request, p database.Principal) (any, error) {
+		var in struct {
+			ExpectedVersion int64 `json:"expected_version"`
+		}
+		if err := readAdminJSON(w, r, &in, "expected_version"); err != nil {
+			return nil, err
+		}
+		deleter, ok := service.(interface {
+			DeleteModel(context.Context, string, string, int64) (modelcatalog.Model, error)
+		})
+		if !ok {
+			return nil, modelcatalog.ErrUnavailable
+		}
+		return deleter.DeleteModel(r.Context(), p.ID, r.PathValue("id"), in.ExpectedVersion)
 	})
 	register("POST /v1/admin/ai/catalog", func(w http.ResponseWriter, r *http.Request, p database.Principal) (any, error) {
 		var input modelcatalog.ManualModelInput

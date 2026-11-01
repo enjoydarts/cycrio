@@ -92,7 +92,7 @@ func runtimeModels(ctx context.Context, q runtimeQuery, ids []string, lock bool)
 	return out, nil
 }
 func runtimeSupported(a, b modelcatalog.Model) bool {
-	return a.Available && a.Enabled && a.Provider == "liquid" && (a.ModelID == "d1" || strings.HasPrefix(a.ModelID, "d1-") || strings.HasPrefix(a.ModelID, "d1/") || strings.HasPrefix(a.ModelID, "d1.")) && b.Available && b.Enabled && (b.Provider == "openai" || b.Provider == "anthropic" || b.Provider == "openrouter") && (a.TextInput == nil || *a.TextInput) && (b.TextInput == nil || *b.TextInput) && (b.StructuredOutput == nil || *b.StructuredOutput)
+	return a.DeletedAt == nil && b.DeletedAt == nil && a.Available && a.Enabled && a.Provider == "liquid" && (a.ModelID == "d1" || strings.HasPrefix(a.ModelID, "d1-") || strings.HasPrefix(a.ModelID, "d1/") || strings.HasPrefix(a.ModelID, "d1.")) && b.Available && b.Enabled && (b.Provider == "openai" || b.Provider == "anthropic" || b.Provider == "openrouter") && (a.TextInput == nil || *a.TextInput) && (b.TextInput == nil || *b.TextInput) && (b.StructuredOutput == nil || *b.StructuredOutput)
 }
 func runtimeCredential(ctx context.Context, q runtimeQuery, provider string, lock bool) (string, int64, error) {
 	s := `SELECT v.id,v.version FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider WHERE p.provider=$1 AND p.state='configured' AND v.state='active'`

@@ -23,6 +23,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/mailsyncruntime"
+	"github.com/enjoydarts/cycrio/internal/priceresearch"
+	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
@@ -68,6 +70,13 @@ func run() (result error) {
 		}
 		return CatalogSyncOutput{Status: "ok"}, nil
 	}, hatchet.WithRetries(0))
+	research := priceresearchruntime.New(pool, keyring)
+	researchTask := client.NewStandaloneTask(priceResearchTaskName, func(ctx hatchet.Context, input priceresearch.Lease) (PriceResearchOutput, error) {
+		if err := research.Execute(ctx, input); err != nil {
+			return PriceResearchOutput{Status: "failed"}, errors.New("price research unavailable")
+		}
+		return PriceResearchOutput{Status: "recorded"}, nil
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	execution := airuntimeconfig.New(pool, keyring)
 	aiTask := client.NewStandaloneTask(aiTestTaskName, func(ctx hatchet.Context, input airuntime.Lease) (AITestOutput, error) {
 		if err := execution.Run(ctx, input); err != nil {
@@ -98,7 +107,7 @@ func run() (result error) {
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
 		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
-	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask})
+	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, priceResearch: researchTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask})
 	cleanup, err := startWorkerGroups(groups, func(group workerGroup) (workerStarter, error) {
 		return client.NewWorker(group.name, hatchet.WithWorkflows(group.workflows...), hatchet.WithSlots(group.slots))
 	})
@@ -111,6 +120,10 @@ func run() (result error) {
 		workerNames = append(workerNames, group.name)
 	}
 	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchPriceResearch(ctx, research.ClaimDue, func(ctx context.Context, l priceresearch.Lease) error {
+		_, err := researchTask.RunNoWait(ctx, l)
+		return err
+	}, 10*time.Second)
 	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
 	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
