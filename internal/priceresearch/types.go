@@ -36,12 +36,13 @@ type Target struct {
 	DisplayName string
 }
 type Result struct {
-	Quotes       []Quote
-	Sources      []string
-	Usage        ai.Usage
-	Cost         ai.Cost
-	GenerationID string
-	SearchCalls  int
+	CallsRecorded bool
+	Quotes        []Quote
+	Sources       []string
+	Usage         ai.Usage
+	Cost          ai.Cost
+	GenerationID  string
+	SearchCalls   int
 }
 type Quote struct {
 	ModelID                 string  `json:"model_id"`

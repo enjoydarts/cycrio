@@ -76,7 +76,7 @@ func run() (result error) {
 			return PriceResearchOutput{Status: "failed"}, errors.New("price research unavailable")
 		}
 		return PriceResearchOutput{Status: "recorded"}, nil
-	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(9*time.Minute))
 	execution := airuntimeconfig.New(pool, keyring)
 	aiTask := client.NewStandaloneTask(aiTestTaskName, func(ctx hatchet.Context, input airuntime.Lease) (AITestOutput, error) {
 		if err := execution.Run(ctx, input); err != nil {

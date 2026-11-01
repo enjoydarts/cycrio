@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -101,12 +102,73 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		Capabilities json.RawMessage `json:"capabilities"`
 	}
 	_ = json.Unmarshal(e.Model.RawMetadata, &metadata)
-	result, err := s.client.Research(ctx, Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 8192})
+	request := Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 4096}
+	if recorder, ok := s.repository.(CallRecorder); ok && e.Run.Kind == "update" {
+		result, code := s.researchModels(ctx, l, request, recorder)
+		return s.finish(ctx, l, e, result, code)
+	}
+	result, err := s.client.Research(ctx, request)
 	code := ""
 	if err != nil {
 		code = "research_failed"
 	}
 	return s.finish(ctx, l, e, result, code)
+}
+
+// CallRecorder keeps each external request separate in the usage ledger.
+type CallRecorder interface {
+	BeginCall(context.Context, Lease, int) (string, error)
+	FinishCall(context.Context, Lease, string, Result, string) error
+}
+
+func (s *Service) researchModels(ctx context.Context, lease Lease, request Request, recorder CallRecorder) (Result, string) {
+	results := make([]Result, len(request.Targets))
+	codes := make([]string, len(request.Targets))
+	jobs := make(chan int)
+	var workers sync.WaitGroup
+	for n := 0; n < 4; n++ {
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			for index := range jobs {
+				callID, err := recorder.BeginCall(ctx, lease, index)
+				if err != nil {
+					codes[index] = "configuration_changed"
+					continue
+				}
+				single := request
+				single.Targets = []Target{request.Targets[index]}
+				results[index], err = s.client.Research(ctx, single)
+				if err != nil {
+					codes[index] = "research_failed"
+				}
+				bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+				if recorder.FinishCall(bounded, lease, callID, results[index], codes[index]) != nil {
+					codes[index] = "research_failed"
+				}
+				cancel()
+			}
+		}()
+	}
+	for index := range request.Targets {
+		jobs <- index
+	}
+	close(jobs)
+	workers.Wait()
+	out := Result{CallsRecorded: true}
+	succeeded := 0
+	for index, result := range results {
+		out.SearchCalls += result.SearchCalls
+		if codes[index] == "" {
+			succeeded++
+			out.Quotes = append(out.Quotes, result.Quotes...)
+			out.Sources = append(out.Sources, result.Sources...)
+		}
+	}
+	if succeeded == 0 {
+		return out, "research_failed"
+	}
+	return out, ""
 }
 func (s *Service) finish(ctx context.Context, l Lease, e Execution, r Result, code string) error {
 	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
@@ -168,7 +230,7 @@ func created(m modelcatalog.Model) float64 {
 }
 func QuotePrice(q Quote) (modelcatalog.Price, error) {
 	p := modelcatalog.Price{Source: "research", Currency: q.Currency, SourceURL: q.SourceURL, Rates: map[string]modelcatalog.Rate{}}
-	if !ValidTargetProvider(q.Provider) || q.ModelID == "" || q.Currency != "USD" || q.Conditions != "standard_global" || q.SourceURL == "" || q.Evidence == "" || q.MaxInputTokens != nil && *q.MaxInputTokens < 1 {
+	if !ValidTargetProvider(q.Provider) || q.ModelID == "" || q.Currency != "USD" || q.Conditions != "standard_global" || q.SourceURL == "" || q.MaxInputTokens != nil && (*q.MaxInputTokens < 1 || *q.MaxInputTokens > 1000000000) {
 		return p, ErrInvalid
 	}
 	canonical, ok := officialURL(q.SourceURL, q.Provider)

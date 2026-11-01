@@ -18,7 +18,7 @@ func New(pool *pgxpool.Pool, keyring *secretstore.Keyring) *Service {
 	return &Service{priceresearch.NewService(database.NewPriceResearchRepository(pool), priceresearch.NewClient(nil), secrets.Resolve)}
 }
 func (s *Service) Execute(ctx context.Context, l priceresearch.Lease) error {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Minute)
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Minute)
 	defer cancel()
 	return s.Service.Execute(ctx, l)
 }

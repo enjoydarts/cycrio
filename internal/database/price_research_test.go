@@ -105,6 +105,9 @@ func TestPriceResearchLifecyclePreservesOverridesAndHistory(t *testing.T) {
 		if err = r.Begin(ctx, ls[0]); !errors.Is(err, priceresearch.ErrDispatched) {
 			t.Fatal("duplicate dispatch", err)
 		}
+		if _, err = r.BeginCall(ctx, ls[0], 0); err != nil {
+			t.Fatal(err)
+		}
 		result := researchResult()
 		if i == 1 {
 			result.Quotes[0].Evidence = "Future model verified again input 1.25 output 5"
@@ -294,6 +297,9 @@ func TestPriceResearchConfigurationAndModelChangesKeepCallUsage(t *testing.T) {
 				t.Fatal(err)
 			}
 			if err = r.Begin(ctx, ls[0]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err = r.BeginCall(ctx, ls[0], 0); err != nil {
 				t.Fatal(err)
 			}
 			if change == "model" {

@@ -205,7 +205,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 		return nil, err
 	}
 	// An uncertain external call is never resent automatically.
-	if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id IN(SELECT call_id FROM price_research_runs WHERE state='running' AND lease_until<=clock_timestamp()) AND status='calling'`); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id IN(SELECT id FROM price_research_runs WHERE state='running' AND lease_until<=clock_timestamp()) AND stage='price_research' AND status='calling'`); err != nil {
 		return nil, researchError(err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='unknown',error_code='lease_expired',finished_at=clock_timestamp(),lease_id=NULL,lease_until=NULL WHERE state='running' AND lease_until<=clock_timestamp()`); err != nil {
@@ -255,7 +255,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 		return nil, researchError(err)
 	}
 	l := priceresearch.Lease{RunID: id, LeaseID: uuid.NewString()}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='running',started_at=clock_timestamp(),lease_id=$2,lease_until=clock_timestamp()+interval '5 minutes' WHERE id=$1`, id, l.LeaseID); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='running',started_at=clock_timestamp(),lease_id=$2,lease_until=clock_timestamp()+interval '10 minutes' WHERE id=$1`, id, l.LeaseID); err != nil {
 		return nil, researchError(err)
 	}
 	return append(out, l), researchCommit(ctx, tx)
@@ -314,11 +314,12 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 	if e.CredentialID != "" && e.CredentialID != credential {
 		return e, priceresearch.ErrConflict
 	}
+	fresh := e.CredentialID == ""
 	e.CredentialID = credential
 	if tx.QueryRow(ctx, `SELECT workspace_id FROM catalog_sync WHERE provider=$1`, e.Model.Provider).Scan(&e.WorkspaceID) != nil {
 		return e, priceresearch.ErrUnavailable
 	}
-	if e.Run.CallID == nil {
+	if fresh {
 		if e.Run.Kind == "test" {
 			e.Targets = []priceresearch.Target{{ID: e.Model.ID, Provider: e.Model.Provider, ModelID: e.Model.ModelID, DisplayName: e.Model.DisplayName}}
 		} else {
@@ -344,19 +345,23 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 			}
 			e.Targets = priceresearch.Candidates(models, e.Run.TargetProvider)
 		}
-		id := uuid.NewString()
+		var callID *string
 		var price any
 		if e.Model.CurrentPrice != nil {
 			price = e.Model.CurrentPrice.ID
 		}
-		if _, err = tx.Exec(ctx, `INSERT INTO ai_calls(id,operation_id,scope,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status)VALUES($1,$2,'system',$3,$4,$5,$6,$7,$8,'price_research',1,'calling')`, id, l.RunID, e.Model.Provider, e.Model.ID, e.Model.DisplayName, e.Model.ModelID, credential, price); err != nil {
-			return e, researchError(err)
+		if e.Run.Kind == "test" {
+			id := uuid.NewString()
+			if _, err = tx.Exec(ctx, `INSERT INTO ai_calls(id,operation_id,scope,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status)VALUES($1,$2,'system',$3,$4,$5,$6,$7,$8,'price_research',1,'calling')`, id, l.RunID, e.Model.Provider, e.Model.ID, e.Model.DisplayName, e.Model.ModelID, credential, price); err != nil {
+				return e, researchError(err)
+			}
+			callID = &id
 		}
 		raw, _ := json.Marshal(e.Targets)
-		if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET call_id=$2,credential_id=$3,targets=$4 WHERE id=$1`, l.RunID, id, credential, raw); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET call_id=$2,credential_id=$3,targets=$4 WHERE id=$1`, l.RunID, callID, credential, raw); err != nil {
 			return e, researchError(err)
 		}
-		e.Run.CallID = &id
+		e.Run.CallID = callID
 	}
 	return e, researchCommit(ctx, tx)
 }
@@ -383,7 +388,7 @@ func (r *PriceResearchRepository) Begin(ctx context.Context, l priceresearch.Lea
 	if dispatched {
 		return priceresearch.ErrDispatched
 	}
-	if s.Version != e.Version || e.Run.CallID == nil || e.Run.Kind == "update" && !s.Ready || !e.Model.Enabled || !e.Model.Available || e.Model.DeletedAt != nil {
+	if s.Version != e.Version || e.Run.Kind == "test" && e.Run.CallID == nil || e.Run.Kind == "update" && !s.Ready || !e.Model.Enabled || !e.Model.Available || e.Model.DeletedAt != nil {
 		return priceresearch.ErrConflict
 	}
 	var active bool
@@ -428,7 +433,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		code = "configuration_changed"
 	}
 	// Record received usage even if configuration or the lease changed after send.
-	if run.CallID != nil {
+	if run.CallID != nil && !result.CallsRecorded {
 		c, err := scanRuntimeCall(tx.QueryRow(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls WHERE id=$1 FOR UPDATE`, *run.CallID))
 		if err != nil {
 			return priceresearch.ErrUnavailable
@@ -463,6 +468,11 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 			generation = ""
 		}
 		if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status=$2,outcome=$3,generation_id=NULLIF($4,''),finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1`, c.ID, status, outcome, generation); err != nil {
+			return researchError(err)
+		}
+	}
+	if result.CallsRecorded {
+		if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='provider_unavailable',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id=$1 AND stage='price_research' AND status='calling'`, l.RunID); err != nil {
 			return researchError(err)
 		}
 	}
