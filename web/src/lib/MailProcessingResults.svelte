@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import MailReceivedDate from './MailReceivedDate.svelte';
   import type {
     ProcessingEvent,
     ProcessingResult,
@@ -71,6 +72,7 @@
           >{processingDate(result.finished_at)}</time
         >
       </div>
+      <p class="help"><MailReceivedDate receivedAt={result.received_at} /></p>
       {#if result.state === 'not_related'}<p>
           サブスクリプションに関連しないと判定されました。
         </p>{/if}

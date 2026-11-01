@@ -13,7 +13,7 @@ const candidateCTE = `WITH current_items AS (
  WHERE owner_id=$1 AND ($2='' OR account_id::text=lower($2)) AND state IN ('succeeded','not_related')
  ORDER BY message_id,created_at DESC,id DESC
 ), candidates AS (
- SELECT i.id AS result_id,i.account_id,e.ordinality::integer-1 AS event_index,e.event
+ SELECT i.id AS result_id,i.account_id,i.received_at,e.ordinality::integer-1 AS event_index,e.event
  FROM current_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) WITH ORDINALITY e(event,ordinality)
  WHERE i.state='succeeded'
  AND NOT (` + reanalysisPriorDecision + `)
@@ -37,7 +37,7 @@ func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f
 	if e = tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidates`, owner, f.AccountID).Scan(&out.Total); e != nil {
 		return out, subscriptionError(e)
 	}
-	rows, e := tx.Query(ctx, candidateCTE+`SELECT c.result_id,c.event_index,c.account_id,a.label,c.event FROM candidates c JOIN mail_accounts a ON a.id=c.account_id AND a.owner_id=$1 ORDER BY c.result_id,c.event_index LIMIT $3 OFFSET $4`, owner, f.AccountID, f.Limit, f.Offset)
+	rows, e := tx.Query(ctx, candidateCTE+`SELECT c.result_id,c.event_index,c.account_id,a.label,c.event,c.received_at FROM candidates c JOIN mail_accounts a ON a.id=c.account_id AND a.owner_id=$1 ORDER BY c.result_id,c.event_index LIMIT $3 OFFSET $4`, owner, f.AccountID, f.Limit, f.Offset)
 	if e != nil {
 		return out, subscriptionError(e)
 	}
@@ -45,7 +45,7 @@ func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f
 	for rows.Next() {
 		var c subscriptions.Candidate
 		var raw []byte
-		if e = rows.Scan(&c.ResultID, &c.EventIndex, &c.AccountID, &c.AccountLabel, &raw); e != nil {
+		if e = rows.Scan(&c.ResultID, &c.EventIndex, &c.AccountID, &c.AccountLabel, &raw, &c.ReceivedAt); e != nil {
 			return out, subscriptionError(e)
 		}
 		if json.Unmarshal(raw, &c.Event) != nil {

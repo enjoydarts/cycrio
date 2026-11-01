@@ -162,7 +162,7 @@ func (r *SubscriptionRepository) AnalysisMessage(ctx context.Context, owner, id 
 	}
 	result := subscriptions.AnalysisResult{}
 	var raw []byte
-	e = tx.QueryRow(ctx, `SELECT id,message_id,state,classification,error_code,events,finished_at,account_id FROM mail_processing_items WHERE owner_id=$1 AND id=$2`, owner, *out.Message.ResultID).Scan(&result.ID, &result.MessageID, &result.State, &result.Classification, &result.ErrorCode, &raw, &result.FinishedAt, &result.AccountID)
+	e = tx.QueryRow(ctx, `SELECT id,message_id,state,classification,error_code,events,finished_at,account_id,received_at FROM mail_processing_items WHERE owner_id=$1 AND id=$2`, owner, *out.Message.ResultID).Scan(&result.ID, &result.MessageID, &result.State, &result.Classification, &result.ErrorCode, &raw, &result.FinishedAt, &result.AccountID, &result.ReceivedAt)
 	if e != nil {
 		return out, subscriptionError(e)
 	}

@@ -259,6 +259,7 @@ test('actual Go-serialized synthetic DTOs parse without dropping price precision
   for (const name of ['related', 'unrelated', 'failed', 'unknown'])
     assert.deepEqual(parseProcessingResult(fixtures[name]), {
       ...fixtures[name],
+      received_at: null,
       events: fixtures[name].events.map((event: object) => ({
         ...event,
         recurring_amount: null,

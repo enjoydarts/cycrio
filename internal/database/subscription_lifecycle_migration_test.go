@@ -60,6 +60,11 @@ func TestSubscriptionLifecycleMigrationPreservesLegacyAndRefusesLoss(t *testing.
 	if _, e = p.DownTo(ctx, 22); e == nil {
 		t.Fatal("downgrade silently lost explicit lifecycle facts")
 	}
+	// Goose rolls back each migration separately; restore newer columns before
+	// reading with the current repository after version 23 refused to roll back.
+	if _, e = p.Up(ctx); e != nil {
+		t.Fatal(e)
+	}
 	current, e := r.Get(ctx, f.owner, s.ID)
 	if e != nil || current.AccessEndDate == nil || *current.AccessEndDate != end {
 		t.Fatal("refused downgrade lost data", current, e)

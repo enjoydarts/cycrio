@@ -1,5 +1,6 @@
 <script lang="ts">
   import BrandIcon from './BrandIcon.svelte';
+  import MailReceivedDate from './MailReceivedDate.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import DataTable from './DataTable.svelte';
   import Button from './Button.svelte';
@@ -39,7 +40,10 @@
               >{candidate.event.plan ?? 'プラン不明'} · {eventNames[
                 candidate.event.event_type
               ]}</span
-            ><span class="secondary">{candidate.account_label}</span></td
+            ><span class="secondary">{candidate.account_label}</span>
+            <span class="secondary"
+              ><MailReceivedDate receivedAt={candidate.received_at} /></span
+            ></td
           >
           <td data-label="取引金額・周期"
             ><span class="money"

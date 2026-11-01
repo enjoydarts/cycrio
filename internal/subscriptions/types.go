@@ -30,13 +30,14 @@ type Values struct {
 	Status          string  `json:"status"`
 }
 type Source struct {
-	AccountID     *string  `json:"account_id,omitempty"`
-	AccountLabel  *string  `json:"account_label,omitempty"`
-	Provider      *string  `json:"provider,omitempty"`
-	Provenance    string   `json:"provenance"`
-	ResultID      string   `json:"result_id"`
-	EventIndex    int      `json:"event_index"`
-	OriginalEvent ai.Event `json:"original_event"`
+	ReceivedAt    *time.Time `json:"received_at"`
+	AccountID     *string    `json:"account_id,omitempty"`
+	AccountLabel  *string    `json:"account_label,omitempty"`
+	Provider      *string    `json:"provider,omitempty"`
+	Provenance    string     `json:"provenance"`
+	ResultID      string     `json:"result_id"`
+	EventIndex    int        `json:"event_index"`
+	OriginalEvent ai.Event   `json:"original_event"`
 }
 type Subscription struct {
 	Provenance string `json:"provenance"`

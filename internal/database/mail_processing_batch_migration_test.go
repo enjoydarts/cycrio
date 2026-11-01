@@ -39,7 +39,7 @@ func TestMailProcessingBatchMigrationRefusesActiveBatchAndPreservesData(t *testi
 	if _, err = f.repo.Cancel(ctx, f.owner, f.account, l.RunID); err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_build_object('run',(SELECT to_jsonb(r) FROM mail_processing_runs r WHERE id=$1),'items',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM mail_processing_items i WHERE run_id=$1))::text`
+	const snapshot = `SELECT jsonb_build_object('run',(SELECT to_jsonb(r) FROM mail_processing_runs r WHERE id=$1),'items',(SELECT jsonb_agg(to_jsonb(i)-'received_at' ORDER BY id) FROM mail_processing_items i WHERE run_id=$1))::text`
 	var before, after string
 	if err = f.runtime.pool.QueryRow(ctx, snapshot, l.RunID).Scan(&before); err != nil {
 		t.Fatal(err)
@@ -52,7 +52,7 @@ func TestMailProcessingBatchMigrationRefusesActiveBatchAndPreservesData(t *testi
 		t.Fatal("downgrade changed results", err)
 	}
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 24, 24)
+	assertMigrationRange(t, up, err, 24, latestMigrationVersion)
 	if err = f.runtime.pool.QueryRow(ctx, snapshot, l.RunID).Scan(&after); err != nil || before != after {
 		t.Fatal("upgrade changed results", err)
 	}

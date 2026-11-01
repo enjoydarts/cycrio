@@ -44,7 +44,7 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	// All adapter panics are reduced to fixed metadata before crossing the worker boundary.
 	defer func() {
 		if recover() != nil {
-			completion = Completion{State: "unknown", ErrorCode: "execution_panic", Events: []ai.Event{}}
+			completion = Completion{State: "unknown", ErrorCode: "execution_panic", Events: []ai.Event{}, ReceivedAt: completion.ReceivedAt}
 		}
 		finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer stop()
@@ -111,7 +111,19 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		return nil
 	}
 	readCtx, stop := context.WithTimeout(ctx, 30*time.Second)
-	text, e := reader.ReadText(readCtx, string(credential.Login), credential.Password, mailcontent.Source{RemoteID: remoteID, Folder: w.FolderName, AllowedFolders: w.ReaderFolders, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail, StrictGeneration: w.Automatic})
+	source := mailcontent.Source{RemoteID: remoteID, Folder: w.FolderName, AllowedFolders: w.ReaderFolders, UIDValidity: validity, UID: uid, MaxTextBytes: maximum, FullEmail: w.FullEmail, StrictGeneration: w.Automatic}
+	var text []byte
+	if dated, ok := reader.(mailcontent.MessageReader); ok {
+		var message mailcontent.Message
+		message, e = dated.ReadMessage(readCtx, string(credential.Login), credential.Password, source)
+		text = message.Text
+		if message.ReceivedAt != nil && !message.ReceivedAt.IsZero() {
+			received := message.ReceivedAt.UTC()
+			completion.ReceivedAt = &received
+		}
+	} else {
+		text, e = reader.ReadText(readCtx, string(credential.Login), credential.Password, source)
+	}
 	defer clear(text)
 	if e == nil {
 		e = readCtx.Err()

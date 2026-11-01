@@ -68,7 +68,7 @@ func scanSubscription(row pgx.Row) (subscriptions.Subscription, error) {
 	return s, subscriptionError(e)
 }
 func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscriptions.Subscription) error {
-	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance,a.id,a.label,a.provider
+	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance,a.id,a.label,a.provider,i.received_at
 	 FROM subscription_sources s
 	 JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id
 	 LEFT JOIN mail_processing_runs r ON r.owner_id=i.owner_id AND r.account_id=i.account_id AND r.id=i.run_id
@@ -81,7 +81,7 @@ func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscript
 	for rows.Next() {
 		var source subscriptions.Source
 		var raw []byte
-		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance, &source.AccountID, &source.AccountLabel, &source.Provider); e != nil {
+		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance, &source.AccountID, &source.AccountLabel, &source.Provider, &source.ReceivedAt); e != nil {
 			return subscriptionError(e)
 		}
 		if json.Unmarshal(raw, &source.OriginalEvent) != nil {

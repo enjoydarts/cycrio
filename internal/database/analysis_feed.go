@@ -21,7 +21,7 @@ func analysisAccount(ctx context.Context, tx pgx.Tx, owner, account string) erro
 // Only the most recent terminal attempt of each message belongs in the feed.
 // Registration counts belong to individual result events, including past attempts.
 const analysisLatest = `WITH latest AS (
- SELECT DISTINCT ON(message_id) id,owner_id,account_id,message_id,state,classification,error_code,events,finished_at
+ SELECT DISTINCT ON(message_id) id,owner_id,account_id,message_id,state,classification,error_code,events,finished_at,received_at
  FROM mail_processing_items WHERE owner_id=$1 AND ($2='' OR account_id::text=lower($2))
  AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC
 ), reviewed AS (
@@ -54,14 +54,14 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 		return out, subscriptionError(e)
 	}
 	args = append(args, f.Limit, f.Offset)
-	rows, e := tx.Query(ctx, analysisLatest+`SELECT r.id,r.message_id,r.state,r.classification,r.error_code,r.events,r.finished_at,r.account_id,a.label FROM reviewed r JOIN mail_accounts a ON a.owner_id=r.owner_id AND a.id=r.account_id`+analysisWhere+` ORDER BY finished_at DESC,r.id DESC LIMIT $5 OFFSET $6`, args...)
+	rows, e := tx.Query(ctx, analysisLatest+`SELECT r.id,r.message_id,r.state,r.classification,r.error_code,r.events,r.finished_at,r.account_id,a.label,r.received_at FROM reviewed r JOIN mail_accounts a ON a.owner_id=r.owner_id AND a.id=r.account_id`+analysisWhere+` ORDER BY finished_at DESC,r.id DESC LIMIT $5 OFFSET $6`, args...)
 	if e != nil {
 		return out, subscriptionError(e)
 	}
 	for rows.Next() {
 		var result subscriptions.AnalysisResult
 		var raw []byte
-		if e = rows.Scan(&result.ID, &result.MessageID, &result.State, &result.Classification, &result.ErrorCode, &raw, &result.FinishedAt, &result.AccountID, &result.AccountLabel); e != nil {
+		if e = rows.Scan(&result.ID, &result.MessageID, &result.State, &result.Classification, &result.ErrorCode, &raw, &result.FinishedAt, &result.AccountID, &result.AccountLabel, &result.ReceivedAt); e != nil {
 			rows.Close()
 			return out, subscriptionError(e)
 		}

@@ -10,7 +10,9 @@ import (
 	"net/mail"
 	"net/textproto"
 	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 )
@@ -18,6 +20,22 @@ import (
 // ReadText fetches transient MIME data, selects a single body, and excludes
 // attachments and embedded messages before applying the common text normalizer.
 func (c *Client) ReadText(ctx context.Context, _ string, _ []byte, s mailcontent.Source) ([]byte, error) {
+	message, err := c.ReadMessage(ctx, "", nil, s)
+	return message.Text, err
+}
+
+var _ mailcontent.MessageReader = (*Client)(nil)
+
+func (c *Client) ReadMessage(ctx context.Context, _ string, _ []byte, s mailcontent.Source) (mailcontent.Message, error) {
+	var receivedAt *time.Time
+	text, err := c.readText(ctx, s, &receivedAt)
+	if err != nil {
+		return mailcontent.Message{ReceivedAt: receivedAt}, err
+	}
+	return mailcontent.Message{Text: text, ReceivedAt: receivedAt}, nil
+}
+
+func (c *Client) readText(ctx context.Context, s mailcontent.Source, receivedAt **time.Time) ([]byte, error) {
 	if !validID(s.RemoteID) || !validID(s.Folder) {
 		return nil, failure("source_missing")
 	}
@@ -38,8 +56,9 @@ func (c *Client) ReadText(ctx context.Context, _ string, _ []byte, s mailcontent
 	var raw []byte
 	if c.isGmail() {
 		var v struct {
-			Raw    string   `json:"raw"`
-			Labels []string `json:"labelIds"`
+			Raw        string   `json:"raw"`
+			Labels     []string `json:"labelIds"`
+			ReceivedAt *string  `json:"internalDate"`
 		}
 		if _, e := c.getJSON(ctx, gmailBase+"messages/"+url.PathEscape(s.RemoteID)+"?format=raw", &v); e != nil {
 			return nil, e
@@ -53,6 +72,14 @@ func (c *Client) ReadText(ctx context.Context, _ string, _ []byte, s mailcontent
 		}
 		if !member {
 			return nil, failure("source_missing")
+		}
+		if v.ReceivedAt != nil {
+			ms, err := strconv.ParseInt(*v.ReceivedAt, 10, 64)
+			if err != nil || ms < 0 || ms > 253402300799999 {
+				return nil, failure("invalid_response")
+			}
+			date := time.UnixMilli(ms).UTC()
+			*receivedAt = &date
 		}
 		var e error
 		raw, e = base64.RawURLEncoding.DecodeString(strings.TrimRight(v.Raw, "="))
@@ -68,13 +95,22 @@ func (c *Client) ReadText(ctx context.Context, _ string, _ []byte, s mailcontent
 		// Immutable message IDs survive moves. Confirm the selected membership
 		// after fetching MIME and before returning any body to the AI pipeline.
 		var metadata struct {
-			Folder string `json:"parentFolderId"`
+			Folder     string  `json:"parentFolderId"`
+			ReceivedAt *string `json:"receivedDateTime"`
 		}
-		if _, e = c.getJSON(ctx, graphBase+"messages/"+url.PathEscape(s.RemoteID)+"?$select=parentFolderId", &metadata); e != nil {
+		if _, e = c.getJSON(ctx, graphBase+"messages/"+url.PathEscape(s.RemoteID)+"?$select=parentFolderId,receivedDateTime", &metadata); e != nil {
 			return nil, e
 		}
 		if !allowed[metadata.Folder] {
 			return nil, failure("source_missing")
+		}
+		if metadata.ReceivedAt != nil {
+			date, err := time.Parse(time.RFC3339Nano, *metadata.ReceivedAt)
+			if err != nil || date.IsZero() || date.UTC().Year() < 1 || date.UTC().Year() > 9999 {
+				return nil, failure("invalid_response")
+			}
+			date = date.UTC()
+			*receivedAt = &date
 		}
 	}
 	if len(raw) > mailcontent.MaxWireBytes {

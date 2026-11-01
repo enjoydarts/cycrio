@@ -449,7 +449,7 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 	if in.Events != nil {
 		raw, _ = json.Marshal(in.Events)
 	}
-	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state=$2,classification=$3,error_code=$4,events=$5,finished_at=clock_timestamp() WHERE id=$1 AND state='running'`, w.work.AttemptID, in.State, in.Classification, in.ErrorCode, raw); e != nil {
+	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state=$2,classification=$3,error_code=$4,events=$5,received_at=$6,finished_at=clock_timestamp() WHERE id=$1 AND state='running'`, w.work.AttemptID, in.State, in.Classification, in.ErrorCode, raw, in.ReceivedAt); e != nil {
 		return mailprocessing.ErrUnavailable
 	}
 	// Mail access can detect a changed generation or invalid credentials before

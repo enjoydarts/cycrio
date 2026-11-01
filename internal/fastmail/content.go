@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
@@ -16,8 +17,23 @@ import (
 )
 
 var _ mailcontent.Reader = (*Client)(nil)
+var _ mailcontent.MessageReader = (*Client)(nil)
 
 func (c *Client) ReadText(ctx context.Context, login string, password []byte, source mailcontent.Source) ([]byte, error) {
+	message, err := c.ReadMessage(ctx, login, password, source)
+	return message.Text, err
+}
+
+func (c *Client) ReadMessage(ctx context.Context, login string, password []byte, source mailcontent.Source) (mailcontent.Message, error) {
+	var receivedAt *time.Time
+	text, err := c.readText(ctx, login, password, source, &receivedAt)
+	if err != nil {
+		return mailcontent.Message{ReceivedAt: receivedAt}, err
+	}
+	return mailcontent.Message{Text: text, ReceivedAt: receivedAt}, nil
+}
+
+func (c *Client) readText(ctx context.Context, login string, password []byte, source mailcontent.Source, receivedAt **time.Time) ([]byte, error) {
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	generationError := func() error {
 		if source.StrictGeneration {
@@ -91,7 +107,7 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 		return nil, generationError()
 	}
 	guard.phase.Store(1)
-	structure, _, err := readContentFetch(client, conn, source.UID, nil)
+	structure, _, err := readContentFetch(client, conn, source.UID, nil, receivedAt)
 	if err != nil {
 		return fail(err)
 	}
@@ -110,7 +126,7 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 		section.Specifier = imap.PartSpecifierText
 	}
 	guard.phase.Store(2)
-	_, raw, err := readContentFetch(client, conn, source.UID, section)
+	_, raw, err := readContentFetch(client, conn, source.UID, section, nil)
 	if err != nil {
 		return fail(err)
 	}
@@ -135,10 +151,11 @@ func (c *Client) ReadText(ctx context.Context, login string, password []byte, so
 
 // Stream items explicitly rather than Collect, which accepts duplicate fields
 // and buffers any unsolicited body section the server chooses to return.
-func readContentFetch(client *imapclient.Client, conn io.Closer, uid uint32, section *imap.FetchItemBodySection) (imap.BodyStructure, []byte, error) {
+func readContentFetch(client *imapclient.Client, conn io.Closer, uid uint32, section *imap.FetchItemBodySection, receivedAt **time.Time) (imap.BodyStructure, []byte, error) {
 	options := &imap.FetchOptions{}
 	if section == nil {
 		options.BodyStructure = &imap.FetchItemBodyStructure{Extended: true}
+		options.InternalDate = true
 	} else {
 		options.BodySection = []*imap.FetchItemBodySection{section}
 	}
@@ -150,15 +167,23 @@ func readContentFetch(client *imapclient.Client, conn io.Closer, uid uint32, sec
 	}
 	var structure imap.BodyStructure
 	var raw []byte
+	var receipt *time.Time
 	count := 0
 	for msg := cmd.Next(); msg != nil; msg = cmd.Next() {
 		count++
 		if count > 1 {
 			return invalid()
 		}
-		seenUID, seenBody := false, false
+		seenUID, seenBody, seenDate := false, false, false
 		for item := msg.Next(); item != nil; item = msg.Next() {
 			switch item := item.(type) {
+			case imapclient.FetchItemDataInternalDate:
+				if section != nil || seenDate || item.Time.IsZero() || item.Time.Year() < 1 || item.Time.Year() > 9999 {
+					return invalid()
+				}
+				seenDate = true
+				date := item.Time.UTC()
+				receipt = &date
 			case imapclient.FetchItemDataUID:
 				if seenUID || uint32(item.UID) != uid {
 					return invalid()
@@ -195,6 +220,11 @@ func readContentFetch(client *imapclient.Client, conn io.Closer, uid uint32, sec
 	}
 	if err := cmd.Close(); err != nil {
 		return nil, nil, err
+	}
+	// Publish metadata only after the whole response is validated. A duplicate
+	// or otherwise malformed metadata response must not leak a partial date.
+	if receivedAt != nil {
+		*receivedAt = receipt
 	}
 	return structure, raw, nil
 }

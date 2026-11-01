@@ -1,4 +1,5 @@
 <script lang="ts">
+  import MailReceivedDate from './MailReceivedDate.svelte';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -373,6 +374,9 @@
       </p>
       {#each s.sources as source}<section class="section">
           <h3>AI 抽出 · イベント {source.event_index + 1}</h3>
+          <p class="muted">
+            <MailReceivedDate receivedAt={source.received_at} />
+          </p>
           {#if source.account_label}<p>
               {source.account_label} · {source.provider}
             </p>{/if}

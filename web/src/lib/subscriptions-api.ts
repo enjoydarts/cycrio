@@ -38,6 +38,7 @@ export type Subscription = SubscriptionValues & {
   created_at: string;
   updated_at: string;
   sources: {
+    received_at?: string | null;
     account_id?: string;
     account_label?: string;
     provider?: 'gmail' | 'outlook' | 'fastmail' | 'imap';
@@ -153,6 +154,7 @@ export function parseSubscription(value: unknown): Subscription {
             };
       return {
         ...account,
+        received_at: nullable(s.received_at ?? null, timestamp),
         provenance:
           s.provenance === undefined
             ? ('owner_confirmed' as const)

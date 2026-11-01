@@ -409,7 +409,7 @@ func (r *MailProcessingRepository) Results(ctx context.Context, owner, account s
 		return nil, e
 	}
 	defer tx.Rollback(ctx)
-	rows, e := tx.Query(ctx, `SELECT id,message_id,state,classification,error_code,events,finished_at FROM (SELECT DISTINCT ON(message_id) id,message_id,state,classification,error_code,events,finished_at FROM mail_processing_items WHERE owner_id=$1 AND account_id=$2 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC) latest ORDER BY finished_at DESC,id DESC LIMIT 100`, owner, account)
+	rows, e := tx.Query(ctx, `SELECT id,message_id,state,classification,error_code,events,finished_at,received_at FROM (SELECT DISTINCT ON(message_id) id,message_id,state,classification,error_code,events,finished_at,received_at FROM mail_processing_items WHERE owner_id=$1 AND account_id=$2 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC) latest ORDER BY finished_at DESC,id DESC LIMIT 100`, owner, account)
 	if e != nil {
 		return nil, mailprocessing.ErrUnavailable
 	}
@@ -418,7 +418,7 @@ func (r *MailProcessingRepository) Results(ctx context.Context, owner, account s
 	for rows.Next() {
 		var v mailprocessing.Result
 		var raw []byte
-		if rows.Scan(&v.ID, &v.MessageID, &v.State, &v.Classification, &v.ErrorCode, &raw, &v.FinishedAt) != nil || json.Unmarshal(raw, &v.Events) != nil {
+		if rows.Scan(&v.ID, &v.MessageID, &v.State, &v.Classification, &v.ErrorCode, &raw, &v.FinishedAt, &v.ReceivedAt) != nil || json.Unmarshal(raw, &v.Events) != nil {
 			return nil, mailprocessing.ErrUnavailable
 		}
 		if v.Events == nil {

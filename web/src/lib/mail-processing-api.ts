@@ -151,6 +151,7 @@ export type ProcessingEvent = {
   interval_count: number | null;
 };
 export type ProcessingResult = {
+  received_at?: string | null;
   id: string;
   message_id: string;
   state: 'succeeded' | 'not_related' | 'failed' | 'unknown';
@@ -468,6 +469,7 @@ function array<T>(v: unknown, parse: (v: unknown) => T, max: number): T[] {
 export function parseProcessingResult(value: unknown): ProcessingResult {
   const v = record(value);
   return {
+    received_at: nullable(v.received_at ?? null, timestamp),
     id: uuid(v.id),
     message_id: uuid(v.message_id),
     state: choice(v.state, ['succeeded', 'not_related', 'failed', 'unknown']),

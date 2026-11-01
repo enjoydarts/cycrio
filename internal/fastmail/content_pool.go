@@ -235,6 +235,22 @@ type pooledContentReader struct {
 }
 
 func (r *pooledContentReader) ReadText(ctx context.Context, login string, password []byte, source mailcontent.Source) ([]byte, error) {
+	message, err := r.ReadMessage(ctx, login, password, source)
+	return message.Text, err
+}
+
+var _ mailcontent.MessageReader = (*pooledContentReader)(nil)
+
+func (r *pooledContentReader) ReadMessage(ctx context.Context, login string, password []byte, source mailcontent.Source) (mailcontent.Message, error) {
+	var receivedAt *time.Time
+	text, err := r.readText(ctx, login, password, source, &receivedAt)
+	if err != nil {
+		return mailcontent.Message{ReceivedAt: receivedAt}, err
+	}
+	return mailcontent.Message{Text: text, ReceivedAt: receivedAt}, nil
+}
+
+func (r *pooledContentReader) readText(ctx context.Context, login string, password []byte, source mailcontent.Source, receivedAt **time.Time) ([]byte, error) {
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	if r.client == nil || !validName(source.Folder) || source.UIDValidity == 0 || source.UID == 0 || (!source.FullEmail && source.MaxTextBytes <= 0) {
 		return nil, invalid
@@ -394,7 +410,7 @@ func (r *pooledContentReader) ReadText(ctx context.Context, login string, passwo
 		return finish(nil, mailaccounts.AdapterError{Code: "source_missing"})
 	}
 	guard.phase.Store(1)
-	structure, _, err := readContentFetch(s.client, s.wire, source.UID, nil)
+	structure, _, err := readContentFetch(s.client, s.wire, source.UID, nil, receivedAt)
 	if err != nil {
 		return fail(err)
 	}
@@ -413,7 +429,7 @@ func (r *pooledContentReader) ReadText(ctx context.Context, login string, passwo
 		section.Specifier = imap.PartSpecifierText
 	}
 	guard.phase.Store(2)
-	_, raw, err := readContentFetch(s.client, s.wire, source.UID, section)
+	_, raw, err := readContentFetch(s.client, s.wire, source.UID, section, nil)
 	if err != nil {
 		return fail(err)
 	}

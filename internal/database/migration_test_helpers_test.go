@@ -8,7 +8,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestMigrationVersion = 24
+const latestMigrationVersion = 25
 
 // assertMigrationRange checks every applied version, including direction and
 // count, so adding newer migrations does not weaken an older round-trip test.
@@ -52,6 +52,8 @@ func mailConnectionMigrationColumns(table string) []string {
 		return []string{"cursor_key_id", "cursor_ciphertext"}
 	case "mail_discovered_messages":
 		return []string{"remote_fingerprint"}
+	case "mail_processing_items":
+		return []string{"received_at"}
 	default:
 		return []string{}
 	}

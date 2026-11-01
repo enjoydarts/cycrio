@@ -1,14 +1,19 @@
 package subscriptions
 
-import "github.com/enjoydarts/cycrio/internal/ai"
+import (
+	"time"
+
+	"github.com/enjoydarts/cycrio/internal/ai"
+)
 
 type Candidate struct {
-	ResultID     string   `json:"result_id"`
-	EventIndex   int      `json:"event_index"`
-	AccountID    string   `json:"account_id"`
-	AccountLabel string   `json:"account_label"`
-	Event        ai.Event `json:"event"`
-	MailCount    int      `json:"mail_count"`
+	ReceivedAt   *time.Time `json:"received_at"`
+	ResultID     string     `json:"result_id"`
+	EventIndex   int        `json:"event_index"`
+	AccountID    string     `json:"account_id"`
+	AccountLabel string     `json:"account_label"`
+	Event        ai.Event   `json:"event"`
+	MailCount    int        `json:"mail_count"`
 }
 type CandidatePage struct {
 	Candidates []Candidate `json:"candidates"`

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import MailReceivedDate from './MailReceivedDate.svelte';
   import ActionLink from './ActionLink.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import type { AnalysisResult } from './analysis-api.ts';
@@ -85,6 +86,7 @@
   <p class="muted">
     {result.account_label} · {processingDate(result.finished_at)}（日本時間）
   </p>
+  <p class="muted"><MailReceivedDate receivedAt={result.received_at} /></p>
   {#if result.state === 'succeeded'}<AnalysisResultStatus {result} />
     {#each result.events as event, index}{@const registration =
         registrations.find((r) => r.event_index === index)}

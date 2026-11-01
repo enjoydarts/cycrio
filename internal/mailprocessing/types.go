@@ -151,6 +151,7 @@ type Run struct {
 	FinishedAt     *time.Time `json:"finished_at"`
 }
 type Result struct {
+	ReceivedAt     *time.Time `json:"received_at"`
 	ID             string     `json:"id"`
 	MessageID      string     `json:"message_id"`
 	State          string     `json:"state"`
@@ -185,6 +186,7 @@ type Work struct {
 	FolderName    string                         `json:"-"`
 }
 type Completion struct {
+	ReceivedAt     *time.Time
 	State          string
 	Classification *string
 	ErrorCode      string

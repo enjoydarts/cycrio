@@ -24,6 +24,7 @@ type poolServer struct {
 	validity       atomic.Uint32
 	present        bool
 	body           string
+	internalDate   string
 	stall          bool
 	searchResponse string
 	bodyGate       <-chan struct{}
@@ -84,7 +85,11 @@ func newPoolServer(t *testing.T, present bool) (*poolServer, *Client) {
 							fmt.Fprint(server, "* SEARCH\r\n")
 						}
 					} else if strings.Contains(line, "BODYSTRUCTURE") {
-						fmt.Fprintf(server, "* 1 FETCH (UID 9 BODYSTRUCTURE %s)\r\n", plainStructure)
+						date := ""
+						if s.internalDate != "" {
+							date = fmt.Sprintf(" INTERNALDATE %q", s.internalDate)
+						}
+						fmt.Fprintf(server, "* 1 FETCH (UID 9 BODYSTRUCTURE %s%s)\r\n", plainStructure, date)
 					} else if s.stall {
 						io.Copy(io.Discard, server)
 						return

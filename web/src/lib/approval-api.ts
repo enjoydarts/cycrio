@@ -4,9 +4,11 @@ import {
   createDailyRequest,
   input,
   integer,
+  nullable,
   pagination,
   record,
   text,
+  timestamp,
   uuid,
 } from './daily-api.ts';
 import {
@@ -14,6 +16,7 @@ import {
   type ProcessingEvent,
 } from './mail-processing-api.ts';
 export type Candidate = {
+  received_at?: string | null;
   result_id: string;
   event_index: number;
   account_id: string;
@@ -66,6 +69,7 @@ export function createApprovalAPI(base: string, fetcher: typeof fetch = fetch) {
         candidates: array(v.candidates, (x) => {
           const c = record(x);
           return {
+            received_at: nullable(c.received_at ?? null, timestamp),
             result_id: uuid(c.result_id),
             event_index: integer(c.event_index, 0, 31),
             account_id: uuid(c.account_id),

@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import MailReceivedDate from './MailReceivedDate.svelte';
   import { untrack } from 'svelte';
   import ActionGroup from './ActionGroup.svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
@@ -59,6 +60,7 @@
 
 <div class="daily">
   <p class="muted">{candidate.account_label}</p>
+  <p class="muted"><MailReceivedDate receivedAt={candidate.received_at} /></p>
   {#if action === 'create'}
     <SubscriptionForm
       event={candidate.event}

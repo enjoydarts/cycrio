@@ -4,6 +4,7 @@ package mailcontent
 import (
 	"context"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"time"
 )
 
 const (
@@ -27,4 +28,18 @@ type Source struct {
 type Reader interface {
 	ReadText(context.Context, string, []byte, Source) ([]byte, error)
 }
+
+// Message includes only transient normalized text and provider receipt metadata.
+// ReceivedAt is nil when the provider has no receipt timestamp.
+type Message struct {
+	Text       []byte `json:"-"`
+	ReceivedAt *time.Time
+}
+
+// MessageReader preserves receipt time without exposing message headers.
+// A body processing error may return valid ReceivedAt metadata with nil Text.
+type MessageReader interface {
+	ReadMessage(context.Context, string, []byte, Source) (Message, error)
+}
+
 type ReaderFactory func(context.Context, mailaccounts.CredentialVersion) (Reader, error)
