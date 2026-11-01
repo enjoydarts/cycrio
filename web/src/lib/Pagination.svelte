@@ -24,7 +24,7 @@
   function select(page: number) {
     if (
       !disabled &&
-      page !== state.current &&
+      (page !== state.current || offset >= total) &&
       page >= 1 &&
       page <= state.totalPages
     )
@@ -67,13 +67,18 @@
 {#if state.totalPages > 1 || offset > 0}
   <nav class="page-navigation" aria-label={label}>
     <ul class="page-items">
-      <li>{@render control(state.previous, '前へ', state.current <= 1)}</li>
+      <li>{@render control(state.previous, '前へ', offset === 0)}</li>
       {#each state.items as item, index (item === 'ellipsis' ? `gap-${index}` : item)}
         <li>
           {#if item === 'ellipsis'}
             <span class="page-gap" aria-hidden="true">…</span>
           {:else}
-            {@render control(item, String(item), false, item === state.current)}
+            {@render control(
+              item,
+              String(item),
+              false,
+              item === state.current && offset < total,
+            )}
           {/if}
         </li>
       {/each}

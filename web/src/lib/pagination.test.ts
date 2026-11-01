@@ -109,3 +109,17 @@ test('busy navigation removes every link destination and disables page buttons',
   assert.match(html, /aria-disabled="true"/);
   assert.match(html, /<button[^>]*disabled/);
 });
+
+test('a stale offset smaller than one page still allows returning to the first page', async () => {
+  const { default: Pagination } = await import('./Pagination.svelte');
+  const html = render(Pagination, {
+    props: {
+      total: 5,
+      offset: 10,
+      limit: 20,
+      href: (offset: number) => `?offset=${offset}`,
+    },
+  }).body;
+  assert.match(html, /href="\?offset=0"/);
+  assert.doesNotMatch(html, /aria-current="page"/);
+});
