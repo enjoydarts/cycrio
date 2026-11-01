@@ -74,6 +74,7 @@ for (const supplement of supplements) {
   const entry = entriesBySlug.get(slug) ?? {};
   delete entry.background;
   Object.assign(entry, { slug, title, src: `/brand/services/${file}` });
+  if (supplement.background === 'dark') entry.background = 'dark';
   entriesBySlug.set(slug, entry);
   for (const name of [slug, title]) addCandidate(name, entry);
 }

@@ -20,6 +20,8 @@ test('generates a broad local colored catalog and leaves unchanged output untouc
   assert.equal(index.gmail.src, '/brand/services/gmail.ico');
   assert.equal(index.snapchat.background, 'dark');
   assert.equal(index.spotify.background, undefined);
+  assert.equal(index.amazonphotos.background, 'dark');
+  assert.equal(index.amazonprime.background, 'dark');
   for (const ambiguous of ['c', 'backstage', 'graphite', 'spring']) {
     assert.equal(index[ambiguous], undefined);
   }

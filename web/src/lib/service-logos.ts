@@ -47,7 +47,14 @@ const names: [string, string[]][] = [
   ['icloud', ['iCloud', 'iCloud+', 'Apple iCloud', 'アイクラウド']],
   [
     'amazonprime',
-    ['Amazon Prime', 'Amazonプライム', 'アマゾンプライム', 'アマゾン プライム'],
+    [
+      'Amazon Prime',
+      'Amazonプライム',
+      'アマゾンプライム',
+      'アマゾン プライム',
+      'Prime Student',
+      'Amazon Prime Student',
+    ],
   ],
   [
     'amazonprimevideo',
@@ -56,24 +63,60 @@ const names: [string, string[]][] = [
       'Amazon Prime Video',
       'プライムビデオ',
       'Amazonプライムビデオ',
+      'アマゾンプライムビデオ',
+      'Prime Video 広告フリー',
+      'Amazon Prime Video 広告フリー',
     ],
   ],
   [
     'amazonwebservices',
     ['AWS', 'Amazon Web Services', 'アマゾンウェブサービス'],
   ],
+  ['amazon', ['Amazon', 'アマゾン']],
   [
-    'amazon',
+    'amazonmusic',
     [
-      'Amazon',
-      'アマゾン',
-      'Kindle Unlimited',
-      'キンドルアンリミテッド',
       'Amazon Music',
+      'Amazon Music Unlimited',
+      'Amazon Music Prime',
+      'Prime Music',
+      'Amazon Music HD',
+      'Amazon Music Unlimited Single Device',
+      'Amazon Music Unlimited ワンデバイスプラン',
       'アマゾンミュージック',
+      'アマゾンミュージックアンリミテッド',
+      'アマゾンミュージックHD',
+      'アマゾンミュージックプライム',
     ],
   ],
-  ['audible', ['Audible', 'オーディブル']],
+  [
+    'kindle',
+    [
+      'Kindle',
+      'Amazon Kindle',
+      'Kindle Unlimited',
+      'キンドル',
+      'キンドルアンリミテッド',
+    ],
+  ],
+  [
+    'amazonkids',
+    [
+      'Amazon Kids',
+      'Amazon Kids+',
+      'Amazon Kids Plus',
+      'アマゾンキッズ',
+      'アマゾンキッズプラス',
+      'Amazon FreeTime Unlimited',
+    ],
+  ],
+  ['amazonphotos', ['Amazon Photos', 'アマゾンフォト']],
+  [
+    'primegaming',
+    ['Prime Gaming', 'Amazon Prime Gaming', 'プライムゲーミング'],
+  ],
+  ['amazonluna', ['Amazon Luna', 'Luna+']],
+  ['audible', ['Audible', 'Amazon Audible', 'オーディブル']],
   [
     'microsoft365',
     [
@@ -124,13 +167,45 @@ const names: [string, string[]][] = [
   ['nintendo', ['Nintendo Switch Online', 'ニンテンドースイッチオンライン']],
   ['playstation', ['PlayStation Plus', 'PS Plus', 'プレイステーションプラス']],
   ['xbox', ['Xbox Game Pass', 'Game Pass', 'Xbox']],
-  ['rakuten', ['楽天', '楽天マガジン', '楽天ミュージック', 'Rakuten']],
-  ['line', ['LINE', 'LINE MUSIC', 'ラインミュージック']],
+  ['rakuten', ['楽天', 'Rakuten']],
+  ['rakutenmagazine', ['楽天マガジン', 'Rakuten Magazine']],
+  [
+    'rakutenmusic',
+    [
+      '楽天ミュージック',
+      'Rakuten Music',
+      '楽天ミュージック ライトプラン',
+      'Rakuten Music ライトプラン',
+    ],
+  ],
+  ['line', ['LINE']],
+  ['linemusic', ['LINE MUSIC', 'ラインミュージック']],
+  ['dmmtv', ['DMM TV', 'DMMプレミアム', 'DMM Premium']],
+  ['lemino', ['Lemino', 'レミノ']],
+  ['telasa', ['TELASA', 'テラサ']],
+  ['fod', ['FOD', 'FOD Premium', 'フジテレビオンデマンド']],
+  ['wowow', ['WOWOW', 'WOWOWオンデマンド', 'WOWOW On Demand', 'ワウワウ']],
+  [
+    'radiko',
+    [
+      'radiko',
+      'ラジコ',
+      ...['radiko', 'ラジコ', 'radikoプレミアム', 'ラジコプレミアム'].flatMap(
+        (name) =>
+          ['エリアフリープラン', 'タイムフリー30プラン', 'ダブルプラン'].map(
+            (plan) => `${name} ${plan}`,
+          ),
+      ),
+    ],
+  ],
+  ['nhkondemand', ['NHKオンデマンド', 'NHK On Demand']],
+  ['pixivfanbox', ['pixivFANBOX', 'FANBOX', 'ピクシブファンボックス']],
+  ['note', ['note', 'ノート']],
   ['abema', ['ABEMA', 'ABEMA Premium', 'アベマ']],
   ['dazn', ['DAZN', 'ダゾーン']],
   ['danimestore', ['dアニメストア', 'd Anime Store', 'ドコモ dアニメストア']],
-  ['niconico', ['ニコニコ', 'ニコニコプレミアム', 'Niconico']],
-  ['freee', ['freee', 'フリー会計']],
+  ['niconico', ['ニコニコ', 'ニコニコ動画', 'ニコニコプレミアム', 'Niconico']],
+  ['freee', ['freee', 'freee会計', 'フリー会計']],
   [
     'moneyforward',
     [
@@ -169,6 +244,16 @@ const domains: Record<string, string> = {
   'apple.com': 'apple',
   'amazon.co.jp': 'amazon',
   'amazon.com': 'amazon',
+  'music.amazon.co.jp': 'amazonmusic',
+  'music.amazon.com': 'amazonmusic',
+  'read.amazon.co.jp': 'kindle',
+  'read.amazon.com': 'kindle',
+  'parents.amazon.co.jp': 'amazonkids',
+  'parents.amazon.com': 'amazonkids',
+  'photos.amazon.co.jp': 'amazonphotos',
+  'photos.amazon.com': 'amazonphotos',
+  'gaming.amazon.com': 'primegaming',
+  'luna.amazon.com': 'amazonluna',
   'primevideo.com': 'amazonprimevideo',
   'aws.amazon.com': 'amazonwebservices',
   'audible.co.jp': 'audible',
@@ -184,6 +269,23 @@ const domains: Record<string, string> = {
   'video.unext.jp': 'unext',
   'unext.jp': 'unext',
   'animestore.docomo.ne.jp': 'danimestore',
+  'magazine.rakuten.co.jp': 'rakutenmagazine',
+  'music.rakuten.co.jp': 'rakutenmusic',
+  'music.line.me': 'linemusic',
+  'tv.dmm.com': 'dmmtv',
+  'lemino.docomo.ne.jp': 'lemino',
+  'telasa.jp': 'telasa',
+  'fod.fujitv.co.jp': 'fod',
+  'wowow.co.jp': 'wowow',
+  'wod.wowow.co.jp': 'wowow',
+  'radiko.jp': 'radiko',
+  'nhk-ondemand.jp': 'nhkondemand',
+  'fanbox.cc': 'pixivfanbox',
+  'moneyforward.com': 'moneyforward',
+  'freee.co.jp': 'freee',
+  'abema.tv': 'abema',
+  'nicovideo.jp': 'niconico',
+  'note.com': 'note',
   'notion.so': 'notion',
   'notion.com': 'notion',
   'dropbox.com': 'dropbox',
@@ -215,6 +317,17 @@ function brand(key: string): ServiceLogo | null {
 const planSuffix =
   /^(?:(?:plus|pro|premium|standard|basic|starter|personal|family|student|individual|professional|business|enterprise|team|teams|ultimate|max|lite|essential|essentials|monthly|annual|annually|yearly|subscription|plan|プレミアム|プラス|プロ|ベーシック|スタンダード|ファミリー|パーソナル|ビジネス|個人|学生|月額|年額|月払い|年払い|年間|プラン)|\d+(?:gb|tb|人|年|ヶ月|か月|円))+$/u;
 
+// Amazon shares its retail hostname across products. Match full path segments
+// before falling back to the corporate logo; never guess from query strings.
+const amazonProductPaths: [RegExp, string][] = [
+  [/^\/music(?:\/|$)/i, 'amazonmusic'],
+  [/^\/kindle-dbs(?:\/|$)/i, 'kindle'],
+  [/^\/ftu(?:\/|$)/i, 'amazonkids'],
+  [/^\/photos(?:\/|$)/i, 'amazonphotos'],
+  [/^\/amazonprime(?:\/|$)/i, 'amazonprime'],
+  [/^\/primevideo(?:\/|$)/i, 'amazonprimevideo'],
+];
+
 export function resolveServiceLogo(
   name: string | null | undefined,
 ): ServiceLogo | null {
@@ -235,6 +348,12 @@ export function resolveServiceLogo(
       )
         return null;
       const host = url.hostname.replace(/^www\./, '');
+      if (host === 'amazon.co.jp' || host === 'amazon.com') {
+        const product = amazonProductPaths.find(([path]) =>
+          path.test(url.pathname),
+        );
+        if (product) return lookup(product[1]);
+      }
       if (Object.hasOwn(domains, host))
         return lookup(normalizeBrandName(domains[host]));
       // Some official brand titles are domains (Chess.com, Last.fm). Only

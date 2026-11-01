@@ -112,14 +112,6 @@
     "credit": "Google"
   },
   {
-    "slug": "amazonprime",
-    "title": "Amazon Prime",
-    "file": "amazonprime.ico",
-    "sourceUrl": "https://www.amazon.com/favicon.ico",
-    "sha256": "5866636f18764cd66366ae6eb682e972b4eae1771512cd76b304b6dd3c0f1d2d",
-    "credit": "Amazon (corporate site icon)"
-  },
-  {
     "slug": "amazonprimevideo",
     "title": "Amazon Prime Video",
     "file": "amazonprimevideo.ico",
@@ -166,5 +158,199 @@
     "sourceUrl": "https://www.disneyplus.com/favicon.ico",
     "sha256": "9ed7d0dea2d3bdf1e60430939e9d99e5f8cdfec196def106c56c486b4d743e21",
     "credit": "Disney"
+  },
+  {
+    "slug": "rakutenmagazine",
+    "title": "楽天マガジン",
+    "file": "rakutenmagazine.png",
+    "sourceUrl": "https://magazine.rakuten.co.jp/apple-touch-icon.png",
+    "sha256": "b0b3fdb111cba9b6bfb224afed337ffa9a3bd059de5c0ed2045ada1bab20e24f",
+    "credit": "Rakuten Magazine"
+  },
+  {
+    "slug": "rakutenmusic",
+    "title": "Rakuten Music",
+    "file": "rakutenmusic.png",
+    "sourceUrl": "https://music.r10s.jp/external/prod/assets/common/img/apple-touch-icon.png?v=102913",
+    "sha256": "fa643318a68d41b6a425e98d680217320bfe15b2a75c0c8214d8f27164b933c2",
+    "credit": "Rakuten Music"
+  },
+  {
+    "slug": "linemusic",
+    "title": "LINE MUSIC",
+    "file": "linemusic.webp",
+    "sourceUrl": "https://vos.line-scdn.net/landpress-content-v2-3nxhz7t0ul0e2qovs5d1gli4/1689123644074.webp",
+    "sha256": "d65411e67591d1b48daeb4b2280093cf6de2933ee834e405df93b15f6c727674",
+    "credit": "LINE MUSIC"
+  },
+  {
+    "slug": "dmmtv",
+    "title": "DMM TV",
+    "file": "dmmtv.ico",
+    "sourceUrl": "https://tv.dmm.com/favicon.ico",
+    "sha256": "082eb4e9f54cb62eb933d280d6f2a063394f33cf26f01918d36688fb210c8891",
+    "credit": "DMM TV"
+  },
+  {
+    "slug": "lemino",
+    "title": "Lemino",
+    "file": "lemino.png",
+    "sourceUrl": "https://lemino.docomo.ne.jp/assets/icons/apple-touch-icon.png",
+    "sha256": "b640cfb821ebd5f3dd94a118762ad00801ea18f48fb27627481d6e169df8918a",
+    "credit": "NTT DOCOMO Lemino"
+  },
+  {
+    "slug": "telasa",
+    "title": "TELASA",
+    "file": "telasa.png",
+    "sourceUrl": "https://www.telasa.jp/images/PWA/ios_touch_icon/iOS_telasa_logo_x180.png",
+    "sha256": "8af577e8d25f199e347980ff28055ca8a6b234186da74a393099392a1208ec21",
+    "credit": "TELASA"
+  },
+  {
+    "slug": "fod",
+    "title": "FOD",
+    "file": "fod.png",
+    "sourceUrl": "https://i.fod.fujitv.co.jp/img/favicon/apple-touch-icon.png",
+    "sha256": "049cdf87a44cf1abe85c2da81d3f12404446f2fe810004cfa07a4845f76a986e",
+    "credit": "Fuji Television FOD"
+  },
+  {
+    "slug": "wowow",
+    "title": "WOWOW",
+    "file": "wowow.ico",
+    "sourceUrl": "https://www.wowow.co.jp/favicon.ico",
+    "sha256": "b4f63c5d7727a0ad5472d903634a4ba13280b3c99657143533f0a3e1e5ffb679",
+    "credit": "WOWOW"
+  },
+  {
+    "slug": "radiko",
+    "title": "radiko",
+    "file": "radiko.ico",
+    "sourceUrl": "https://radiko.jp/favicon.ico",
+    "sha256": "e92bb57f9066c6e2a837331aafdee031631e175edb444a07ea0be40d48afc046",
+    "credit": "radiko"
+  },
+  {
+    "slug": "nhkondemand",
+    "title": "NHKオンデマンド",
+    "file": "nhkondemand.ico",
+    "sourceUrl": "https://www.nhk-ondemand.jp/css/ph2017/img/common/favicon.ico",
+    "sha256": "97a0180f2ae10eb16a1b152150db178c5e08cde8afb2ce5c2e2014e35fcf4a0a",
+    "credit": "NHK On Demand"
+  },
+  {
+    "slug": "pixivfanbox",
+    "title": "pixivFANBOX",
+    "file": "pixivfanbox.png",
+    "sourceUrl": "https://s.pximg.net/common/images/fanbox/apple-touch-icon.png",
+    "sha256": "5f682b9d59cb8f4abdee11cd0203cf8aeeb05cd89b0bcb488bea0a3c413f8fb7",
+    "credit": "pixiv FANBOX"
+  },
+  {
+    "slug": "moneyforward",
+    "title": "Money Forward ME",
+    "file": "moneyforward.png",
+    "sourceUrl": "https://assets.moneyforward.com/assets/apple-touch-icon-precomposed-a490308f8bbd9259f13f1eff35c7a3067635e1c480fc623d1ce7c46c616acfdd.png",
+    "sha256": "c72909b1c79490b0eea8f97d8fb8a70e589f250c632110df3d784c1205796f52",
+    "credit": "Money Forward ME"
+  },
+  {
+    "slug": "freee",
+    "title": "freee",
+    "file": "freee.ico",
+    "sourceUrl": "https://www.freee.co.jp/favicon.ico",
+    "sha256": "5e791a77f9b535f4af230d6f1e46aa9bb83da8899cf400189202210a77d5ebdb",
+    "credit": "freee"
+  },
+  {
+    "slug": "abema",
+    "title": "ABEMA",
+    "file": "abema.png",
+    "sourceUrl": "https://image.p-c2-x.abema-tv.com/image/assets/img_icon.png?height=180&quality=75&version=20200413&width=180",
+    "sha256": "e5af3f749d44029eeb7f5176332cb686e6ba21d00c6436df0d204489339250dc",
+    "credit": "ABEMA"
+  },
+  {
+    "slug": "niconico",
+    "title": "niconico",
+    "file": "niconico.png",
+    "sourceUrl": "https://resource.video.nimg.jp/web/images/favicon_uni/96.png?re",
+    "sha256": "7fb241152e5fbaac3e714dec5764aef25f03983db302b36a91e8505c51751dda",
+    "credit": "Dwango niconico"
+  },
+  {
+    "slug": "note",
+    "title": "note",
+    "file": "note.png",
+    "sourceUrl": "https://assets.st-note.com/poc-image/manual/note-common-images/production/icons/android-chrome-192x192.png",
+    "sha256": "29c7d0e558b830e8a8599278ce42be3aeaeb150d69dc34ebb7761074ae7f69c8",
+    "credit": "note"
+  },
+  {
+    "slug": "amazonmusic",
+    "title": "Amazon Music",
+    "file": "amazonmusic.png",
+    "sourceUrl": "https://m.media-amazon.com/images/G/01/music/logo/1.0/smile_256x256.png",
+    "sha256": "9a6cdd2eaa44353c9ed17b6cce1f1283537d444f9aae7b8412bfc82c7ab8673f",
+    "credit": "Amazon Music"
+  },
+  {
+    "slug": "kindle",
+    "title": "Kindle",
+    "file": "kindle.png",
+    "sourceUrl": "https://read.amazon.com/favicon.ico",
+    "sha256": "ff421bd3812371457ced7032aa47ce422c1c5f8ec7beaa335cd0e6e841b86d84",
+    "credit": "Amazon Kindle"
+  },
+  {
+    "slug": "amazonkids",
+    "title": "Amazon Kids+",
+    "file": "amazonkids.png",
+    "sourceUrl": "https://assets.aboutamazon.com/77/6d/baf36f6443928b92ee0d01f82ded/amazon-kids-logo-horizontal-rgb-black-master.png",
+    "sha256": "f2a4d0886741be5d3ce71a60e65158d9ecb42f83dba2f13b76562f8b23d14afc",
+    "credit": "Amazon Kids+"
+  },
+  {
+    "slug": "amazonphotos",
+    "title": "Amazon Photos",
+    "file": "amazonphotos.png",
+    "sourceUrl": "https://m.media-amazon.com/images/G/01/Amazon_Logos_2022/Amazon_Photos_Logo_Smile_White.png",
+    "sha256": "1ead1bf902c280da1233fec5df995e940e7787bbf5b5392d0dcb725a4a15a561",
+    "credit": "Amazon Photos",
+    "background": "dark"
+  },
+  {
+    "slug": "audible",
+    "title": "Audible",
+    "file": "audible.png",
+    "sourceUrl": "https://m.media-amazon.com/images/G/01/seo/creative/Audible_Google_Favicon_192px.png",
+    "sha256": "8d459fb8035a99f7104df1f40c50d30f66e0622e1969f020b5e81a0d3f97cf44",
+    "credit": "Amazon Audible"
+  },
+  {
+    "slug": "amazonprime",
+    "title": "Amazon Prime",
+    "file": "amazonprime.png",
+    "sourceUrl": "https://m.media-amazon.com/images/I/51IiESUZAaL.png",
+    "sha256": "4ccba13ce88999573da9fa15698db690198df250e4107e3df36e56ce6cf9472f",
+    "credit": "Amazon Prime",
+    "background": "dark"
+  },
+  {
+    "slug": "primegaming",
+    "title": "Prime Gaming",
+    "file": "primegaming.png",
+    "sourceUrl": "https://assets.aboutamazon.com/b3/8c/5ac62fd44111b042f4d518364178/prime-gaming-purpleroyale-logo.png",
+    "sha256": "08655fddf0695c6abe87541c244f64a6f209a31a5723e418842e38fa77645feb",
+    "credit": "Amazon Prime Gaming"
+  },
+  {
+    "slug": "amazonluna",
+    "title": "Amazon Luna",
+    "file": "amazonluna.png",
+    "sourceUrl": "https://m.media-amazon.com/images/G/01/T/TC05316420/A07531864/brand/icon_192x192.png",
+    "sha256": "317d68dc830a8ca11a556c9c9b9250d43c2c1fa4a31220e4103c9de7d8d2b0de",
+    "credit": "Amazon Luna"
   }
 ]
