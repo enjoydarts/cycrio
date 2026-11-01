@@ -17,6 +17,7 @@
     costText,
     createUsageController,
     emptyUsageView,
+    monthJST,
     outcomeText,
     reasonText,
     runtimeErrors,
@@ -30,6 +31,7 @@
   import UsageAmounts from './UsageAmounts.svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
+  import MonthSelector from './MonthSelector.svelte';
   import './catalog.css';
   import './ai-runtime.css';
   let {
@@ -95,21 +97,12 @@
           >{/each}
       </nav>
       <div class="usage-filters library-toolbar">
-        <div>
-          <label for="usage-month">集計月（Asia/Tokyo）</label><input
-            id="usage-month"
-            type="month"
-            min="2000-01"
-            max="2199-12"
-            required
-            value={view.filter.month}
-            disabled={Boolean(view.reconciling)}
-            onchange={(event) => {
-              if (event.currentTarget.validity.valid)
-                filter({ month: event.currentTarget.value });
-            }}
-          />
-        </div>
+        <MonthSelector
+          value={view.filter.month}
+          currentMonth={monthJST()}
+          disabled={Boolean(view.reconciling)}
+          onchange={(month) => filter({ month })}
+        />
         <details class="advanced-filters">
           <summary
             >詳細条件{#if view.filter.provider || view.filter.scope || view.filter.stage || view.filter.model_id}

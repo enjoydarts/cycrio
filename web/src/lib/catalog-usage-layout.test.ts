@@ -118,6 +118,9 @@ test('usage opens the overview and keeps user UUIDs and calls in separate views'
     props: { api: {}, token: async () => null, onDenied: () => {} },
   }).body;
   assert.match(html, /<h1[^>]*>AI 利用原価<\/h1>/);
+  assert.match(html, /<select[^>]*aria-label="集計年"/);
+  assert.match(html, /<select[^>]*aria-label="集計月"/);
+  assert.doesNotMatch(html, /type="month"/);
   assert.match(html, /class="library-header/);
   assert.match(html, /class="library-panel/);
   assert.match(html, /aria-label="原価の表示"/);
