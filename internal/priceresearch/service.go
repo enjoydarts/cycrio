@@ -97,7 +97,11 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		}
 		return s.finish(ctx, l, e, Result{}, "configuration_changed")
 	}
-	result, err := s.client.Research(ctx, Request{Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 8192})
+	var metadata struct {
+		Capabilities json.RawMessage `json:"capabilities"`
+	}
+	_ = json.Unmarshal(e.Model.RawMetadata, &metadata)
+	result, err := s.client.Research(ctx, Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 8192})
 	code := ""
 	if err != nil {
 		code = "research_failed"

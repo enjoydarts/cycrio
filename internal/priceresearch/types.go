@@ -3,6 +3,7 @@ package priceresearch
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
@@ -19,6 +20,8 @@ var (
 )
 
 type Request struct {
+	TestOnly        bool            `json:"test_only"`
+	Capabilities    json.RawMessage `json:"capabilities"`
 	Provider        string
 	ModelID         string
 	WorkspaceID     string

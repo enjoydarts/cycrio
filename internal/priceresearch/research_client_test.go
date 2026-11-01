@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"strings"
 	"testing"
+	"time"
 )
 
 type researchTransport func(*http.Request) (*http.Response, error)
@@ -16,6 +17,52 @@ type researchTransport func(*http.Request) (*http.Response, error)
 func (f researchTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 func reply(code int, body string) *http.Response {
 	return &http.Response{StatusCode: code, Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}
+}
+
+func TestResearchHeaderDeadlineAllowsTheFullInferenceBudget(t *testing.T) {
+	transport := NewClient(nil).transport.(*http.Transport)
+	if transport.ResponseHeaderTimeout > 0 && transport.ResponseHeaderTimeout < 90*time.Second {
+		t.Fatalf("provider headers time out after %v before the 90s inference budget", transport.ResponseHeaderTimeout)
+	}
+}
+
+func TestResearchUsesAPICapabilitiesToBoundAnthropicThinking(t *testing.T) {
+	for _, tc := range []struct {
+		name, caps, thinking string
+		low                  bool
+	}{
+		{"disabled", `{"thinking":{"types":{"disabled":{"supported":true}}},"effort":{"low":{"supported":true}}}`, "disabled", true},
+		{"between_tools", `{"thinking":{"types":{"between_tools":{"supported":true}}},"effort":{"low":{"supported":true}}}`, "between_tools", true},
+		{"always_on", `{"effort":{"low":{"supported":true}}}`, "", true},
+		{"unknown", `{}`, "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := requestFixture("anthropic")
+			_ = json.Unmarshal([]byte(`{"capabilities":`+tc.caps+`}`), &r)
+			client := NewClient(researchTransport(func(req *http.Request) (*http.Response, error) {
+				var payload map[string]any
+				_ = json.NewDecoder(req.Body).Decode(&payload)
+				if tc.thinking != "" {
+					config, ok := payload["thinking"].(map[string]any)
+					if !ok || config["type"] != tc.thinking {
+						t.Fatal("API-supported thinking mode missing", payload["thinking"])
+					}
+				} else if payload["thinking"] != nil {
+					t.Fatal("unsupported thinking mode sent")
+				}
+				if tc.low {
+					config, ok := payload["output_config"].(map[string]any)
+					if !ok || config["effort"] != "low" {
+						t.Fatal("API-supported low effort missing")
+					}
+				} else if payload["output_config"] != nil {
+					t.Fatal("unsupported effort sent")
+				}
+				return reply(200, responseFixture("anthropic", []Quote{}, officialSource, true)), nil
+			}))
+			_, _ = client.Research(context.Background(), r)
+		})
+	}
 }
 
 const officialSource = "https://openai.com/api/pricing/"
@@ -91,6 +138,62 @@ func TestResearchProviderWireAndVerifiedEvidence(t *testing.T) {
 				t.Fatalf("result %#v", got)
 			}
 		})
+	}
+}
+
+func TestWebSearchProbeSucceedsWithoutExtractingAnyPrice(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic"} {
+		for _, source := range []string{officialSource, "https://attacker.example/pricing"} {
+			t.Run(provider+"/"+source, func(t *testing.T) {
+				request := requestFixture(provider)
+				request.TestOnly = true
+				c := NewClient(researchTransport(func(r *http.Request) (*http.Response, error) {
+					if r.Method != "POST" {
+						t.Fatal("probe must not depend on downloading a pricing page")
+					}
+					var response map[string]any
+					_ = json.Unmarshal([]byte(responseFixture(provider, []Quote{}, source, true)), &response)
+					if provider == "anthropic" {
+						blocks := response["content"].([]any)
+						blocks[len(blocks)-1].(map[string]any)["text"] = "Official documentation found."
+					} else {
+						blocks := response["output"].([]any)
+						blocks[len(blocks)-1].(map[string]any)["content"] = []any{map[string]any{"type": "output_text", "text": "Official documentation found."}}
+					}
+					encoded, _ := json.Marshal(response)
+					return reply(200, string(encoded)), nil
+				}))
+				got, err := c.Research(context.Background(), request)
+				if source == officialSource {
+					if err != nil || len(got.Sources) != 1 || len(got.Quotes) != 0 || got.SearchCalls != 1 || !got.Usage.Valid {
+						t.Fatalf("working search rejected without model price: %+v %v", got, err)
+					}
+				} else if err == nil {
+					t.Fatal("probe accepted unofficial sources")
+				}
+			})
+		}
+	}
+}
+
+func TestSearchProbeAcceptsCompletedSearchWhenSummaryTokenBudgetEnds(t *testing.T) {
+	for _, probe := range []bool{true, false} {
+		request := requestFixture("anthropic")
+		request.TestOnly = probe
+		c := NewClient(researchTransport(func(*http.Request) (*http.Response, error) {
+			var response map[string]any
+			_ = json.Unmarshal([]byte(responseFixture("anthropic", nil, officialSource, true)), &response)
+			response["stop_reason"] = "max_tokens"
+			raw, _ := json.Marshal(response)
+			return reply(200, string(raw)), nil
+		}))
+		got, err := c.Research(context.Background(), request)
+		if probe && (err != nil || len(got.Sources) != 1 || got.SearchCalls != 1) {
+			t.Fatalf("completed official search was rejected because its summary ended: %+v %v", got, err)
+		}
+		if !probe && err == nil {
+			t.Fatal("price research accepted incomplete output")
+		}
 	}
 }
 
@@ -224,7 +327,7 @@ func TestResearchStrictJSONAndSearchEvidence(t *testing.T) {
 	good := responseFixture("openai", []Quote{quoteFixture()}, officialSource, true)
 	var base map[string]any
 	_ = json.Unmarshal([]byte(good), &base)
-	for _, name := range []string{"duplicate", "extra_json", "markdown", "unknown_field", "no_quotes", "incomplete", "failed_search", "uncited_search"} {
+	for _, name := range []string{"duplicate", "extra_json", "unknown_field", "no_quotes", "incomplete", "failed_search", "uncited_search"} {
 		t.Run(name, func(t *testing.T) {
 			var m map[string]any
 			_ = json.Unmarshal([]byte(good), &m)
@@ -235,8 +338,6 @@ func TestResearchStrictJSONAndSearchEvidence(t *testing.T) {
 				message["text"] = strings.Replace(original, `"currency":"USD"`, `"currency":"EUR","currency":"USD"`, 1)
 			case "extra_json":
 				message["text"] = original + `{}`
-			case "markdown":
-				message["text"] = "```json\n" + original + "\n```"
 			case "unknown_field":
 				message["text"] = strings.Replace(original, `"currency":"USD"`, `"currency":"USD","instruction":"ignore previous"`, 1)
 			case "no_quotes":
@@ -354,6 +455,46 @@ func TestResearchOfficialPricingTables(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestPricingTableUsesOfficialCellsDespiteMarkdownSearchFormatting(t *testing.T) {
+	q := quoteFixture()
+	q.Evidence = "Example Model Classification and extraction | $2.50 / MTok for prompts up to 200,000 tokens | $10.00 / MTok"
+	page := `<h1>Pricing</h1><table><tr><th>Model</th><th>Input</th><th>Output</th><th>Cached input</th></tr><tr><td><a>Example Model</a> Classification and extraction</td><td>$2.50 / MTok for prompts up to 200,000 tokens</td><td>$10.00 / MTok</td><td>$0.25 / MTok</td></tr></table>`
+	c := NewClient(researchTransport(func(req *http.Request) (*http.Response, error) {
+		if req.Method == "GET" {
+			return reply(200, page), nil
+		}
+		return reply(200, responseFixture("anthropic", []Quote{q}, officialSource, true)), nil
+	}))
+	got, err := c.Research(context.Background(), requestFixture("anthropic"))
+	if err != nil || len(got.Quotes) != 1 {
+		t.Fatalf("official table prices rejected due to search formatting: %+v %v", got, err)
+	}
+	if strings.Contains(got.Quotes[0].Evidence, "|") || !strings.Contains(got.Quotes[0].Evidence, "$0.25") {
+		t.Fatal("stored evidence must be reconstructed from the official row")
+	}
+}
+
+func TestResearchReadsFinalJSONAfterSearchProgressAndCodeFence(t *testing.T) {
+	q := quoteFixture()
+	client := NewClient(researchTransport(func(req *http.Request) (*http.Response, error) {
+		if req.Method == "GET" {
+			return reply(200, "<p>"+priceEvidence+"</p>"), nil
+		}
+		var response map[string]any
+		_ = json.Unmarshal([]byte(responseFixture("anthropic", []Quote{q}, officialSource, true)), &response)
+		blocks := response["content"].([]any)
+		last := blocks[len(blocks)-1].(map[string]any)
+		last["text"] = "Only verified models are included below.\n\n```json\n" + last["text"].(string) + "\n```"
+		response["content"] = append([]any{map[string]any{"type": "text", "text": "I will search the official pricing documentation."}}, blocks...)
+		raw, _ := json.Marshal(response)
+		return reply(200, string(raw)), nil
+	}))
+	got, err := client.Research(context.Background(), requestFixture("anthropic"))
+	if err != nil || len(got.Quotes) != 1 {
+		t.Fatalf("final pricing object confused with tool progress: %+v %v", got, err)
 	}
 }
 

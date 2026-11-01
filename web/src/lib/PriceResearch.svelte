@@ -64,6 +64,9 @@
     provider_unavailable: '提供元に接続できませんでした。',
     research_unavailable: '公式価格を確認できませんでした。',
     invalid_response: '公式価格の根拠を検証できませんでした。',
+    search_unverified: 'Web検索の成功と公式の検索結果を確認できませんでした。',
+    research_unresolved:
+      '検索は実行できましたが、旧テストで要求していた価格を検証できませんでした。Web検索テストを再実行してください。',
     lease_expired: '処理の完了を確認できません。',
     configuration_changed: '設定が変更されたため、価格の適用を中止しました。',
   };
@@ -264,7 +267,7 @@
       <section class="box" aria-label="Web検索テストと公式価格の更新">
         <h3>2 Web検索をテスト</h3>
         <p>
-          保存した調査モデル自身の公式価格を検索して、検索機能と出典を確認します。テストでは価格を更新しません。
+          公式ページを実際に検索し、検索機能と公式の検索結果を確認します。価格の抽出・検証は、その後の公式価格の更新で行います。
         </p>
         <Button
           wrap

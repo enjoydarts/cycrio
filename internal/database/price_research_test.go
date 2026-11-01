@@ -72,7 +72,7 @@ func researchTestReady(t *testing.T, r *PriceResearchRepository, actor string, m
 	}
 }
 func researchResult() priceresearch.Result {
-	return priceresearch.Result{SearchCalls: 1, Usage: ai.Usage{Present: true, Valid: true, InputTokens: 100, OrdinaryInputTokens: 100, OutputTokens: 20}, Cost: ai.Cost{Status: "unknown", Reason: "unknown"}, Quotes: []priceresearch.Quote{{ModelID: "future-model", Provider: "openai", Currency: "USD", InputPerMillion: "1.25", OutputPerMillion: "5", SourceURL: "https://openai.com/api/pricing/", Evidence: "future-model 1.25 5", Conditions: "standard_global"}}}
+	return priceresearch.Result{SearchCalls: 1, Sources: []string{"https://openai.com/api/pricing/"}, Usage: ai.Usage{Present: true, Valid: true, InputTokens: 100, OrdinaryInputTokens: 100, OutputTokens: 20}, Cost: ai.Cost{Status: "unknown", Reason: "unknown"}, Quotes: []priceresearch.Quote{{ModelID: "future-model", Provider: "openai", Currency: "USD", InputPerMillion: "1.25", OutputPerMillion: "5", SourceURL: "https://openai.com/api/pricing/", Evidence: "future-model 1.25 5", Conditions: "standard_global"}}}
 }
 func TestPriceResearchLifecyclePreservesOverridesAndHistory(t *testing.T) {
 	r, catalog, actor, m, _ := researchFixture(t)
@@ -144,6 +144,62 @@ func TestPriceResearchLifecyclePreservesOverridesAndHistory(t *testing.T) {
 	var missing int
 	if err = r.pool.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE profile_id IS NOT NULL OR consuming_user_id IS NOT NULL OR cost_kind<>'unknown') FROM ai_calls WHERE stage='price_research' AND scope='system'`).Scan(&system, &missing); err != nil || system != 3 || missing != 0 {
 		t.Fatal(system, missing, err)
+	}
+}
+
+func TestWebSearchReadinessDoesNotRequireResearchModelPrice(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		calls  int
+		source string
+		ready  bool
+	}{
+		{"official_search_without_price", 1, "https://platform.openai.com/docs/models", true},
+		{"unofficial_source", 1, "https://attacker.example/pricing", false},
+		{"no_search", 0, "https://platform.openai.com/docs/models", false},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			r, catalog, actor, m, _ := researchFixture(t)
+			ctx := context.Background()
+			s, err := r.Configure(ctx, actor, priceresearch.ConfigInput{ModelID: m.ID, IntervalHours: 24})
+			if err != nil {
+				t.Fatal(err)
+			}
+			run, err := r.Request(ctx, actor, "test", priceresearch.RunInput{ExpectedVersion: s.Version})
+			if err != nil {
+				t.Fatal(err)
+			}
+			leases, err := r.ClaimDue(ctx)
+			if err != nil || len(leases) != 1 {
+				t.Fatal(err)
+			}
+			e, err := r.Prepare(ctx, leases[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			result := researchResult()
+			result.Quotes = nil
+			result.SearchCalls = scenario.calls
+			result.Sources = []string{scenario.source}
+			if err = r.Complete(ctx, leases[0], e, result, ""); err != nil {
+				t.Fatal(err)
+			}
+			s, err = r.State(ctx)
+			if err != nil || s.Ready != scenario.ready {
+				t.Fatalf("ready=%v, want %v: %v", s.Ready, scenario.ready, err)
+			}
+			finished, err := r.Run(ctx, run.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if scenario.ready && (finished.State != "succeeded" || finished.UnresolvedCount != 0 || len(finished.Sources) != 1) {
+				t.Fatal(finished)
+			}
+			prices, err := catalog.Prices(ctx, m.ID)
+			if err != nil || len(prices) != 0 {
+				t.Fatal("probe wrote a price", err)
+			}
+		})
 	}
 }
 func TestPriceResearchCASCredentialChangeAndLeaseExpiry(t *testing.T) {

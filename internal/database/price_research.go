@@ -474,7 +474,11 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 	sources := []string{}
 	if code == "" {
 		seen := map[string]bool{}
-		for _, q := range result.Quotes {
+		quotes := result.Quotes
+		if run.Kind == "test" {
+			quotes = nil
+		}
+		for _, q := range quotes {
 			var target *priceresearch.Target
 			for i := range e.Targets {
 				if e.Targets[i].ModelID == q.ModelID && e.Targets[i].Provider == q.Provider {
@@ -527,11 +531,15 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 			unresolved--
 			sources = append(sources, q.SourceURL)
 		}
-		if run.Kind == "test" && unresolved != 0 {
-			code = "research_unresolved"
-			if run.CallID != nil {
-				if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='failed',outcome='invalid_output' WHERE id=$1`, run.CallID); err != nil {
-					return researchError(err)
+		if run.Kind == "test" {
+			unresolved = 0
+			sources = priceresearch.OfficialSearchSources(result.Sources, run.TargetProvider)
+			if result.SearchCalls < 1 || result.SearchCalls > 3 || len(sources) == 0 {
+				code = "search_unverified"
+				if run.CallID != nil {
+					if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='failed',outcome='invalid_output' WHERE id=$1`, run.CallID); err != nil {
+						return researchError(err)
+					}
 				}
 			}
 		}
