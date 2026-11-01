@@ -483,6 +483,11 @@
   .sources {
     margin-top: 30px;
   }
+  :global(.part-AppShell-source-link) {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 6px;
+    width: 100%;
+  }
   :global(.part-AppShell-source-link.active) {
     background: #ffffff0d;
     color: #fff;
