@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailsync"
@@ -170,8 +171,7 @@ func (c *Client) graphDiscover(ctx context.Context, r mailsync.PageRequest, mode
 	} else if delta && s.History != "" && mode == "incremental" {
 		next = s.History
 	}
-	decodedPath, e := url.PathUnescape(path)
-	if e != nil || !graphLink(next, decodedPath) {
+	if !graphMessageLink(next, r.Folder, delta) {
 		return p, failure("invalid_response")
 	}
 	var v struct {
@@ -209,7 +209,7 @@ func (c *Client) graphDiscover(ctx context.Context, r mailsync.PageRequest, mode
 		return p, failure("invalid_response")
 	}
 	for _, link := range []string{v.Next, v.Delta} {
-		if link != "" && (!graphLink(link, decodedPath) || link == next && link == v.Next) {
+		if link != "" && (!graphMessageLink(link, r.Folder, delta) || link == next && link == v.Next) {
 			return p, failure("invalid_response")
 		}
 	}
@@ -225,4 +225,29 @@ func (c *Client) graphDiscover(ctx context.Context, r mailsync.PageRequest, mode
 	}
 	p.Cursor, e = pack(s)
 	return p, e
+}
+
+// Graph continuations may address the same folder with an OData key predicate,
+// e.g. mailfolders('id'), rather than the slash form used by the initial request.
+// Compare only the resource name case-insensitively; folder IDs remain exact.
+func graphMessageLink(link, folder string, delta bool) bool {
+	u, err := url.Parse(link)
+	if err != nil || !graphLink(link, u.Path) {
+		return false
+	}
+	const prefix = "/v1.0/me/"
+	suffix := "/messages"
+	if delta {
+		suffix += "/delta"
+	}
+	if !strings.HasPrefix(u.Path, prefix) || !strings.HasSuffix(u.Path, suffix) {
+		return false
+	}
+	collection := strings.TrimSuffix(strings.TrimPrefix(u.Path, prefix), suffix)
+	const name = "mailfolders"
+	if len(collection) <= len(name) || !strings.EqualFold(collection[:len(name)], name) {
+		return false
+	}
+	key := collection[len(name):]
+	return key == "/"+folder || key == "('"+strings.ReplaceAll(folder, "'", "''")+"')"
 }
