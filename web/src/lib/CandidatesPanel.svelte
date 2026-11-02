@@ -46,6 +46,27 @@
   }
 </script>
 
+{#snippet identity(candidate: Candidate)}
+  <span class="candidate-info">
+    <strong class="service-heading"
+      ><BrandIcon name={candidate.event.service} size="small" />{candidate.event
+        .service ?? 'サービス名未確認'}</strong
+    >
+    <span class="secondary"
+      >{candidate.event.plan ?? 'プラン不明'} · {eventNames[
+        candidate.event.event_type
+      ]}</span
+    >
+    <span class="candidate-meta">
+      <span>{candidate.account_label}</span>
+      {#if candidate.mail_count > 1}<span
+          >関連メール {candidate.mail_count} 件</span
+        >{/if}
+      <MailReceivedDate receivedAt={candidate.received_at} compact />
+    </span>
+  </span>
+{/snippet}
+
 {#if page.candidates.length}
   {#if onSelectionChange}<section
       class="library-content"
@@ -79,6 +100,7 @@
     </section>{/if}
   <DataTable
     responsive="cards"
+    density="list"
     class={[
       'candidate-table',
       'table-CandidatesPanel',
@@ -89,34 +111,26 @@
     ><tbody>
       {#each page.candidates as candidate (`${candidate.result_id}/${candidate.event_index}`)}
         <tr
-          ><td data-primary
-            >{#if onSelectionChange}<label class="candidate-select"
-                ><input
+          ><td data-primary>
+            {#if onSelectionChange}<label
+                class="candidate-identity selectable"
+                class:disabled={selectionBusy}
+              >
+                <input
                   type="checkbox"
                   checked={selectedKeys.has(key(candidate))}
                   disabled={selectionBusy}
                   aria-label={`${candidate.event.service ?? 'この候補'}を選択`}
                   onchange={(e) =>
                     selectRows([candidate], e.currentTarget.checked)}
-                />選択</label
-              >{/if}<strong class="service-heading"
-              ><BrandIcon
-                name={candidate.event.service}
-                size="small"
-              />{candidate.event.service ?? 'サービス名未確認'}</strong
-            ><span class="secondary"
-              >{candidate.event.plan ?? 'プラン不明'} · {eventNames[
-                candidate.event.event_type
-              ]}</span
-            ><span class="secondary">{candidate.account_label}</span>
-            {#if candidate.mail_count > 1}<span class="secondary"
-                >関連メール {candidate.mail_count} 件</span
-              >{/if}
-            <span class="secondary"
-              ><MailReceivedDate receivedAt={candidate.received_at} /></span
-            ></td
-          >
-          <td data-label="取引金額・周期"
+                />
+                {@render identity(candidate)}
+              </label>
+            {:else}<div class="candidate-identity">
+                {@render identity(candidate)}
+              </div>{/if}
+          </td>
+          <td data-label="取引金額・周期" class="candidate-price"
             ><span class="money"
               >{money(candidate.event.amount, candidate.event.currency)}</span
             ><span class="secondary"
@@ -159,23 +173,45 @@
   </div>{/if}
 
 <style>
-  .candidate-select {
-    display: inline-flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-    min-height: 36px;
-  }
-  .candidate-select input {
+  .candidate-identity input {
     width: 18px;
     height: 18px;
     accent-color: var(--color-action);
+    margin: 5px 0 0;
   }
   .service-heading {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-height: 28px;
+  }
+  .candidate-identity {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    align-items: start;
+    min-height: 44px;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+  }
+  .candidate-identity.selectable {
+    grid-template-columns: 18px minmax(0, 1fr);
+    cursor: pointer;
+  }
+  .candidate-identity.disabled {
+    cursor: default;
+  }
+  .candidate-info {
+    min-width: 0;
+  }
+  .candidate-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--color-muted);
   }
   :global(.part-CandidatesPanel-candidate-table) th:first-child {
     width: 50%;
@@ -195,6 +231,23 @@
     }
     :global(.part-CandidatesPanel-candidate-table) td:last-child {
       padding-top: 8px;
+    }
+  }
+  @media (max-width: 800px) {
+    :global(table.part-CandidatesPanel-candidate-table td.candidate-price) {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: baseline;
+      gap: 4px 10px;
+    }
+    .candidate-price .secondary {
+      margin-top: 0;
+    }
+    :global(
+      table.part-CandidatesPanel-candidate-table.cards
+        td.candidate-price[data-label]::before
+    ) {
+      display: none;
     }
   }
 </style>

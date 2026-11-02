@@ -43,6 +43,7 @@ test('library list and cards expose real amounts, unknown sources and accessible
     assert.match(html, /取得元情報なし/);
     assert.doesNotMatch(html, /手動登録/);
     assert.match(html, /サービスの詳細/);
+    assert.equal(html.includes('list-density'), layout === 'list');
   }
 });
 

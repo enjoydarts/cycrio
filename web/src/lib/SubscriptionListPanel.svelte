@@ -58,10 +58,14 @@
       >{/each}
   </div>
 {:else}
-  <DataTable responsive="compact" class={['table-SubscriptionListPanel']}>
+  <DataTable
+    responsive="compact"
+    density="list"
+    class={['table-SubscriptionListPanel']}
+  >
     <thead
       ><tr
-        ><th>サービス</th><th>登録料金</th><th>次回の請求日</th><th
+        ><th>サービス</th><th>登録料金</th><th class="date">次回の請求日</th><th
           class="source">取得元</th
         ><th class="state">状態</th><th><span class="sr">詳細</span></th></tr
       ></thead
@@ -135,6 +139,9 @@
   .date {
     white-space: nowrap;
   }
+  td.price small {
+    white-space: nowrap;
+  }
   .meta {
     color: var(--color-muted);
     font-size: 11px;
@@ -198,7 +205,7 @@
     tr {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto 44px;
-      padding: 16px;
+      padding: 12px 16px;
       gap: 5px 8px;
       border-bottom: 1px solid var(--color-border);
     }
@@ -210,6 +217,11 @@
       text-align: right;
       font-size: 12px;
       max-width: 120px;
+    }
+    .price small {
+      display: inline;
+      margin-top: 0;
+      margin-inline-start: 6px;
     }
     .date {
       grid-column: 2;
@@ -227,6 +239,13 @@
     }
     .brand-text strong {
       font-size: 12px;
+    }
+  }
+  @media (max-width: 360px) {
+    .price small {
+      display: block;
+      margin-top: 4px;
+      margin-inline-start: 0;
     }
   }
 </style>

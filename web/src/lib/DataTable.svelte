@@ -5,10 +5,12 @@
     children,
     class: className,
     responsive = 'scroll',
+    density = 'default',
     ...attributes
   }: HTMLTableAttributes & {
     children: Snippet;
     responsive?: 'scroll' | 'cards' | 'compact';
+    density?: 'default' | 'list';
   } = $props();
 </script>
 
@@ -18,6 +20,7 @@
     class={['ui-table', className]}
     class:cards={responsive === 'cards'}
     class:compact={responsive === 'compact'}
+    class:list-density={density === 'list'}
   >
     {@render children()}
   </table>
@@ -61,6 +64,10 @@
   }
   .ui-table :global([data-actions] .ui-actions) {
     min-width: max-content;
+  }
+  .list-density :global(th),
+  .list-density :global(td) {
+    padding: 12px 16px;
   }
   @media (max-width: 700px) {
     .ui-table :global(th),
@@ -111,6 +118,10 @@
     .cards :global([data-actions] .ui-actions) {
       min-width: 0;
       white-space: normal;
+    }
+    .list-density.cards :global(tr) {
+      padding: 12px 16px;
+      gap: 8px 12px;
     }
   }
   @media (max-width: 650px) {

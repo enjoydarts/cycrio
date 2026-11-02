@@ -88,6 +88,18 @@ test('candidate list offers page selection, clear and bulk exclusion without mer
   assert.match(body, /選択解除/);
   assert.match(body, /選択した候補を除外/);
   assert.match(body, /関連メール\s*2\s*件/);
+  assert.doesNotMatch(body, /\/>選択<\/label>/);
+  assert.match(body, /aria-label="Exampleを選択"/);
+  const selectionLabel = body.match(
+    /<label\b[^>]*class="[^"]*candidate-identity[^"]*"[^>]*>([\s\S]*?)<\/label>/,
+  );
+  assert.ok(
+    selectionLabel,
+    'selection control must belong to the candidate information',
+  );
+  assert.match(selectionLabel[1], /type="checkbox"/);
+  assert.match(selectionLabel[1], /Example/);
+  assert.match(selectionLabel[1], /個人メール/);
 });
 test('summary distinguishes email counts, candidate counts, and registered contracts', async () => {
   const body = await html('AccountImportSummary', {

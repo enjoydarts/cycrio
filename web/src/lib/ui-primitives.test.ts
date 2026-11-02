@@ -144,6 +144,17 @@ test('ActionGroup and DataTable expose wrapping layout and accessible native tab
   }).body;
   assert.match(compact, /class="[^"]*\bcompact\b/);
 });
+test('list density is opt in and does not become a native table attribute', async () => {
+  const Table = await component('DataTable');
+  const normal = render(Table, { props: { children } }).body;
+  const list = render(Table, {
+    props: { children, density: 'list', responsive: 'cards' },
+  }).body;
+  assert.doesNotMatch(normal, /list-density/);
+  assert.match(list, /class="[^"]*list-density/);
+  assert.match(list, /class="[^"]*cards/);
+  assert.doesNotMatch(list, /\sdensity=/);
+});
 
 test('ActionGroup separates content only when explicitly requested and keeps compact groups unchanged', async () => {
   const Group = await component('ActionGroup');
