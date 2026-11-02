@@ -4,6 +4,53 @@ import test from 'node:test';
 
 const domesticServices = [
   [
+    'bookwalker',
+    [
+      'BOOK☆WALKER',
+      'BOOK WALKER',
+      'ＢＯＯＫ☆ＷＡＬＫＥＲ',
+      'ブックウォーカー',
+      'ブック☆ウォーカー',
+      'BOOK☆WALKER 読み放題',
+      'BOOK WALKER 読み放題 MAXコース',
+      'BOOK☆WALKER 読み放題 マンガコース',
+      'BOOK☆WALKER マンガ・雑誌 読み放題',
+      'BOOK☆WALKER 文庫・ラノベ 読み放題',
+      'https://bookwalker.jp/subscription/',
+      'https://global.bookwalker.jp/',
+      'bookwalker.jp',
+    ],
+  ],
+  [
+    'kakuyomu',
+    [
+      'カクヨム',
+      'Kakuyomu',
+      'カクヨムネクスト',
+      'カクヨムサポーターズパスポート',
+      'カクヨム サポーターズパスポート ライト',
+      'カクヨム サポーターズパスポート スタンダード',
+      'カクヨム サポーターズパスポート デラックス',
+      'https://kakuyomu.jp/next',
+      'kakuyomu.jp',
+    ],
+  ],
+  [
+    'kadocomi',
+    [
+      'カドコミ',
+      'Kadocomi',
+      'ComicWalker',
+      'コミックウォーカー',
+      'カドコミ（コミックウォーカー）',
+      'comic-walker.com',
+    ],
+  ],
+  [
+    'kadokawa',
+    ['KADOKAWA', '角川', 'カドカワ', '株式会社KADOKAWA', 'kadokawa.co.jp'],
+  ],
+  [
     'rakutenmagazine',
     [
       '楽天マガジン',

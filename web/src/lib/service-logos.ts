@@ -212,6 +212,40 @@ const names: [string, string[]][] = [
   ['dazn', ['DAZN', 'ダゾーン']],
   ['danimestore', ['dアニメストア', 'd Anime Store', 'ドコモ dアニメストア']],
   ['niconico', ['ニコニコ', 'ニコニコ動画', 'ニコニコプレミアム', 'Niconico']],
+  [
+    'bookwalker',
+    [
+      'BOOK☆WALKER',
+      'ブックウォーカー',
+      'ブック☆ウォーカー',
+      'BOOK☆WALKER 読み放題',
+      'BOOK☆WALKER 読み放題 MAXコース',
+      'BOOK☆WALKER 読み放題 マンガコース',
+      'BOOK☆WALKER マンガ・雑誌 読み放題',
+      'BOOK☆WALKER 文庫・ラノベ 読み放題',
+    ],
+  ],
+  [
+    'kakuyomu',
+    [
+      'カクヨム',
+      'カクヨムネクスト',
+      'カクヨムサポーターズパスポート',
+      ...['ライト', 'スタンダード', 'デラックス'].map(
+        (plan) => `カクヨムサポーターズパスポート ${plan}`,
+      ),
+    ],
+  ],
+  [
+    'kadocomi',
+    [
+      'カドコミ',
+      'ComicWalker',
+      'コミックウォーカー',
+      'カドコミ（コミックウォーカー）',
+    ],
+  ],
+  ['kadokawa', ['KADOKAWA', '角川', 'カドカワ', '株式会社KADOKAWA']],
   ['freee', ['freee', 'freee会計', 'フリー会計']],
   [
     'moneyforward',
@@ -292,6 +326,11 @@ const domains: Record<string, string> = {
   'freee.co.jp': 'freee',
   'abema.tv': 'abema',
   'nicovideo.jp': 'niconico',
+  'bookwalker.jp': 'bookwalker',
+  'global.bookwalker.jp': 'bookwalker',
+  'kakuyomu.jp': 'kakuyomu',
+  'comic-walker.com': 'kadocomi',
+  'kadokawa.co.jp': 'kadokawa',
   'note.com': 'note',
   'notion.so': 'notion',
   'notion.com': 'notion',

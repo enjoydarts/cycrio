@@ -1,5 +1,37 @@
 [
   {
+    "slug": "bookwalker",
+    "title": "BOOK☆WALKER",
+    "file": "bookwalker.png",
+    "sourceUrl": "https://bookwalker.jp/apple-touch-icon.png",
+    "sha256": "ccf7476bfcecf178171838e30c6a9c5589d362e5f804c2ef63f535f36a7d5b47",
+    "credit": "BOOK WALKER"
+  },
+  {
+    "slug": "kakuyomu",
+    "title": "カクヨム",
+    "file": "kakuyomu.png",
+    "sourceUrl": "https://kakuyomu.jp/images/brand/favicons/app-256.png",
+    "sha256": "1ab4ac3bf46f087a30a128626e47358d4b38e5e04ef3e09b5b0053ee278ab95f",
+    "credit": "KADOKAWA カクヨム"
+  },
+  {
+    "slug": "kadocomi",
+    "title": "カドコミ",
+    "file": "kadocomi.png",
+    "sourceUrl": "https://comic-walker.com/favicons/apple-touch-icon.png",
+    "sha256": "9fff8425ed6d8f449bb0448bc55b32f4f216822d880d4100a727ef152f96fb2b",
+    "credit": "KADOKAWA カドコミ"
+  },
+  {
+    "slug": "kadokawa",
+    "title": "KADOKAWA",
+    "file": "kadokawa.png",
+    "sourceUrl": "https://static.kadokawa.co.jp/apple-touch-icon.png",
+    "sha256": "dc83f2ba0d0b7e3ac9b32e8c008cfaac70537df632a024077543796d28dac5bf",
+    "credit": "KADOKAWA"
+  },
+  {
     "slug": "amazon",
     "title": "Amazon",
     "file": "amazonprime.ico",

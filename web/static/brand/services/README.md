@@ -1,5 +1,7 @@
 # サービスロゴの出典
 
+2026-11-02 に BOOK☆WALKER、カクヨム、カドコミ、KADOKAWA の公式サイト配信アイコンを追加しました。画像は無加工です。BOOK☆WALKER の読み放題（現行コース・旧コース）、カクヨムネクスト・サポーターズパスポート、カドコミの旧称 ComicWalker はそれぞれのサービスロゴを使います。公式案内：[BOOK☆WALKER 読み放題](https://bookwalker.jp/subscription/)、[カクヨム有料サービス](https://kakuyomu.jp/help/entry/faq_subscription)、[カドコミ](https://comic-walker.com/)。企業名の KADOKAWA と各サービスは別の画像で識別します。
+
 このディレクトリは、Simple Icons 16.36.0 に収録されていない主要サービスの補完画像です。公式サイトまたは公式 CDN が配信したアイコンを 2026-11-01 に取得しました。画像そのものは変更していません。取得 URL、SHA-256、権利者・出典は `sources.json` に記録しています。生成時には SHA-256 を検証し、実行時には外部サイトへ問い合わせません。
 
 国内サービスは楽天マガジン、楽天ミュージック、LINE MUSIC、DMM TV、Lemino、TELASA、FOD、WOWOW、radiko、NHKオンデマンド、pixivFANBOX、マネーフォワード ME、freee、ABEMA、ニコニコ、noteを補完しています。楽天とLINEは企業ブランドと各製品の画像を分けています。既存カタログに含まれるサービスも、ここでは公式サイトのカラー画像を優先しています。
