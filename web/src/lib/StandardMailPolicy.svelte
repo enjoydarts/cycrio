@@ -7,12 +7,12 @@
     PolicyInput,
     StandardPolicyInput,
   } from './mail-processing-api.ts';
-  import { validRetention } from './mail-processing-api.ts';
   import { datetime } from './model-catalog.ts';
   import {
     createStandardReview,
     editStandardConsent,
     reconcileStandardReview,
+    standardConsentInput,
     type StandardReview,
     type StandardConsent,
   } from './standard-policy-draft.ts';
@@ -33,7 +33,6 @@
   } = $props();
   let review = $state<StandardReview | null>(null),
     saved = $state(false),
-    legacyCustom = $state(false),
     reviewing = $state(false);
   let disposed = false;
   onDestroy(() => {
@@ -44,17 +43,19 @@
     conflict = $derived(review?.conflict ?? false);
   const terms = $derived(policyState?.standard_terms),
     route = $derived(terms?.secondary_route);
-  const customSecondary = $derived(
-    legacyCustom ||
-      policyState?.profile?.secondary.provider !== 'openrouter' ||
-      terms?.blocked_reason === 'custom_secondary_required',
-  );
+  const customSecondary = $derived(form?.values.secondary_mode === 'custom');
   const proofCurrent = $derived(
-    policyState?.policy?.standard_proof?.primary_mode !== 'standard' ||
-      (policyState?.policy?.standard_proof?.primary_terms?.id ===
-        terms?.primary.id &&
-        policyState?.policy?.standard_proof?.primary_terms?.version ===
-          terms?.primary.version),
+    !!policyState?.policy?.standard_proof &&
+      (policyState.policy.standard_proof.primary_mode !== 'standard' ||
+        (policyState?.policy?.standard_proof?.primary_terms?.id ===
+          terms?.primary.id &&
+          policyState?.policy?.standard_proof?.primary_terms?.version ===
+            terms?.primary.version)) &&
+      (policyState.policy.standard_proof.secondary_mode !== 'standard' ||
+        (policyState.policy.standard_proof.secondary_terms?.id ===
+          terms?.secondary?.id &&
+          policyState.policy.standard_proof.secondary_terms?.version ===
+            terms?.secondary?.version)),
   );
   const alreadyPermitted = $derived(
     !!policyState?.policy?.enabled && proofCurrent,
@@ -64,7 +65,6 @@
     if (disposed || !current) return;
     review = createStandardReview(current);
     saved = false;
-    legacyCustom = false;
     onDirty(false);
   }
   $effect(() => {
@@ -85,21 +85,10 @@
     saved = false;
     onDirty(true);
   }
-  const valid = $derived(
-    !!policyState?.profile &&
-      !!form &&
-      !reloadRequired &&
-      !conflict &&
-      form.values.primary_confirmed &&
-      form.values.secondary_confirmed &&
-      (customSecondary
-        ? validRetention(form.values.primary_retention) &&
-          validRetention(form.values.secondary_retention)
-        : !!terms?.ready &&
-          !!route &&
-          (form.values.primary_mode === 'standard' ||
-            validRetention(form.values.primary_retention))),
+  const input = $derived(
+    review && policyState ? standardConsentInput(review, policyState) : null,
   );
+  const valid = $derived(!reloadRequired && !!input);
   async function submit() {
     if (
       !valid ||
@@ -110,33 +99,7 @@
       disposed
     )
       return;
-    const value = form.values;
-    const ok = customSecondary
-      ? await saveCustom({
-          expected_version: form.baseline_version,
-          profile_id: policyState.profile.id,
-          enabled: true,
-          full_email_allowed: value.full_email_allowed,
-          primary_retention: value.primary_retention,
-          secondary_retention: value.secondary_retention,
-          primary_confirmed: value.primary_confirmed,
-          secondary_confirmed: value.secondary_confirmed,
-        })
-      : await save({
-          expected_version: form.baseline_version,
-          runtime_version: policyState.runtime_version,
-          profile_id: policyState.profile.id,
-          enabled: true,
-          full_email_allowed: value.full_email_allowed,
-          primary_mode: value.primary_mode,
-          primary_terms_id:
-            value.primary_mode === 'standard' ? terms!.primary.id : '',
-          primary_retention:
-            value.primary_mode === 'standard' ? '' : value.primary_retention,
-          primary_confirmed: value.primary_confirmed,
-          secondary_route_id: route!.id,
-          secondary_confirmed: value.secondary_confirmed,
-        });
+    const ok = await save(input!);
     if (ok && !disposed && policyState) {
       adopt();
       saved = true;
@@ -170,6 +133,7 @@
             : '従来範囲のみ許可済み'
           : '停止中・未許可'}</strong
       >{#if policyState.policy?.enabled}<Button
+          type="button"
           wrap
           disabled={busy}
           onclick={stop}>送信許可を停止</Button
@@ -180,7 +144,7 @@
       </p>{/if}
     {#if !policyState.profile}<p class="setup-feedback">
         先に AI の接続テストと有効化を行ってください。
-      </p>{:else if reloadRequired || (!terms && policyState.profile.secondary.provider === 'openrouter')}<p
+      </p>{:else if reloadRequired || !terms}<p
         class="setup-feedback"
         role="status"
       >
@@ -189,6 +153,7 @@
         現在の有効版について、確認した条件で本文送信を許可しています。解析画面で送信条件を確認して開始できます。
       </p>
       <Button
+        type="button"
         wrap
         disabled={busy}
         onclick={() => {
@@ -200,7 +165,7 @@
           <p>
             モデル・規約・保存状態が変わりました。入力と編集開始時の版を保持しています。最新条件を確認し直してください。
           </p>
-          <Button wrap disabled={busy} onclick={adopt}
+          <Button wrap type="button" disabled={busy} onclick={adopt}
             >最新の条件で確認し直す（入力を破棄）</Button
           >
         </div>{/if}
@@ -224,8 +189,11 @@
         </p>
         <div class="setup-grid">
           <article class="setup-panel">
-            <h3>一次判定 · Liquid AI D1</h3>
-            {#if !customSecondary && terms}<label
+            <h3>
+              一次判定 · {policyState.profile.primary.display_name ||
+                policyState.profile.primary.model_id}
+            </h3>
+            {#if terms}<label
                 >保持条件<select
                   disabled={busy || conflict}
                   value={form.values.primary_mode}
@@ -285,6 +253,20 @@
           </article>
           <article class="setup-panel">
             <h3>二次処理 · {policyState.profile.secondary.display_name}</h3>
+            <label
+              >保持条件<select
+                disabled={busy || conflict}
+                value={form.values.secondary_mode}
+                onchange={(e) =>
+                  edit({
+                    secondary_mode: e.currentTarget.value as
+                      'standard' | 'custom',
+                  })}
+                ><option value="standard">接続先の標準条件を使う</option><option
+                  value="custom">個別契約の条件を使う</option
+                ></select
+              ></label
+            >
             {#if customSecondary}<p>
                 現在の接続先について、個別に確認した条件を入力してください。
               </p>
@@ -299,6 +281,17 @@
                       secondary_confirmed: false,
                     })}></textarea></label
               >
+            {:else if policyState.profile.secondary.provider !== 'openrouter' && terms?.secondary}
+              <p>{terms.secondary.summary}</p>
+              <p class="muted">標準条件：{terms.secondary.version}</p>
+              <a
+                href={terms.secondary.source_url}
+                target="_blank"
+                rel="noopener noreferrer">接続先の標準条件を確認</a
+              >
+              <p class="muted">
+                標準条件はアカウント固有の無保持契約を保証しません。個別契約がある場合は、その条件を選択して入力してください。
+              </p>
             {:else if route}<p>
                 <strong>{route.provider_name}</strong> · {terms?.ready
                   ? '現在の有効版と照合した ZDR 配信先'
@@ -351,16 +344,17 @@
           >
         </ActionGroup>
       </form>
-      {#if policyState.policy && !policyState.policy.standard_proof && !customSecondary}<details
+      {#if policyState.policy && !policyState.policy.standard_proof}<details
           class="setup-details"
         >
           <summary>既存の個別条件を編集</summary><Button
             wrap
+            type="button"
             disabled={busy}
             onclick={() => {
-              legacyCustom = true;
               edit({
                 primary_mode: 'custom',
+                secondary_mode: 'custom',
                 primary_retention: policyState.policy?.primary_retention ?? '',
                 secondary_retention:
                   policyState.policy?.secondary_retention ?? '',

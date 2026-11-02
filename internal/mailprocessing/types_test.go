@@ -35,7 +35,7 @@ func TestPublicRetentionSourcesComeOnlyFromMatchingStandardProof(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			profile := airuntime.Profile{ID: "profile", Primary: airuntime.ModelRef{Provider: "liquid", ModelID: "d1", CredentialID: "private-key"}, Secondary: airuntime.ModelRef{Provider: "openrouter", ModelID: "synthetic-model"}, OpenRouterProvider: "deepinfra/fp4", AnthropicWorkspaceID: "private-workspace"}
 			terms := CurrentPrimaryTerms()
-			proof := &StandardProof{ProfileID: profile.ID, PolicyVersion: 2, PrimaryMode: "standard", PrimaryTerms: &terms, ActorID: "private-actor", SecondaryRoute: airoutes.Proof{UpstreamModelID: profile.Secondary.ModelID, Tag: profile.OpenRouterProvider, ZDR: true, SourceURL: airoutes.SourceURL}}
+			proof := &StandardProof{ProfileID: profile.ID, PolicyVersion: 2, PrimaryMode: "standard", PrimaryTerms: &terms, ActorID: "private-actor", SecondaryRoute: &airoutes.Proof{UpstreamModelID: profile.Secondary.ModelID, Tag: profile.OpenRouterProvider, ZDR: true, SourceURL: airoutes.SourceURL}}
 			policy := Policy{ProfileID: profile.ID, Version: 2, StandardProof: proof, PrimaryRetention: "Saved primary terms", SecondaryRetention: "Saved secondary terms"}
 			primary, secondary := terms.SourceURL, airoutes.SourceURL
 			switch kind {
@@ -107,5 +107,25 @@ func TestPublicRetentionSourcesComeOnlyFromMatchingStandardProof(t *testing.T) {
 				t.Fatal("frozen retention rewritten")
 			}
 		})
+	}
+}
+
+func TestPublicDirectRetentionSourceMatchesFrozenProvider(t *testing.T) {
+	for _, provider := range []string{"anthropic", "openai"} {
+		terms, _ := CurrentSecondaryTerms(provider)
+		profile := airuntime.Profile{ID: "profile", Secondary: airuntime.ModelRef{Provider: provider}}
+		policy := Policy{ProfileID: profile.ID, Version: 1, StandardProof: &StandardProof{ProfileID: profile.ID, PolicyVersion: 1, PrimaryMode: "custom", SecondaryMode: "standard", SecondaryTerms: &terms}}
+		if got := Public(profile, policy); got.Secondary.RetentionSourceURL != terms.SourceURL {
+			t.Fatal("missing official source", got)
+		}
+		other := "openai"
+		if provider == other {
+			other = "anthropic"
+		}
+		mismatch, _ := CurrentSecondaryTerms(other)
+		policy.StandardProof.SecondaryTerms = &mismatch
+		if got := Public(profile, policy); got.Secondary.RetentionSourceURL != "" {
+			t.Fatal("cross-provider source published", got)
+		}
 	}
 }

@@ -254,7 +254,7 @@ test('a failed optional route-list read still exposes the existing permission fo
   assert.equal(x.counts().legacyWrites, 1);
   assert.equal(x.controller.state().policy?.policy?.enabled, false);
 });
-test('legacy direct-provider custom conditions retain the explicit custom path after stopping', async () => {
+test('legacy direct-provider conditions remain available for explicit editing without preselecting custom consent', async () => {
   const x = setup();
   const current = x.latest();
   const { standard_terms: _terms, ...legacy } = current;
@@ -279,8 +279,14 @@ test('legacy direct-provider custom conditions retain the explicit custom path a
   await x.controller.saveCustom(stopInput(x.latest()));
   assert.equal(x.controller.state().policyReloadRequired, false);
   const review = createStandardReview(x.controller.state().policy!);
-  assert.equal(review.draft.values.primary_mode, 'custom');
-  assert.equal(review.draft.values.primary_retention, '一次の個別契約');
+  assert.equal(review.draft.values.primary_mode, 'standard');
+  assert.equal(review.draft.values.secondary_mode, 'standard');
+  assert.equal(review.draft.values.primary_retention, '');
+  assert.equal(review.draft.values.secondary_retention, '');
+  assert.equal(
+    x.controller.state().policy!.policy!.primary_retention,
+    '一次の個別契約',
+  );
   assert.equal(review.draft.values.primary_confirmed, false);
   await x.controller.saveCustom({
     ...stopInput(x.latest()),

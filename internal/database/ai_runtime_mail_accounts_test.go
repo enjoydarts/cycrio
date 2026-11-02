@@ -363,9 +363,7 @@ func TestAIRuntimeMailAccountDowngradeLocksReconstructionSource(t *testing.T) {
 	}
 	// Isolate the v26 lock assertion from newer independent DDL locks.
 	down, err := p.DownTo(ctx, 26)
-	if err != nil || len(down) != 2 || down[0].Source.Version != 28 || down[1].Source.Version != 27 || down[0].Direction != "down" || down[1].Direction != "down" {
-		t.Fatal("prepare v26 schema", down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 27)
 	blocker, err := f.runtime.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)

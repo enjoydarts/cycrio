@@ -65,7 +65,20 @@ func processingStandardTerms(ctx context.Context, q runtimeQuery, p airuntime.Pr
 		return out, nil
 	}
 	if p.Secondary.Provider != "openrouter" {
-		out.BlockedReason = "custom_secondary_required"
+		terms, ok := mailprocessing.CurrentSecondaryTerms(p.Secondary.Provider)
+		if !ok {
+			out.BlockedReason = "custom_secondary_required"
+			return out, nil
+		}
+		out.Secondary = &terms
+		if e := runtimeProfileReady(ctx, q, p, true, false); e != nil {
+			if errors.Is(processingError(e), mailprocessing.ErrUnavailable) {
+				return nil, mailprocessing.ErrUnavailable
+			}
+			return out, nil
+		}
+		out.Ready = true
+		out.BlockedReason = ""
 		return out, nil
 	}
 	var raw []byte
@@ -121,17 +134,43 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	if v != in.ExpectedVersion {
 		return empty, mailprocessing.ErrConflict
 	}
-	selection, e := routeProofForSave(ctx, tx, in.SecondaryRouteID)
-	if e != nil {
-		return empty, processingError(e)
-	}
 	p, e := runtimeProfile(ctx, tx, in.ProfileID)
 	if e != nil {
 		return empty, processingError(e)
 	}
-	now, e := standardRouteReady(ctx, tx, p, selection, true)
-	if e != nil {
-		return empty, e
+	var now time.Time
+	var route *airoutes.Proof
+	var routeID *string
+	var secondaryTerms *mailprocessing.Terms
+	secondary := in.SecondaryRetention
+	switch in.SecondaryPolicyMode() {
+	case "route":
+		selection, err := routeProofForSave(ctx, tx, in.SecondaryRouteID)
+		if err != nil {
+			return empty, processingError(err)
+		}
+		now, e = standardRouteReady(ctx, tx, p, selection, true)
+		if e != nil {
+			return empty, e
+		}
+		route = &selection.Proof
+		routeID = &selection.Proof.ID
+		secondary = mailprocessing.SecondaryRetention(selection.Proof)
+	case "standard", "custom":
+		if in.SecondaryPolicyMode() == "standard" {
+			terms, ok := mailprocessing.CurrentSecondaryTerms(p.Secondary.Provider)
+			if !ok || terms.ID != in.SecondaryTermsID {
+				return empty, mailprocessing.ErrConflict
+			}
+			secondaryTerms = &terms
+			secondary = terms.Summary
+		}
+		if e = runtimeProfileReady(ctx, tx, p, true, true); e != nil {
+			return empty, processingError(e)
+		}
+		if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
+			return empty, mailprocessing.ErrUnavailable
+		}
 	}
 	primary := in.PrimaryRetention
 	var terms *mailprocessing.Terms
@@ -140,7 +179,6 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 		terms = &t
 		primary = t.Summary
 	}
-	secondary := mailprocessing.SecondaryRetention(selection.Proof)
 	policy := mailprocessing.PolicyInput{FullEmailAllowed: in.FullEmailAllowed, ExpectedVersion: in.ExpectedVersion, ProfileID: in.ProfileID, Enabled: in.Enabled, PrimaryRetention: primary, SecondaryRetention: secondary, PrimaryConfirmed: true, SecondaryConfirmed: true}
 	if !mailprocessing.ValidPolicy(policy) {
 		return empty, mailprocessing.ErrConflict
@@ -148,7 +186,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	if e = writeProcessingPolicy(ctx, tx, actor, policy); e != nil {
 		return empty, e
 	}
-	proof := mailprocessing.StandardProof{ProfileID: in.ProfileID, PolicyVersion: in.ExpectedVersion + 1, PrimaryMode: in.PrimaryMode, PrimaryTerms: terms, PrimaryRetention: primary, SecondaryRoute: selection.Proof, SecondaryRetention: secondary, ActorID: actor, ConfirmedAt: now}
+	proof := mailprocessing.StandardProof{ProfileID: in.ProfileID, PolicyVersion: in.ExpectedVersion + 1, PrimaryMode: in.PrimaryMode, PrimaryTerms: terms, PrimaryRetention: primary, SecondaryMode: in.SecondaryPolicyMode(), SecondaryTerms: secondaryTerms, SecondaryRoute: route, SecondaryRetention: secondary, ActorID: actor, ConfirmedAt: now}
 	// Use the written column so disabled legacy saves that preserve scope also
 	// freeze an identical confirmation scope.
 	if e = tx.QueryRow(ctx, `SELECT full_email_allowed FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&proof.FullEmailAllowed); e != nil {
@@ -158,7 +196,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	if e != nil {
 		return empty, mailprocessing.ErrUnavailable
 	}
-	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_standard_proofs(profile_id,policy_version,route_id,actor_id,confirmed_at,doc) VALUES($1,$2,$3,$4,$5,$6)`, in.ProfileID, proof.PolicyVersion, selection.Proof.ID, actor, now, raw); e != nil {
+	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_standard_proofs(profile_id,policy_version,route_id,actor_id,confirmed_at,doc) VALUES($1,$2,$3,$4,$5,$6)`, in.ProfileID, proof.PolicyVersion, routeID, actor, now, raw); e != nil {
 		return empty, processingError(e)
 	}
 	state, _, e := processingState(ctx, tx, false)

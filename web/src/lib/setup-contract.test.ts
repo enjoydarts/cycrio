@@ -86,6 +86,96 @@ test('runtime preserves immutable exact route proof and independent safe stage f
   assert.equal(parsed.primary_failure, null);
   assert.deepEqual(parsed.secondary_failure, failure);
 });
+test('direct and custom secondary consent serialize optional fields without requiring a route', async () => {
+  const bodies: unknown[] = [];
+  const api = createMailProcessingAPI(
+    'https://example.test',
+    async (_url, init) => {
+      bodies.push(JSON.parse(String(init!.body)));
+      return Response.json(processingPolicy());
+    },
+  );
+  const input = {
+    expected_version: 1,
+    runtime_version: 2,
+    profile_id: processingIDs.profile,
+    enabled: true,
+    primary_mode: 'standard' as const,
+    primary_terms_id: 'liquid-standard',
+    primary_retention: '',
+    primary_confirmed: true,
+    secondary_mode: 'standard' as const,
+    secondary_terms_id: 'openai-standard',
+    secondary_retention: '',
+    secondary_route_id: '',
+    secondary_confirmed: true,
+  };
+  await api.saveStandardPolicy(input, async () => 't');
+  assert.deepEqual(bodies[0], input);
+  await api.saveStandardPolicy(
+    {
+      ...input,
+      secondary_mode: 'custom',
+      secondary_terms_id: '',
+      secondary_retention: '個別契約の保持条件',
+    },
+    async () => 't',
+  );
+  for (const patch of [
+    { secondary_confirmed: false },
+    { secondary_terms_id: '' },
+    { secondary_retention: 'unexpected' },
+  ]) {
+    await assert.rejects(
+      api.saveStandardPolicy({ ...input, ...patch }, async () => 't'),
+      { code: 'invalid_request' },
+    );
+  }
+  assert.equal(bodies.length, 2);
+});
+test('direct standard terms and nullable proof route parse alongside legacy route proofs', () => {
+  const terms = {
+    id: 'openai-standard',
+    version: '1',
+    source_url: 'https://example.test/terms',
+    summary: '標準条件',
+    zdr: false,
+    training_permitted: false,
+    fixed_retention_days: 30,
+  };
+  const state = processingPolicy();
+  state.standard_terms = {
+    primary: terms,
+    secondary: terms,
+    secondary_route: null,
+    ready: true,
+    blocked_reason: '',
+  };
+  state.policy!.standard_proof = {
+    profile_id: processingIDs.profile,
+    policy_version: 1,
+    primary_mode: 'standard',
+    primary_terms: terms,
+    primary_retention: '',
+    secondary_mode: 'standard',
+    secondary_terms: terms,
+    secondary_route: null,
+    secondary_retention: '',
+    actor_id: id,
+    confirmed_at: now,
+  };
+  const parsed = parsePolicyState(state);
+  assert.deepEqual(parsed.standard_terms!.secondary, terms);
+  assert.equal(parsed.policy!.standard_proof!.secondary_route, null);
+  assert.deepEqual(parsed.policy!.standard_proof!.secondary_terms, terms);
+  state.policy!.standard_proof!.secondary_route = proof();
+  delete state.policy!.standard_proof!.secondary_mode;
+  delete state.policy!.standard_proof!.secondary_terms;
+  assert.deepEqual(
+    parsePolicyState(state).policy!.standard_proof!.secondary_route,
+    proof(),
+  );
+});
 test('HTTP 400 request rejection guidance parses without weakening status validation', () => {
   const failure = {
     http_status: 400,

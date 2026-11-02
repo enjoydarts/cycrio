@@ -6,6 +6,8 @@ import {
 } from './standard-policy-draft.ts';
 import { processingPolicy } from './mail-processing-fixtures.ts';
 import { routeFixture } from './ai-setup-test-fixtures.ts';
+import * as consent from './standard-policy-draft.ts';
+import type { PolicyState } from './mail-processing-api.ts';
 const state = () => ({
   ...processingPolicy(),
   standard_terms: {
@@ -84,4 +86,87 @@ test('whole-email scope change clears both stage confirmations and retains enter
   assert.equal(next.secondary_confirmed, false);
   assert.equal(next.primary_retention, '個別契約');
   assert.equal(next.full_email_allowed, true);
+});
+const directState = (): PolicyState => {
+  const current = state();
+  return {
+    ...current,
+    profile: {
+      ...current.profile!,
+      secondary: { ...current.profile!.secondary, provider: 'openai' },
+    },
+    standard_terms: {
+      ...current.standard_terms,
+      secondary: {
+        ...current.standard_terms.primary,
+        id: 'openai-standard',
+        training_permitted: false,
+      },
+      ready: true,
+      blocked_reason: '',
+    },
+  };
+};
+test('direct standard consent needs fresh checks but no retention text and preserves independent custom choices', () => {
+  const current = directState();
+  const review = createStandardReview(current);
+  assert.equal(review.draft.values.primary_mode, 'standard');
+  assert.equal(review.draft.values.secondary_mode, 'standard');
+  assert.equal(review.draft.values.primary_retention, '');
+  assert.equal(review.draft.values.secondary_retention, '');
+  assert.equal(consent.standardConsentInput(review, current), null);
+  review.draft.values = {
+    ...review.draft.values,
+    full_email_allowed: true,
+    primary_confirmed: true,
+    secondary_confirmed: true,
+  };
+  const input = consent.standardConsentInput(review, current)!;
+  assert.equal(input.secondary_mode, 'standard');
+  assert.equal(input.secondary_terms_id, 'openai-standard');
+  assert.equal(input.secondary_route_id, '');
+  assert.equal(input.primary_retention, '');
+  assert.equal(input.secondary_retention, '');
+  review.draft.values.secondary_mode = 'custom';
+  assert.equal(consent.standardConsentInput(review, current), null);
+  review.draft.values.secondary_retention = '個別契約の保持条件';
+  assert.equal(
+    consent.standardConsentInput(review, current)!.primary_mode,
+    'standard',
+  );
+  assert.equal(
+    consent.standardConsentInput(review, current)!.secondary_mode,
+    'custom',
+  );
+  review.draft.values.primary_mode = 'custom';
+  assert.equal(consent.standardConsentInput(review, current), null);
+  review.draft.values.primary_retention = '一次の個別契約';
+  review.draft.values.secondary_mode = 'standard';
+  assert.equal(
+    consent.standardConsentInput(review, current)!.secondary_mode,
+    'standard',
+  );
+  assert.equal(
+    consent.standardConsentInput({ ...review, conflict: true }, current),
+    null,
+  );
+});
+test('stage condition edits clear only that confirmation and terms updates require fresh review', () => {
+  const current = directState();
+  const review = createStandardReview(current);
+  review.draft.values.primary_confirmed = true;
+  review.draft.values.secondary_confirmed = true;
+  const next = consent.editStandardConsent(review.draft.values, {
+    secondary_mode: 'custom',
+  });
+  assert.equal(next.primary_confirmed, true);
+  assert.equal(next.secondary_confirmed, false);
+  const changed = structuredClone(current);
+  changed.standard_terms!.secondary!.version = 'next';
+  assert.equal(consent.standardConsentInput(review, changed), null);
+  assert.equal(reconcileStandardReview(review, changed).conflict, true);
+  assert.equal(
+    reconcileStandardReview(review, changed).draft.values.primary_confirmed,
+    false,
+  );
 });

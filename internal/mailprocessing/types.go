@@ -227,8 +227,11 @@ func Public(p airuntime.Profile, policy Policy) PublicProfile {
 		if p.Primary.Provider == "liquid" && proof.PrimaryMode == "standard" && proof.PrimaryTerms != nil && proof.PrimaryTerms.SourceURL == CurrentPrimaryTerms().SourceURL {
 			primary.RetentionSourceURL = proof.PrimaryTerms.SourceURL
 		}
-		if route := proof.SecondaryRoute; p.Secondary.Provider == "openrouter" && route.UpstreamModelID == p.Secondary.ModelID && route.Tag == p.OpenRouterProvider && route.ZDR && route.SourceURL == airoutes.SourceURL {
+		if route := proof.SecondaryRoute; route != nil && p.Secondary.Provider == "openrouter" && route.UpstreamModelID == p.Secondary.ModelID && route.Tag == p.OpenRouterProvider && route.ZDR && route.SourceURL == airoutes.SourceURL {
 			secondary.RetentionSourceURL = route.SourceURL
+		}
+		if terms, ok := CurrentSecondaryTerms(p.Secondary.Provider); ok && proof.SecondaryMode == "standard" && proof.SecondaryTerms != nil && proof.SecondaryTerms.ID == terms.ID && proof.SecondaryTerms.SourceURL == terms.SourceURL {
+			secondary.RetentionSourceURL = proof.SecondaryTerms.SourceURL
 		}
 	}
 	return PublicProfile{p.ID, primary, secondary, p.MaxInputBytes, p.MaxOutputTokens, p.TimeoutSeconds}

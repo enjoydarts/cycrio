@@ -62,3 +62,53 @@ func TestStandardRetentionAlwaysFitsLegacyPolicyAndUsesUTC(t *testing.T) {
 		t.Fatal("obsolete version with a reused ID accepted")
 	}
 }
+
+func TestDirectStandardConsentNeedsNoFreeText(t *testing.T) {
+	for _, provider := range []string{"anthropic", "openai"} {
+		t.Run(provider, func(t *testing.T) {
+			terms, ok := CurrentSecondaryTerms(provider)
+			if !ok || terms.ID == "" || terms.SourceURL == "" || terms.ZDR || terms.TrainingPermitted || terms.FixedRetentionDays != nil || utf8.RuneCountInString(terms.Summary) > 500 {
+				t.Fatalf("invalid published terms: %+v", terms)
+			}
+			in := StandardPolicyInput{RuntimeVersion: 1, ProfileID: "11111111-1111-4111-8111-111111111111", Enabled: true, PrimaryMode: "standard", PrimaryTermsID: CurrentPrimaryTerms().ID, PrimaryConfirmed: true, SecondaryMode: "standard", SecondaryTermsID: terms.ID, SecondaryConfirmed: true}
+			if !ValidStandardPolicy(in) {
+				t.Fatal("standard consent requires free text")
+			}
+			for _, mutate := range []func(*StandardPolicyInput){
+				func(v *StandardPolicyInput) { v.SecondaryTermsID = "old" },
+				func(v *StandardPolicyInput) { v.SecondaryConfirmed = false },
+				func(v *StandardPolicyInput) { v.SecondaryRetention = "hidden custom value" },
+				func(v *StandardPolicyInput) { v.SecondaryRouteID = "22222222-2222-4222-8222-222222222222" },
+			} {
+				bad := in
+				mutate(&bad)
+				if ValidStandardPolicy(bad) {
+					t.Fatalf("invalid direct consent accepted: %+v", bad)
+				}
+			}
+			in.SecondaryMode, in.SecondaryTermsID, in.SecondaryRetention = "custom", "", "個別契約に従い30日以内に削除、学習利用しない"
+			if !ValidStandardPolicy(in) {
+				t.Fatal("independent custom secondary rejected")
+			}
+			in.SecondaryRetention = ""
+			if ValidStandardPolicy(in) {
+				t.Fatal("empty custom secondary accepted")
+			}
+		})
+	}
+	if _, ok := CurrentSecondaryTerms("unknown"); ok {
+		t.Fatal("unknown provider has standard terms")
+	}
+}
+
+func TestSecondaryTermsRemainCurrentWithCustomPrimary(t *testing.T) {
+	terms, _ := CurrentSecondaryTerms("anthropic")
+	p := Policy{ProfileID: "profile", Version: 2, StandardProof: &StandardProof{ProfileID: "profile", PolicyVersion: 2, PrimaryMode: "custom", SecondaryMode: "standard", SecondaryTerms: &terms}}
+	if !StandardProofCurrent(p) {
+		t.Fatal("current direct proof rejected")
+	}
+	p.StandardProof.SecondaryTerms.Version = "old"
+	if StandardProofCurrent(p) {
+		t.Fatal("stale secondary consent ignored for custom primary")
+	}
+}

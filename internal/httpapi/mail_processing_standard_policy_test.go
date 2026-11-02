@@ -70,3 +70,20 @@ func TestStandardPolicyHTTPAuthorizationAndStrictJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestDirectStandardPolicyHTTPAcceptsTermsWithoutCustomText(t *testing.T) {
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(standardPolicyBody), &members); err != nil {
+		t.Fatal(err)
+	}
+	terms, _ := mailprocessing.CurrentSecondaryTerms("anthropic")
+	members["secondary_route_id"] = json.RawMessage(`""`)
+	members["secondary_mode"] = json.RawMessage(`"standard"`)
+	members["secondary_terms_id"], _ = json.Marshal(terms.ID)
+	body, _ := json.Marshal(members)
+	f := &standardProcessingFixture{}
+	w := credentialRequest(processingHandler(f, "platform_admin"), "PUT", "/v1/admin/mail-processing/standard-policy", string(body), "Bearer valid", "http://localhost:3100", "application/json")
+	if w.Code != 200 || f.standard.SecondaryMode != "standard" || f.standard.SecondaryTermsID != terms.ID || f.standard.PrimaryRetention != "" || f.standard.SecondaryRetention != "" {
+		t.Fatalf("direct standard: %d %s %+v", w.Code, w.Body.String(), f.standard)
+	}
+}

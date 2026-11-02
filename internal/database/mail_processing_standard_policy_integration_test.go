@@ -31,6 +31,140 @@ func standardPolicyFixture(t *testing.T) (*MailProcessingRepository, string, mai
 	return NewMailProcessingRepository(runtime.pool), admin, in, route
 }
 
+func directStandardPolicyFixture(t *testing.T) (*MailProcessingRepository, string, mailprocessing.StandardPolicyInput) {
+	t.Helper()
+	runtime, admin, config := runtimeFixture(t)
+	ctx := context.Background()
+	state, err := runtime.SaveProfile(ctx, admin, config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = runtime.pool.Exec(ctx, `UPDATE ai_runtime_settings SET active_id=$1 WHERE singleton`, state.Draft.ID); err != nil {
+		t.Fatal(err)
+	}
+	return NewMailProcessingRepository(runtime.pool), admin, mailprocessing.StandardPolicyInput{RuntimeVersion: state.Version, ProfileID: state.Draft.ID, Enabled: true, PrimaryMode: "standard", PrimaryTermsID: mailprocessing.CurrentPrimaryTerms().ID, PrimaryConfirmed: true, SecondaryConfirmed: true}
+}
+
+func TestDirectStandardPolicyTermsReadyWithoutRoute(t *testing.T) {
+	r, admin, _ := directStandardPolicyFixture(t)
+	state, err := r.AdminRead(context.Background(), admin)
+	if err != nil || state.StandardTerms == nil || !state.StandardTerms.Ready || state.StandardTerms.SecondaryRoute != nil {
+		t.Fatalf("direct API standard terms unavailable: %+v, %v", state.StandardTerms, err)
+	}
+}
+
+func TestDirectStandardPolicyFreezesTermsWithoutRetentionInputs(t *testing.T) {
+	r, admin, in := directStandardPolicyFixture(t)
+	ctx := context.Background()
+	in.SecondaryMode = "standard"
+	in.SecondaryTermsID = "openai-api-standard-2026-11-02"
+	state, err := r.SaveStandardPolicy(ctx, admin, in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := state.Policy.StandardProof
+	if proof == nil || proof.SecondaryMode != "standard" || proof.SecondaryRoute != nil || proof.SecondaryTerms == nil || proof.SecondaryTerms.ID != in.SecondaryTermsID || proof.SecondaryTerms.ZDR || proof.SecondaryTerms.TrainingPermitted || proof.ActorID != admin || proof.ConfirmedAt.IsZero() || proof.ProfileID != in.ProfileID || proof.PolicyVersion != 1 {
+		t.Fatalf("invalid direct standard proof: %+v", proof)
+	}
+	if state.Profile.Secondary.RetentionSourceURL != "https://developers.openai.com/api/docs/guides/your-data" || state.Policy.SecondaryRetention == "" || state.Policy.SecondaryRetention != proof.SecondaryTerms.Summary || state.StandardTerms.Secondary == nil {
+		t.Fatal("direct standard source/retention omitted", state)
+	}
+	var routeID *string
+	var original string
+	if err = r.pool.QueryRow(ctx, `SELECT route_id,doc::text FROM mail_processing_standard_proofs WHERE profile_id=$1 AND policy_version=1`, in.ProfileID).Scan(&routeID, &original); err != nil || routeID != nil {
+		t.Fatal("direct proof fabricated a route", routeID, err)
+	}
+	if _, err = r.pool.Exec(ctx, `UPDATE mail_processing_standard_proofs SET doc=doc`); err == nil {
+		t.Fatal("direct terms proof was mutable")
+	}
+	in.ExpectedVersion = 1
+	in.SecondaryMode = "custom"
+	in.SecondaryTermsID = ""
+	in.SecondaryRetention = "Individually agreed secondary retention"
+	state, err = r.SaveStandardPolicy(ctx, admin, in)
+	if err != nil || state.Policy.StandardProof.SecondaryTerms != nil || state.Profile.Secondary.RetentionSourceURL != "" {
+		t.Fatal(state, err)
+	}
+	var preserved string
+	if err = r.pool.QueryRow(ctx, `SELECT doc::text FROM mail_processing_standard_proofs WHERE profile_id=$1 AND policy_version=1`, in.ProfileID).Scan(&preserved); err != nil || preserved != original {
+		t.Fatal("new custom permission changed frozen standard history", err)
+	}
+}
+
+func TestDirectStandardPolicyIndependentCustomChoices(t *testing.T) {
+	for _, primary := range []string{"standard", "custom"} {
+		for _, secondary := range []string{"standard", "custom"} {
+			t.Run(primary+"_"+secondary, func(t *testing.T) {
+				r, admin, in := directStandardPolicyFixture(t)
+				in.PrimaryMode = primary
+				in.SecondaryMode = secondary
+				if primary == "custom" {
+					in.PrimaryTermsID = ""
+					in.PrimaryRetention = "Primary individual agreement"
+				}
+				if secondary == "custom" {
+					in.SecondaryRetention = "Secondary individual agreement"
+				} else {
+					in.SecondaryTermsID = "openai-api-standard-2026-11-02"
+				}
+				state, err := r.SaveStandardPolicy(context.Background(), admin, in)
+				if err != nil {
+					t.Fatal(err)
+				}
+				proof := state.Policy.StandardProof
+				if proof.PrimaryMode != primary || proof.SecondaryMode != secondary || (proof.PrimaryTerms == nil) != (primary == "custom") || (proof.SecondaryTerms == nil) != (secondary == "custom") || proof.SecondaryRoute != nil {
+					t.Fatal("coupled primary/secondary choice", proof)
+				}
+			})
+		}
+	}
+}
+
+func TestDirectStandardPolicyRejectsInvalidConsentWithoutPartialWrite(t *testing.T) {
+	for _, kind := range []string{"stale_terms", "provider_mismatch", "unchecked_primary", "unchecked_secondary", "custom_retention_missing", "runtime_version", "policy_version", "credentials", "model", "role"} {
+		t.Run(kind, func(t *testing.T) {
+			r, admin, in := directStandardPolicyFixture(t)
+			ctx := context.Background()
+			in.SecondaryMode = "standard"
+			in.SecondaryTermsID = "openai-api-standard-2026-11-02"
+			var err error
+			switch kind {
+			case "stale_terms":
+				in.SecondaryTermsID = "openai-api-standard-old"
+			case "provider_mismatch":
+				in.SecondaryTermsID = "anthropic-api-standard-2026-11-02"
+			case "unchecked_primary":
+				in.PrimaryConfirmed = false
+			case "unchecked_secondary":
+				in.SecondaryConfirmed = false
+			case "custom_retention_missing":
+				in.SecondaryMode = "custom"
+				in.SecondaryTermsID = ""
+			case "runtime_version":
+				in.RuntimeVersion++
+			case "policy_version":
+				in.ExpectedVersion++
+			case "credentials":
+				_, err = r.pool.Exec(ctx, `UPDATE credential_versions SET state='disabled' WHERE provider='openai'`)
+			case "model":
+				_, err = r.pool.Exec(ctx, `UPDATE model_catalog SET doc=jsonb_set(doc,'{enabled}','false') WHERE provider='openai'`)
+			case "role":
+				_, err = r.pool.Exec(ctx, `DELETE FROM user_roles WHERE user_id=$1`, admin)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err = r.SaveStandardPolicy(ctx, admin, in); !errors.Is(err, mailprocessing.ErrInvalid) && !errors.Is(err, mailprocessing.ErrConflict) {
+				t.Fatal("invalid direct consent accepted", err)
+			}
+			var count int
+			if err = r.pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_policies)+(SELECT count(*) FROM mail_processing_standard_proofs)+(SELECT count(*) FROM mail_processing_policy_audit)`).Scan(&count); err != nil || count != 0 {
+				t.Fatal("partial direct consent write", count, err)
+			}
+		})
+	}
+}
+
 func TestStandardPolicyPreviewRequiresCurrentTermsButNotFreshRouteAfterSave(t *testing.T) {
 	r, a, in, route := standardPolicyFixture(t)
 	ctx := context.Background()

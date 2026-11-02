@@ -174,6 +174,7 @@ export type ProcessingPolicy = {
 export type PolicyState = {
   standard_terms?: {
     primary: StandardTerms;
+    secondary?: StandardTerms | null;
     secondary_route: RouteProof | null;
     ready: boolean;
     blocked_reason:
@@ -202,7 +203,9 @@ export type StandardProof = {
   primary_mode: 'standard' | 'custom';
   primary_terms: StandardTerms | null;
   primary_retention: string;
-  secondary_route: RouteProof;
+  secondary_route: RouteProof | null;
+  secondary_mode?: 'route' | 'standard' | 'custom';
+  secondary_terms?: StandardTerms | null;
   secondary_retention: string;
   actor_id: string;
   confirmed_at: string;
@@ -218,6 +221,9 @@ export type StandardPolicyInput = {
   primary_retention: string;
   primary_confirmed: boolean;
   secondary_route_id: string;
+  secondary_mode?: 'route' | 'standard' | 'custom';
+  secondary_terms_id?: string;
+  secondary_retention?: string;
   secondary_confirmed: boolean;
 };
 export type PolicyInput = Omit<ProcessingPolicy, 'version'> & {
@@ -551,7 +557,19 @@ function parseStandardProof(value: unknown): StandardProof {
     primary_mode: choice(v.primary_mode, ['standard', 'custom']),
     primary_terms: nullable(v.primary_terms, parseTerms),
     primary_retention: retention(v.primary_retention),
-    secondary_route: parseRouteProof(v.secondary_route),
+    secondary_route: nullable(v.secondary_route, parseRouteProof),
+    ...(v.secondary_mode === undefined
+      ? {}
+      : {
+          secondary_mode: choice(v.secondary_mode, [
+            'route',
+            'standard',
+            'custom',
+          ] as const),
+        }),
+    ...(v.secondary_terms === undefined
+      ? {}
+      : { secondary_terms: nullable(v.secondary_terms, parseTerms) }),
     secondary_retention: retention(v.secondary_retention),
     actor_id: uuid(v.actor_id),
     confirmed_at: timestamp(v.confirmed_at),
@@ -563,6 +581,9 @@ function parseStandardTermsState(
   const v = record(value);
   return {
     primary: parseTerms(v.primary),
+    ...(v.secondary === undefined
+      ? {}
+      : { secondary: nullable(v.secondary, parseTerms) }),
     secondary_route: nullable(v.secondary_route, parseRouteProof),
     ready: bool(v.ready),
     blocked_reason: choice(v.blocked_reason, [
@@ -712,7 +733,26 @@ export function createMailProcessingAPI(
           primary_terms_id: str(input.primary_terms_id),
           primary_retention: retention(input.primary_retention),
           primary_confirmed: bool(input.primary_confirmed),
-          secondary_route_id: uuid(input.secondary_route_id),
+          secondary_route_id:
+            input.secondary_mode === 'standard' ||
+            input.secondary_mode === 'custom'
+              ? str(input.secondary_route_id)
+              : uuid(input.secondary_route_id),
+          ...(input.secondary_mode === undefined
+            ? {}
+            : {
+                secondary_mode: choice(input.secondary_mode, [
+                  'route',
+                  'standard',
+                  'custom',
+                ] as const),
+              }),
+          ...(input.secondary_terms_id === undefined
+            ? {}
+            : { secondary_terms_id: str(input.secondary_terms_id) }),
+          ...(input.secondary_retention === undefined
+            ? {}
+            : { secondary_retention: retention(input.secondary_retention) }),
           secondary_confirmed: bool(input.secondary_confirmed),
         };
         if (
@@ -721,7 +761,16 @@ export function createMailProcessingAPI(
           (body.primary_mode === 'standard'
             ? !body.primary_terms_id.trim() || body.primary_retention !== ''
             : body.primary_terms_id !== '' ||
-              !validRetention(body.primary_retention))
+              !validRetention(body.primary_retention)) ||
+          (body.secondary_mode === 'standard'
+            ? !body.secondary_terms_id?.trim() ||
+              body.secondary_route_id !== '' ||
+              (body.secondary_retention ?? '') !== ''
+            : body.secondary_mode === 'custom'
+              ? !!body.secondary_terms_id ||
+                body.secondary_route_id !== '' ||
+                !validRetention(body.secondary_retention ?? '')
+              : !!body.secondary_terms_id || !!body.secondary_retention)
         )
           return invalid();
       } catch {
