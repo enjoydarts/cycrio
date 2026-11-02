@@ -62,6 +62,12 @@
       icon: 'M4 5h16v14H4z M4 10h16 M9 10v9',
     },
     {
+      key: 'reports',
+      href: '/reports',
+      title: '分析・レポート',
+      icon: 'M4 3v17h17 M8 16v-5 M13 16V7 M18 16V4',
+    },
+    {
       key: 'attention',
       href: '/analysis?tab=attention',
       title: '確認が必要',
@@ -80,7 +86,9 @@
           : 'attention'
         : pathname.startsWith('/subscriptions')
           ? 'subscriptions'
-          : '',
+          : pathname.startsWith('/reports')
+            ? 'reports'
+            : '',
   );
   const current = $derived(
     selected === 'settings'

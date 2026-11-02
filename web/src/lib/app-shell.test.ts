@@ -193,6 +193,7 @@ test('query navigation selects attention and history and subscription routes', a
     ['/analysis', '', '/analysis?tab=attention'],
     ['/analysis', '?tab=attention', '/analysis?tab=attention'],
     ['/subscriptions', '', '/subscriptions'],
+    ['/reports', '', '/reports'],
   ]) {
     const html = render(Component, {
       props: { ...props, pathname, search },
