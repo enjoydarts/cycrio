@@ -119,6 +119,27 @@ test('mobile brands stay separate and never match unrelated services or misleadi
   }
 });
 
+test('The X Subscription resolves to X with spelling variants and plan qualifiers', () => {
+  for (const name of [
+    'The X Subscription',
+    'the x subscription',
+    'Ｔｈｅ Ｘ Ｓｕｂｓｃｒｉｐｔｉｏｎ',
+    'X Subscription',
+    'X サブスクリプション',
+    'The X Subscription Premium+',
+    'The X Subscription 月額プラン',
+  ]) {
+    assert.equal(resolveServiceLogo(name)?.slug, 'x', name);
+    assert.equal(resolveServiceLogo(name)?.src, '/service-logos/x.svg', name);
+  }
+  for (const name of [
+    'The X Subscription Consulting',
+    'Unknown X Subscription',
+    'Subscription',
+  ])
+    assert.equal(resolveServiceLogo(name), null, name);
+});
+
 test('X paid tiers and legacy Twitter Blue use the X logo without broad single-letter matches', () => {
   for (const name of [
     'X Premium',

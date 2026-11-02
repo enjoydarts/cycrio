@@ -1,5 +1,77 @@
 [
   {
+    "slug": "nijisanjifanclub",
+    "title": "にじさんじ FAN CLUB",
+    "file": "nijisanjifanclub.png",
+    "sourceUrl": "https://www.nijisanji.jp/apple-touch-icon.png",
+    "sha256": "ad26d07501836d1c22f2673730e7269abca31cfcb3f957998c7961dba2c2ce3f",
+    "credit": "ANYCOLOR にじさんじ"
+  },
+  {
+    "slug": "obsidian",
+    "title": "Obsidian",
+    "file": "obsidian.png",
+    "sourceUrl": "https://obsidian.md/apple-touch-icon.png",
+    "sha256": "7dc5a6a3e4b7cb11dd27e41982c359c31a317203e8a892060b9bc0777fd1a4cd",
+    "credit": "Obsidian"
+  },
+  {
+    "slug": "onamae",
+    "title": "お名前.com",
+    "file": "onamae.png",
+    "sourceUrl": "https://www.onamae.com/favicon_144x144.png",
+    "sha256": "2f71e1239be651c4edead4c8b48ec29c4c749e4de1a7c0be37fa3a2fb8562e1c",
+    "credit": "GMO お名前.com"
+  },
+  {
+    "slug": "muumuu",
+    "title": "ムームードメイン",
+    "file": "muumuu.png",
+    "sourceUrl": "https://muumuu-domain.com/apple-touch-icon.png",
+    "sha256": "08be1779966777243acfdd0d19e9b7aa1b43fc924cded71db984e98272d6852c",
+    "credit": "GMO ムームードメイン"
+  },
+  {
+    "slug": "valuedomain",
+    "title": "バリュードメイン",
+    "file": "valuedomain.png",
+    "sourceUrl": "https://www.value-domain.com/assets/img/icon/apple-touch-icon.png",
+    "sha256": "aa641cffcd0fe03c76bbc9a83e733a759f6c9a8cbf036770642c34221348f3ea",
+    "credit": "バリュードメイン"
+  },
+  {
+    "slug": "xserverdomain",
+    "title": "XServerドメイン",
+    "file": "xserverdomain.png",
+    "sourceUrl": "https://www.xdomain.ne.jp/assets/images/common/apple-touch-icon-precomposed.png?date=240930",
+    "sha256": "e1c9d8f7ce288d2ad366ddcae6942b7ed1dd55faaad45db0853549d302782450",
+    "credit": "XServerドメイン"
+  },
+  {
+    "slug": "stardomain",
+    "title": "スタードメイン",
+    "file": "stardomain.png",
+    "sourceUrl": "https://www.star-domain.jp/img/common/apple-touch-icon-precomposed.png?date=2606",
+    "sha256": "055b7f436d66f1c84a02edeb739a5ffa749c4b4601c8a4f411a4b1ae4270be17",
+    "credit": "スタードメイン"
+  },
+  {
+    "slug": "gonbei",
+    "title": "ゴンベエドメイン",
+    "file": "gonbei.png",
+    "sourceUrl": "https://www.gonbei.jp/favicons/apple-touch-icon.png",
+    "sha256": "c46ed70c588efa61fc73becb7644c33570947cfc86b688fd5337dc89e625c832",
+    "credit": "インターリンク ゴンベエドメイン"
+  },
+  {
+    "slug": "dynadot",
+    "title": "Dynadot",
+    "file": "dynadot.png",
+    "sourceUrl": "https://www.dynadot.com/web-static/apple-touch-icon.png",
+    "sha256": "ac519d9fa651b6d75cf9533238b237076281da2b9bf50e3f317e3cdd9747093c",
+    "credit": "Dynadot"
+  },
+  {
     "slug": "docomo",
     "title": "NTTドコモ",
     "file": "docomo.png",

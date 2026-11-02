@@ -1,8 +1,10 @@
 # サービスロゴの出典
 
+2026-11-02 に、にじさんじ FAN CLUB・Obsidian Sync・国内外の主要レジストラを追加しました。にじさんじ FAN CLUB は公式サイトのにじさんじアイコン、Obsidian SyncはObsidian公式のカラーアイコンを使います。にじさんじの共有サイトではファンクラブのパスだけを照合します。お名前.com、ムームードメイン、バリュードメイン、XServerドメイン、スタードメイン、ゴンベエドメイン、Dynadotは公式サイト配信画像を補完し、Cloudflare Registrar、GoDaddy、Namecheap、Porkbun、Gandi、Squarespace Domainsは既存カタログの各ブランド画像を使います。補完画像は無加工で、出典URLとSHA-256は `sources.json` に記録しています。
+
 2026-11-02 に主要キャリア・MVNOの公式サイト配信アイコンを追加しました。NTTドコモ、au、SoftBank、楽天モバイル、ahamo、povo、UQ mobile、Y!mobile、LINEMO、IIJモバイル、IIJmio、mineo、日本通信SIM、b-mobile、HISモバイル、NUROモバイル、イオンモバイル、BIC SIM、LinksMate、TONEモバイルに対応します。IIJモバイルはIIJ公式企業アイコンを使い、IIJmioとは画像を分けています。UQ mobileの公式サイト配信アイコンはUQブランド共通です。IIJとUQの共有ホストはモバイルのパスを明示的に照合し、他製品へ推測で割り当てません。画像は無加工、出典・SHA-256は `sources.json` に保存します。
 
-Xの有料プランは通常カタログのX画像を使います。X Basic / Premium / Premium+、日本語表記、旧Twitter Blueから共通のXロゴへ解決します。プラン名は[X公式ヘルプ](https://help.x.com/en/using-x/x-premium)で確認しています。
+Xの有料プランは通常カタログのX画像を使います。The X Subscription / X Subscription / Xサブスクリプション、X Basic / Premium / Premium+、日本語表記、旧Twitter Blueから共通のXロゴへ解決します。プラン名は[X公式ヘルプ](https://help.x.com/en/using-x/x-premium)で確認しています。
 
 2026-11-02 に BOOK☆WALKER、カクヨム、カドコミ、KADOKAWA の公式サイト配信アイコンを追加しました。画像は無加工です。BOOK☆WALKER の読み放題（現行コース・旧コース）、カクヨムネクスト・サポーターズパスポート、カドコミの旧称 ComicWalker はそれぞれのサービスロゴを使います。公式案内：[BOOK☆WALKER 読み放題](https://bookwalker.jp/subscription/)、[カクヨム有料サービス](https://kakuyomu.jp/help/entry/faq_subscription)、[カドコミ](https://comic-walker.com/)。企業名の KADOKAWA と各サービスは別の画像で識別します。
 

@@ -11,6 +11,50 @@ export type ServiceLogo = {
 
 const aliases = new Map<string, string>();
 const names: [string, string[]][] = [
+  [
+    'nijisanjifanclub',
+    [
+      'にじさんじ FAN CLUB',
+      'にじさんじファンクラブ',
+      'NIJISANJI FAN CLUB',
+      'にじさんじ総合ファンクラブ',
+      'にじさんじFC',
+    ],
+  ],
+  [
+    'obsidian',
+    [
+      'Obsidian',
+      'Obsidian Sync',
+      'オブシディアン',
+      'オブシディアン Sync',
+      'オブシディアンシンク',
+    ],
+  ],
+  [
+    'onamae',
+    ['お名前.com', 'お名前ドットコム', 'Onamae.com', 'お名前.com ドメイン'],
+  ],
+  ['muumuu', ['ムームードメイン', 'MuuMuu Domain']],
+  ['valuedomain', ['バリュードメイン', 'VALUE DOMAIN', 'Value-Domain']],
+  [
+    'xserverdomain',
+    [
+      'XServerドメイン',
+      'エックスサーバードメイン',
+      'Xserver Domain',
+      'エックスドメイン',
+    ],
+  ],
+  ['stardomain', ['スタードメイン', 'Star Domain']],
+  ['gonbei', ['ゴンベエドメイン', 'Gonbei Domain']],
+  ['cloudflare', ['Cloudflare Registrar', 'クラウドフレア レジストラ']],
+  ['godaddy', ['GoDaddy', 'ゴーダディ', 'GoDaddy Domains']],
+  ['namecheap', ['Namecheap', 'ネームチープ', 'Namecheap Domains']],
+  ['porkbun', ['Porkbun', 'ポークバン', 'Porkbun Domains']],
+  ['gandi', ['Gandi', 'ガンディ', 'Gandi Domains']],
+  ['dynadot', ['Dynadot', 'ダイナドット']],
+  ['squarespace', ['Squarespace Domains', 'スクエアスペース ドメイン']],
   ['docomo', ['NTTドコモ', 'NTT DOCOMO', 'ドコモ', 'docomo']],
   ['au', ['au', 'エーユー', 'au（KDDI）']],
   ['softbank', ['SoftBank', 'ソフトバンク', 'SoftBank Mobile']],
@@ -61,6 +105,9 @@ const names: [string, string[]][] = [
   [
     'x',
     [
+      'The X Subscription',
+      'X Subscription',
+      'Xサブスクリプション',
       'X Premium',
       'X Premium+',
       'X Premium Plus',
@@ -325,6 +372,20 @@ for (const [slug, variants] of names) {
 }
 
 const domains: Record<string, string> = {
+  'obsidian.md': 'obsidian',
+  'onamae.com': 'onamae',
+  'muumuu-domain.com': 'muumuu',
+  'value-domain.com': 'valuedomain',
+  'xdomain.ne.jp': 'xserverdomain',
+  'star-domain.jp': 'stardomain',
+  'gonbei.jp': 'gonbei',
+  'cloudflare.com': 'cloudflare',
+  'godaddy.com': 'godaddy',
+  'namecheap.com': 'namecheap',
+  'porkbun.com': 'porkbun',
+  'gandi.net': 'gandi',
+  'dynadot.com': 'dynadot',
+  'domains.squarespace.com': 'squarespace',
   'docomo.ne.jp': 'docomo',
   'au.com': 'au',
   'softbank.jp': 'softbank',
@@ -477,6 +538,13 @@ export function resolveServiceLogo(
       )
         return null;
       const host = url.hostname.replace(/^www\./, '');
+      if (host === 'nijisanji.jp' && /^\/fanclubs(?:\/|$)/i.test(url.pathname))
+        return lookup('nijisanjifanclub');
+      if (
+        host === 'event.nijisanji.app' &&
+        /^\/fanclub(?:\/|$)/i.test(url.pathname)
+      )
+        return lookup('nijisanjifanclub');
       // These corporate hosts also serve other products; require a mobile path.
       if (
         host === 'iij.ad.jp' &&

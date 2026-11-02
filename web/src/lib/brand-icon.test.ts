@@ -24,6 +24,21 @@ test('known services render a local decorative image with fixed intrinsic dimens
   assert.doesNotMatch(html, /https?:/);
 });
 
+test('The X Subscription renders the X image at list and detail sizes', async () => {
+  const { default: BrandIcon } = await import('./BrandIcon.svelte');
+  for (const [size, pixels] of [
+    ['small', 28],
+    ['large', 42],
+  ] as const) {
+    const html = render(BrandIcon, {
+      props: { name: 'The X Subscription', size },
+    }).body;
+    assert.match(html, /<img[^>]*src="\/service-logos\/x\.svg"/);
+    assert.match(html, new RegExp(`width="${pixels}"`));
+    assert.doesNotMatch(html, /<svg|https?:/);
+  }
+});
+
 test('mail providers take priority over service names and support compact sizes', async () => {
   const { default: BrandIcon } = await import('./BrandIcon.svelte');
   const html = render(BrandIcon, {
