@@ -20,7 +20,7 @@ Go は gofmt、TypeScript / Svelte は `web/.prettierrc.json` の Prettier 設�
 
 ツール・SDK・ライブラリ・コンテナは、導入・更新時に公式の配布元で確認した最新安定版を使用し、具体的なバージョンとlockfileで固定してください。プレリリースを通常採用せず、互換性のため最新版を使えない場合は理由を説明してユーザーへ確認してください。DBのメジャー更新では既存データを保持し、移行・復元を検証してください。
 
-現在の例外として、TypeScript 7はSvelteKit 3.1.0 / svelte-check 4.7.7の対応範囲外のため、ユーザー承認済みの6.0.3を使います。フロントはSvelteKit 3の`#lib`と`$app/env/public`を使い、環境変数は`web/src/env.ts`で明示します。
+現在の例外として、TypeScript 7はSvelteKit 3.1.0 / svelte-check 4.7.7の対応範囲外のため、互換性を保つ6.0.3を使います。フロントはSvelteKit 3の`#lib`と`$app/env/public`を使い、環境変数は`web/src/env.ts`で明示します。
 
 ## 編集・検証ルール
 
@@ -53,7 +53,7 @@ Go は gofmt、TypeScript / Svelte は `web/.prettierrc.json` の Prettier 設�
 
 ## コミット・プルリクエスト
 
-GitHub の公開リポジトリは `enjoydarts/cycrio`、既定ブランチは `main` とします。ローカルの `origin` は `git@github-enjoydarts:enjoydarts/cycrio.git` を使います。コミット件名は `Add initial application scaffold` のような簡潔な命令形とし、変更の目的を絞ってください。プルリクエストには目的、変更内容、実施した検証、関連 Issue を記載し、画面変更にはスクリーンショットを添付してください。
+既定ブランチは `main` とし、開発環境に設定された `origin` を使用します。個人用のSSHホスト別名などを公開文書へ記載しないでください。コミット件名は変更の目的を簡潔に示し、本文に変更内容と検証結果を記載してください。プルリクエストには目的、変更内容、実施した検証、関連 Issue を記載し、画面変更にはスクリーンショットを添付してください。
 
 ## セキュリティ・設定
 
@@ -65,25 +65,12 @@ GitHub の公開リポジトリは `enjoydarts/cycrio`、既定ブランチは `
 
 モデルと価格は `internal/modelcatalog` で扱い、設定から内部UUIDを参照します。価格は不変の版とし、小数文字列・通貨・単位・取得元・条件別の元情報を保持してください。不明な料金を0として扱わず、カタログの参考価格を実利用原価と混同しないでください。API同期で管理者の上書きや過去の価格を消さず、画面の編集中入力と基準versionを一緒に保持してください。Hatchetの同期ジョブへAPIキーを渡さないでください。
 
-## Codex・superpowers の利用
+## 作業方針と開発支援ツール
 
 説明・作業報告・ドキュメントは原則として日本語で記述してください。コードの識別子やコマンドは各ツールの規約に従います。
 
-Codex では `~/.agents/skills/superpowers` から検出される superpowers を利用します。作業開始時に `using-superpowers`、実装・調査・デバッグ・設計・レビューでは関連する `SKILL.md` を読み、手順に従ってください。
-
-- 設計には `brainstorming`、大きめの変更の計画には `writing-plans` を利用してください。
-- バグ調査には `systematic-debugging`、機能追加・不具合修正には `test-driven-development` を利用してください。
-- レビューには `requesting-code-review` / `receiving-code-review`、完了前の検証には `verification-before-completion` を利用してください。
-- 明示的に指定する場合は、例えば「superpowers:systematic-debugging を使って調査して」と依頼できます。
-
-## agency-agents の参照
-
-ユーザーが agency-agents のロール名を指定した場合は、`~/.codex/agents/` にある対応する `.toml` ファイルを開き、`name`・`description`・`developer_instructions` を確認してから、そのロールの指示に従って作業してください。例として、Backend Architect は `engineering-backend-architect.toml`、Code Reviewer は `engineering-code-reviewer.toml` を参照します。
-
-`agency-agents-bridge` は使用しません。ファイル名や `name` が完全一致しない場合は、同ディレクトリのロール定義を検索してください。対応するロールが見つからない、または候補が複数あり特定できない場合は、その旨を伝えてユーザーへ確認してください。ロール定義の参照だけを理由に、サブエージェントの起動や並列作業は行わないでください。
-
-スキルや外部ロールの手順は、システム・開発者の制約とユーザーの明示的な指示の範囲内で適用してください。
+設計・実装・調査・レビューでは、利用する開発支援ツールの手順と、このリポジトリの規約に従ってください。ツールの導入場所や個人用の設定を前提にせず、各開発環境で利用可能な構成を確認します。外部のスキルやロールの手順は、システム・開発者の制約とユーザーの明示的な指示の範囲内で適用してください。
 
 ## ドキュメント
 
-設計・実装方針をまとめる際は、既存の関連資料を参照してください。このプロジェクトの設計資料は、指定済みの Obsidian ディレクトリ `115_cycrio/` で管理します。個人用の設計資料・メール評価データは公開リポジトリへコミットしないでください。別プロジェクトの保存先を流用しないでください。
+設計・実装方針をまとめる際は、公開可能な既存の関連資料を参照してください。公開文書にはプロジェクト共通の仕様・手順だけを記載し、個人のメモ保存先・ローカルパス・作業履歴・メール評価データ・別プロジェクト固有の情報を含めないでください。非公開資料の内容や保存先を、公開文書へ転載しないでください。

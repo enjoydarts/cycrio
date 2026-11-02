@@ -1,6 +1,6 @@
 # Cycrio ブランドアセット
 
-ユーザーが採用したブランドアイデンティティボードに基づくロゴです。C の曲線は継続する支払い周期、波は支出のリズム、右上の球体は発見されたサブスクリプションを表します。
+Cycrioのロゴは、継続する支払い周期を表すCの曲線、支出のリズムを表す波、発見されたサブスクリプションを表す右上の球体で構成されています。
 
 ## 配置と用途
 
@@ -18,15 +18,8 @@
 
 ## カラー
 
-共通設定は `src/lib/brand.css` にあります。Primary `#22C55E`、Secondary `#0F766E`、Accent `#A7F3D0`、Background `#FFFFFF`。2026-10-29 のユーザー指定により、ライトモードのページ背景をミントから白へ変更しました。白文字を載せるボタンは Secondary、本文は濃いティール、Primary は装飾に使用します。Clerk も同じ CSS 変数を参照します。
+共通設定は `web/src/lib/brand.css` にあります。Primary `#22C55E`、Secondary `#0F766E`、Accent `#A7F3D0`、Background `#FFFFFF`。ライトモードのページ背景は白です。白文字を載せるボタンはSecondary、本文は濃いティール、Primaryは装飾に使用します。Clerkも同じCSS変数を参照します。
 
-## 生成記録
+## 更新時の注意
 
-2026-10-25、組み込み imagegen の画像編集モードでユーザー提供ボードから透過シンボルを生成しました。元ボードは上書きしていません。サイズ展開は Docker 内の Chromium Canvas で同じ原稿を縮小し、PNG と ICO に書き出しています。アスペクト比・リボン形状・グラデーションを保持してください。
-
-生成時のプロンプト:
-
-> Use case: background-extraction / identity-preserve.
-> Edit target: the supplied Cycrio brand identity board. Extract ONLY the large standalone logo symbol in the upper left (above the large Cycrio wordmark), reproducing that exact selected design as a clean high resolution transparent PNG.
-> Preserve the logo identity faithfully: the open circular C ribbon, internal flowing wave ribbons with clear negative space between them, teal lower crescent, mint/green upper arc, and detached shaded green sphere in the upper-right opening. Preserve original shape, proportions, layer overlaps and smooth subtle green-mint-teal gradients. Palette from the board: #22C55E, #0F766E, #A7F3D0. Do not simplify into another C design and do not invent an arrow.
-> Output ONE isolated symbol centered on a square transparent canvas with a small even transparent margin of about 6% on all sides. Real alpha transparency in the exterior and all internal negative spaces. No white fill, white halo, cast shadow, panel, text, wordmark, caption, border, background or other board elements. The intended usage is website header logo and favicon source.
+サイズ別のPNGとICOは共通の透過原稿を基に生成します。アスペクト比・リボン形状・グラデーション・内部の透明部分を保持してください。サイズごとに別のロゴを描き直さず、ヘッダー・ファビコン・ホーム画面で同じシンボルを使用します。

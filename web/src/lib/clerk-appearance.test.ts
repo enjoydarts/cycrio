@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { clerkAppearance } from './clerk-appearance.ts';
-test('Clerk renders the single Sifto-style login card using the application theme', () => {
+test('Clerk renders a single login card using the application theme', () => {
   assert.equal(clerkAppearance.options.elevation, 'raised');
   assert.equal(clerkAppearance.variables.colorPrimary, 'var(--color-action)');
   assert.equal(
