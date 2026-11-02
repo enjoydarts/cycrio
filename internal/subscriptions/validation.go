@@ -60,7 +60,7 @@ func ValidSource(id *string, index *int) bool {
 	return id == nil && index == nil || id != nil && index != nil && ValidID(*id) && *index >= 0 && *index < 32
 }
 func NormalizeCreate(in CreateInput) (CreateInput, error) {
-	if !in.Confirmed || !ValidID(in.RequestID) || !ValidSource(in.SourceResultID, in.SourceEventIndex) {
+	if !in.Confirmed || !ValidID(in.RequestID) || !ValidAdditionalSources(in.SourceResultID, in.SourceEventIndex, in.AdditionalSources) {
 		return CreateInput{}, ErrInvalid
 	}
 	v, e := Normalize(in.Values)
@@ -76,7 +76,7 @@ func NormalizeUpdate(in UpdateInput) (UpdateInput, error) {
 	return in, e
 }
 func ValidSourceInput(in SourceInput) bool {
-	return in.Confirmed && in.ExpectedVersion > 0 && ValidSource(&in.SourceResultID, &in.SourceEventIndex)
+	return in.Confirmed && in.ExpectedVersion > 0 && ValidAdditionalSources(&in.SourceResultID, &in.SourceEventIndex, in.AdditionalSources)
 }
 func InvalidFilter(f Filter) bool {
 	if f.AccountID != "" && !ValidID(f.AccountID) {

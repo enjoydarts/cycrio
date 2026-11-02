@@ -69,6 +69,53 @@ test('account summary requires an explicit account and never fetches a global hi
   assert.equal(summary.mail_count, 1200);
   assert.equal(summary.candidate_count, 17);
 });
+test('related candidates use anchor pagination and grouped counts default for legacy responses', async () => {
+  let url = '';
+  const api = createApprovalAPI('', async (input) => {
+    url = String(input);
+    return Response.json({
+      candidates: [
+        {
+          result_id: ids.result,
+          event_index: 0,
+          account_id: ids.account,
+          account_label: '個人',
+          event,
+          mail_count: 1,
+        },
+      ],
+      total: 51,
+      limit: 50,
+      offset: 50,
+    });
+  });
+  const page = await api.related(
+    { result_id: ids.result, event_index: 0 },
+    50,
+    50,
+    async () => 't',
+  );
+  assert.equal(
+    new URL(url, 'http://test').pathname,
+    '/v1/subscriptions/candidates/related',
+  );
+  assert.equal(new URL(url, 'http://test').searchParams.get('offset'), '50');
+  assert.equal(page.candidates[0].related_count, 1);
+});
+test('dismissal sends explicit additional sources atomically and rejects duplicate sources', async () => {
+  let body: any;
+  const api = createApprovalAPI('', async (_url, init) => {
+    body = JSON.parse(String(init?.body));
+    return Response.json({});
+  });
+  const primary = { result_id: ids.result, event_index: 0 };
+  const additional_sources = [{ result_id: ids.result, event_index: 1 }];
+  await api.dismiss({ ...primary, additional_sources }, async () => 't');
+  assert.deepEqual(body.additional_sources, additional_sources);
+  await assert.rejects(
+    api.dismiss({ ...primary, additional_sources: [primary] }, async () => 't'),
+  );
+});
 test('dismissal sends only the confirmed opaque source reference', async () => {
   let body: unknown;
   const api = createApprovalAPI('', async (_url, init) => {

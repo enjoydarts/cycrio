@@ -120,7 +120,9 @@ func TestBillingAutomationReviewResolutionAndDetachOverlay(t *testing.T) {
 	ctx := context.Background()
 	missing := financialEvent("payment", "1", "2024-01-01")
 	missing.Amount = nil
-	contract, result := financialContract(t, f, missing, missing)
+	second := missing
+	second.Plan = autoPtr("Separate extracted plan")
+	contract, result := financialContract(t, f, missing, second)
 	enableFinancial(t, f)
 	r := recorder(t, f)
 	if _, err := r.RecordDue(ctx, 20); err != nil {

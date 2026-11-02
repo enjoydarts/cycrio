@@ -18,6 +18,10 @@
     type SubscriptionDrafts,
   } from './subscriptions-controller.ts';
   import type { ProcessingEvent } from './mail-processing-api.ts';
+  import {
+    candidateSourceKey,
+    type CandidateSources,
+  } from './candidate-selection.ts';
   import { processingErrors } from './mail-processing-text.ts';
   import { money, cycle } from './daily-text.ts';
   let {
@@ -32,7 +36,7 @@
   }: {
     initial?: Subscription | null;
     event?: ProcessingEvent | null;
-    source?: { result_id: string; event_index: number } | null;
+    source?: CandidateSources | null;
     drafts?: SubscriptionDrafts;
     onSaved: (s: Subscription) => void;
     onBackToResults?: () => void;
@@ -87,7 +91,7 @@
         ? {
             store: drafts,
             key: source
-              ? `${source.result_id}/${source.event_index}`
+              ? candidateSourceKey(source)
               : (initial?.id ?? 'manual'),
           }
         : undefined,
@@ -326,7 +330,7 @@
           wrap
           type="button"
           onclick={() => {
-            drafts?.delete(`${source.result_id}/${source.event_index}`);
+            drafts?.delete(candidateSourceKey(source));
             onBackToResults();
           }}>解析結果の一覧に戻って登録状況を更新</Button
         >

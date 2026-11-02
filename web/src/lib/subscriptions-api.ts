@@ -1,5 +1,9 @@
 import type { TokenProvider } from './api.ts';
 import {
+  parseAdditionalSources,
+  type CandidateSource,
+} from './candidate-selection.ts';
+import {
   parseProcessingEvent,
   type ProcessingEvent,
 } from './mail-processing-api.ts';
@@ -69,6 +73,7 @@ export type SubscriptionPage = {
   offset: number;
 };
 export type SubscriptionCreate = SubscriptionValues & {
+  additional_sources?: CandidateSource[];
   request_id: string;
   source_result_id: string | null;
   source_event_index: number | null;
@@ -79,6 +84,7 @@ export type SubscriptionUpdate = SubscriptionValues & {
   confirmed: boolean;
 };
 export type SourceInput = {
+  additional_sources?: CandidateSource[];
   expected_version: number;
   source_result_id: string;
   source_event_index: number;
@@ -275,6 +281,15 @@ export function createSubscriptionsAPI(
           request_id: uuid(v.request_id),
           source_result_id,
           source_event_index,
+          ...parseAdditionalSources(
+            source_result_id === null
+              ? null
+              : {
+                  result_id: source_result_id,
+                  event_index: source_event_index!,
+                },
+            v.additional_sources,
+          ),
           confirmed: confirm(v.confirmed),
         };
       });
@@ -308,6 +323,10 @@ export function createSubscriptionsAPI(
         expected_version: integer(v.expected_version, 1),
         source_result_id: uuid(v.source_result_id),
         source_event_index: integer(v.source_event_index, 0, 31),
+        ...parseAdditionalSources(
+          { result_id: v.source_result_id, event_index: v.source_event_index },
+          v.additional_sources,
+        ),
         confirmed: confirm(v.confirmed),
       }));
       const result = parseSubscription(

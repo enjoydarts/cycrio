@@ -7,6 +7,40 @@ import {
   parseValues,
 } from './subscriptions-api.ts';
 import { id, values, subscription } from './subscriptions-fixtures.ts';
+test('create and attach send selected sources in one request and validate the 100 source limit', async () => {
+  const bodies: any[] = [];
+  const api = createSubscriptionsAPI('', async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json(subscription());
+  });
+  const additional_sources = [{ result_id: id, event_index: 1 }];
+  const source = {
+    source_result_id: id,
+    source_event_index: 0,
+    additional_sources,
+    confirmed: true,
+  };
+  await api.create({ ...values, ...source, request_id: id }, async () => 't');
+  await api.attach(id, { ...source, expected_version: 1 }, async () => 't');
+  assert.equal(bodies.length, 2);
+  for (const body of bodies)
+    assert.deepEqual(body.additional_sources, additional_sources);
+  await assert.rejects(
+    api.attach(
+      id,
+      {
+        ...source,
+        additional_sources: Array.from(
+          { length: 100 },
+          () => additional_sources[0],
+        ),
+        expected_version: 1,
+      },
+      async () => 't',
+    ),
+  );
+  assert.equal(bodies.length, 2);
+});
 test('subscription list sends source scope to server before pagination', async () => {
   let url = '';
   const api = createSubscriptionsAPI('', async (input) => {

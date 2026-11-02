@@ -5,6 +5,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
@@ -29,6 +30,10 @@ func subscriptionResult(t *testing.T, f processingFixture, n int) string {
 	events := make([]ai.Event, n)
 	for i := range events {
 		events[i] = ai.Event{Service: "Original service", EventType: "renewal"}
+		if n > 1 {
+			plan := fmt.Sprintf("Independent plan %d", i)
+			events[i].Plan = &plan
+		}
 	}
 	label := "subscription_related"
 	if e := f.repo.Finish(context.Background(), lease, mailprocessing.Completion{State: "succeeded", Classification: &label, Events: events}); e != nil {

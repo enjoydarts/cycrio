@@ -72,7 +72,7 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 	if rows.Err() != nil {
 		return out, overview.ErrUnavailable
 	}
-	if tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidates`, owner, "").Scan(&out.AttentionMessages) != nil {
+	if tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidate_groups`, owner, "").Scan(&out.AttentionMessages) != nil {
 		return out, overview.ErrUnavailable
 	}
 	rows, err = tx.Query(ctx, `SELECT id,label,state FROM mail_accounts WHERE owner_id=$1 ORDER BY created_at,id`, owner)

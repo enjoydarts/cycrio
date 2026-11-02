@@ -50,10 +50,11 @@ type Subscription struct {
 }
 type CreateInput struct {
 	Values
-	RequestID        string  `json:"request_id"`
-	SourceResultID   *string `json:"source_result_id"`
-	SourceEventIndex *int    `json:"source_event_index"`
-	Confirmed        bool    `json:"confirmed"`
+	RequestID         string               `json:"request_id"`
+	SourceResultID    *string              `json:"source_result_id"`
+	SourceEventIndex  *int                 `json:"source_event_index"`
+	Confirmed         bool                 `json:"confirmed"`
+	AdditionalSources []CandidateSourceRef `json:"additional_sources,omitempty"`
 }
 type UpdateInput struct {
 	Values
@@ -68,10 +69,11 @@ type DeleteInput struct {
 	Confirmed       bool  `json:"confirmed"`
 }
 type SourceInput struct {
-	ExpectedVersion  int64  `json:"expected_version"`
-	SourceResultID   string `json:"source_result_id"`
-	SourceEventIndex int    `json:"source_event_index"`
-	Confirmed        bool   `json:"confirmed"`
+	ExpectedVersion   int64                `json:"expected_version"`
+	SourceResultID    string               `json:"source_result_id"`
+	SourceEventIndex  int                  `json:"source_event_index"`
+	Confirmed         bool                 `json:"confirmed"`
+	AdditionalSources []CandidateSourceRef `json:"additional_sources,omitempty"`
 }
 type Filter struct {
 	AccountID string

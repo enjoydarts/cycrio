@@ -120,7 +120,7 @@ func TestCandidateSearchSortPagination(t *testing.T) {
 		t.Fatal("account filter leaked candidates", p, e)
 	}
 	// Equal timestamps across independent results use result ID, then event index.
-	tied := []string{result("2026-03-01T00:00:00Z", ai.Event{Service: "Tied"}), result("2026-03-01T00:00:00Z", ai.Event{Service: "Tied"})}
+	tied := []string{result("2026-03-01T00:00:00Z", ai.Event{Service: "Tied", Plan: autoPtr("First")}), result("2026-03-01T00:00:00Z", ai.Event{Service: "Tied", Plan: autoPtr("Second")})}
 	slices.Sort(tied)
 	for _, sort := range []string{"received_desc", "received_asc", "service", "service_desc"} {
 		for offset := 0; offset < 2; offset++ {

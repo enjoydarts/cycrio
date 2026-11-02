@@ -8,8 +8,10 @@
   import { getAppSession } from './app-context.ts';
   import { ApiError } from './api.ts';
   import type { AnalysisResult } from './analysis-api.ts';
+  import type { CandidateSource } from './candidate-selection.ts';
   import {
     createSubscriptionsAPI,
+    type SourceInput,
     type Subscription,
     type SubscriptionPage,
   } from './subscriptions-api.ts';
@@ -20,12 +22,14 @@
   let {
     result,
     index,
+    additionalSources = [],
     onSaved,
     onBackToResults,
     onBusyChange = () => {},
   }: {
     result: Pick<AnalysisResult, 'id'>;
     index: number;
+    additionalSources?: CandidateSource[];
     onSaved: (s: Subscription) => void;
     onBackToResults: () => void;
     onBusyChange?: (busy: boolean) => void;
@@ -48,8 +52,11 @@
     latest = $state<Subscription | null>(null),
     confirmed = $state(false),
     saving = $state(false),
+    uncertain = $state(false),
     error = $state<string | null>(null),
     conflict = $state(false);
+  let pending: SourceInput | null = null;
+  const frozen = $derived(saving || uncertain);
   const filter = () => ({
     q: searched,
     status: 'all' as const,
@@ -77,28 +84,33 @@
     };
   });
   async function attach() {
-    if (!selected || !confirmed || saving || conflict) return;
+    if (!selected || (!confirmed && !uncertain) || saving || conflict) return;
     const s = selected;
     saving = true;
     onBusyChange(true);
     error = null;
     abort = new AbortController();
+    pending ??= {
+      expected_version: s.version,
+      source_result_id: result.id,
+      source_event_index: index,
+      ...(additionalSources.length
+        ? {
+            additional_sources: additionalSources.map((source) => ({
+              ...source,
+            })),
+          }
+        : {}),
+      confirmed: true,
+    };
     try {
-      const saved = await api.attach(
-        s.id,
-        {
-          expected_version: s.version,
-          source_result_id: result.id,
-          source_event_index: index,
-          confirmed: true,
-        },
-        token,
-        abort.signal,
-      );
+      const saved = await api.attach(s.id, pending, token, abort.signal);
       if (!disposed) onSaved(saved);
     } catch (e) {
       if (disposed) return;
       const code = e instanceof ApiError ? e.code : 'dependency_unavailable';
+      uncertain = code === 'dependency_unavailable';
+      if (!uncertain) pending = null;
       error = processingErrors[code];
       confirmed = false;
       if (code === 'authentication_required' || code === 'access_denied') {
@@ -111,9 +123,15 @@
           if (disposed) return;
           latest = current;
           if (
-            current.sources.some(
-              (source) =>
-                source.result_id === result.id && source.event_index === index,
+            [
+              { result_id: result.id, event_index: index },
+              ...additionalSources,
+            ].every((required) =>
+              current.sources.some(
+                (source) =>
+                  source.result_id === required.result_id &&
+                  source.event_index === required.event_index,
+              ),
             )
           ) {
             onSaved(current);
@@ -135,7 +153,7 @@
     } finally {
       if (!disposed) {
         saving = false;
-        onBusyChange(false);
+        onBusyChange(uncertain);
       }
     }
   }
@@ -158,8 +176,8 @@
     }}
   >
     <label class="search"
-      >サブスクを検索<input disabled={saving} bind:value={query} /></label
-    ><Button wrap disabled={saving}>検索</Button>
+      >サブスクを検索<input disabled={frozen} bind:value={query} /></label
+    ><Button wrap type="submit" disabled={frozen}>検索</Button>
   </form>
   {#if view.status === 'loading'}<p role="status">
       検索中…
@@ -172,7 +190,7 @@
               type="radio"
               name="attach-subscription"
               checked={selected?.id === s.id}
-              disabled={saving}
+              disabled={frozen}
               onchange={() => {
                 selected = s;
                 confirmed = false;
@@ -197,7 +215,7 @@
         total={view.page.total}
         offset={view.page.offset}
         limit={view.page.limit}
-        disabled={saving}
+        disabled={frozen}
         label="紐付け先サブスクのページ"
         onchange={load}
       />
@@ -230,7 +248,7 @@
     ><input
       type="checkbox"
       checked={confirmed}
-      disabled={!selected || saving || conflict}
+      disabled={!selected || frozen || conflict}
       onchange={(e) => (confirmed = e.currentTarget.checked)}
     />紐付け先と元の抽出情報を確認しました</label
   >
@@ -238,7 +256,11 @@
     wrap
     variant="primary"
     class={['primary']}
-    disabled={!selected || !confirmed || saving || conflict}
-    onclick={attach}>確認したサブスクへ紐付ける</Button
+    type="button"
+    disabled={!selected || (!confirmed && !uncertain) || saving || conflict}
+    onclick={attach}
+    >{uncertain
+      ? '同じ要求で紐付けを確認'
+      : '確認したサブスクへ紐付ける'}</Button
   >
 </div>

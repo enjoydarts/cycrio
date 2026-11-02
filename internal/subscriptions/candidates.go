@@ -14,6 +14,7 @@ type Candidate struct {
 	AccountLabel string     `json:"account_label"`
 	Event        ai.Event   `json:"event"`
 	MailCount    int        `json:"mail_count"`
+	RelatedCount int        `json:"related_count"`
 }
 type CandidatePage struct {
 	Candidates []Candidate `json:"candidates"`
@@ -22,9 +23,10 @@ type CandidatePage struct {
 	Offset     int         `json:"offset"`
 }
 type DismissInput struct {
-	SourceResultID   string `json:"source_result_id"`
-	SourceEventIndex int    `json:"source_event_index"`
-	Confirmed        bool   `json:"confirmed"`
+	SourceResultID    string               `json:"source_result_id"`
+	SourceEventIndex  int                  `json:"source_event_index"`
+	Confirmed         bool                 `json:"confirmed"`
+	AdditionalSources []CandidateSourceRef `json:"additional_sources,omitempty"`
 }
 type ProcessingSummary struct {
 	MailCount         int `json:"mail_count"`

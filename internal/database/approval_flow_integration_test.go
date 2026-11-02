@@ -5,6 +5,7 @@ package database
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/autoregistration"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
@@ -50,10 +51,11 @@ func TestApprovalCandidateCountBeyondHundredPreservesIndependentContracts(t *tes
 	f := processingSetup(t)
 	ctx := context.Background()
 	r := NewSubscriptionRepository(f.runtime.pool)
-	for range 4 {
+	for batch := range 4 {
 		events := make([]ai.Event, 32)
 		for i := range events {
-			events[i] = ai.Event{Service: "Same", EventType: "renewal"}
+			plan := fmt.Sprintf("Independent plan %d", batch*32+i)
+			events[i] = ai.Event{Service: "Same", Plan: &plan, EventType: "renewal"}
 		}
 		automationResult(t, f, events...)
 	}

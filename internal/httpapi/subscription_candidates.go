@@ -5,6 +5,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -36,6 +37,40 @@ func candidateFilter(raw string) (subscriptions.AnalysisFilter, error) {
 
 func registerCandidates(mux *http.ServeMux, base SubscriptionService, protect protectFunc) {
 	service, _ := base.(candidateService)
+	related, _ := base.(interface {
+		RelatedCandidates(context.Context, string, string, int, int, int) (subscriptions.CandidatePage, error)
+	})
+	mux.HandleFunc("GET /v1/subscriptions/candidates/related", protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
+		q, e := applicationQuery(r.URL.RawQuery, "result_id", "event_index", "limit", "offset")
+		if e != nil {
+			writeSubscriptionError(w, subscriptions.ErrInvalid)
+			return
+		}
+		result := q.Get("result_id")
+		index, e := strconv.Atoi(q.Get("event_index"))
+		if e != nil || !subscriptions.ValidSource(&result, &index) {
+			writeSubscriptionError(w, subscriptions.ErrInvalid)
+			return
+		}
+		limit, offset, e := applicationPagination(q)
+		if e != nil {
+			writeSubscriptionError(w, e)
+			return
+		}
+		if related == nil {
+			writeSubscriptionError(w, subscriptions.ErrUnavailable)
+			return
+		}
+		value, e := related.RelatedCandidates(r.Context(), p.ID, result, index, limit, offset)
+		if e != nil {
+			writeSubscriptionError(w, e)
+			return
+		}
+		if value.Candidates == nil {
+			value.Candidates = []subscriptions.Candidate{}
+		}
+		writeJSON(w, 200, value)
+	}))
 	mux.HandleFunc("GET /v1/subscriptions/candidates", protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
 		f, e := candidateFilter(r.URL.RawQuery)
 		if e != nil {
@@ -62,12 +97,12 @@ func registerCandidates(mux *http.ServeMux, base SubscriptionService, protect pr
 			return
 		}
 		var in subscriptions.DismissInput
-		keys := []string{"source_result_id", "source_event_index", "confirmed"}
-		if e := readSubscriptionJSON(w, r, &in, keys, keys...); e != nil {
+		keys := []string{"source_result_id", "source_event_index", "confirmed", "additional_sources"}
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, []string{"additional_sources"}, keys...); e != nil {
 			writeSubscriptionError(w, e)
 			return
 		}
-		if !in.Confirmed || !subscriptions.ValidSource(&in.SourceResultID, &in.SourceEventIndex) {
+		if !subscriptions.ValidDismissInput(in) {
 			writeSubscriptionError(w, subscriptions.ErrInvalid)
 			return
 		}

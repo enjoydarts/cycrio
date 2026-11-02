@@ -22,6 +22,38 @@ const api = (patch: Partial<SubscriptionsAPI> = {}) =>
     attach: async () => subscription(),
     ...patch,
   }) as SubscriptionsAPI;
+test('candidate creation snapshots all explicit sources for an uncertain replay', async () => {
+  const bodies: any[] = [];
+  const source = {
+    result_id: id,
+    event_index: 0,
+    additional_sources: [{ result_id: id, event_index: 1 }],
+  };
+  const c = createSubscriptionEditor(
+    api({
+      create: async (body) => {
+        bodies.push(body);
+        if (bodies.length === 1) throw new ApiError('dependency_unavailable');
+        return subscription();
+      },
+    }),
+    async () => 't',
+    () => {},
+    () => {},
+    () => id,
+    null,
+    source,
+  );
+  c.edit(values);
+  c.confirm(true);
+  await c.save();
+  source.additional_sources[0].event_index = 2;
+  await c.replay();
+  assert.deepEqual(bodies[0].additional_sources, [
+    { result_id: id, event_index: 1 },
+  ]);
+  assert.deepEqual(bodies[0], bodies[1]);
+});
 test('response-loss freezes body and reuses request UUID while suppressing double submit', async () => {
   const gate = wait<never>();
   const bodies: unknown[] = [];

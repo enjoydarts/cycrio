@@ -294,7 +294,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		}
 		in.MaxMessages = len(ids)
 	} else if request.RetryAll {
-		rows, e := tx.Query(ctx, importHistoryCTE+`SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed' AND `+processingSourceSelected+` ORDER BY m.created_at,m.id`, owner, account, in.HistoryID)
+		rows, e := tx.Query(ctx, importHistoryCTE+`SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2::text::uuid AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed' AND `+processingSourceSelected+` ORDER BY m.created_at,m.id`, owner, account, in.HistoryID)
 		if e != nil {
 			return mailprocessing.Run{}, processingError(e)
 		}
@@ -363,7 +363,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		// Queued selected messages no longer count as failures; any current
 		// failures left behind are outside the connection's selected source.
 		if !request.Reanalysis {
-			e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM mail_discovered_messages m JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2 AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed'`, owner, account, in.HistoryID).Scan(&batch.SkippedCount)
+			e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM mail_discovered_messages m JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.owner_id=m.owner_id AND i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.owner_id=$1 AND m.account_id=$2::text::uuid AND ($3='' OR EXISTS(SELECT 1 FROM members membership WHERE membership.history_id=$3 AND membership.message_id=m.id)) AND latest.state='failed'`, owner, account, in.HistoryID).Scan(&batch.SkippedCount)
 		}
 		if e != nil {
 			return mailprocessing.Run{}, processingError(e)

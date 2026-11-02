@@ -181,7 +181,7 @@ func TestImportHistoryLegacyRetriesRetainIndependentStopTargets(t *testing.T) {
 func TestImportHistoryManualUnknownPeriodCountsAndScopedRetry(t *testing.T) {
 	f := processingSetup(t)
 	ctx := context.Background()
-	result := automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal"}, ai.Event{Service: "Example", EventType: "renewal"})
+	result := automationResult(t, f, ai.Event{Service: "Example", EventType: "renewal", Plan: autoPtr("First")}, ai.Event{Service: "Example", EventType: "renewal", Plan: autoPtr("Second")})
 	page, e := f.repo.ImportHistory(ctx, f.owner, f.account, 20, 0)
 	if e != nil || page.Total != 1 || page.History[0].Since != nil || page.History[0].Before != nil || page.History[0].CompletedCount != 1 || page.History[0].CandidateCount != 2 {
 		t.Fatal(page, e)

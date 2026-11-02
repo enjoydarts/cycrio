@@ -195,7 +195,9 @@ func TestBillingAutomationDetachPartialAndFullReviewExclusion(t *testing.T) {
 	ctx := context.Background()
 	event := financialEvent("payment", "1", "2024-01-01")
 	event.Amount = nil
-	contract, result := financialContract(t, f, event, event)
+	second := event
+	second.Plan = autoPtr("Separate extracted plan")
+	contract, result := financialContract(t, f, event, second)
 	enableFinancial(t, f)
 	r := recorder(t, f)
 	if _, err := r.RecordDue(ctx, 20); err != nil {

@@ -106,7 +106,7 @@ func (r *SubscriptionRepository) Get(ctx context.Context, owner, id string) (sub
 	}
 	return s, e
 }
-func sourceSubscription(ctx context.Context, tx pgx.Tx, owner, id, result string, index int) error {
+func validateCandidateSource(ctx context.Context, tx pgx.Tx, owner, result string, index int) error {
 	var protected bool
 	if e := tx.QueryRow(ctx, `SELECT `+reanalysisPriorDecision+` FROM mail_processing_items i WHERE i.owner_id=$1 AND i.id=$2`, owner, result).Scan(&protected); e != nil {
 		return subscriptionError(e)
@@ -123,14 +123,28 @@ func sourceSubscription(ctx context.Context, tx pgx.Tx, owner, id, result string
 	if state != "succeeded" || index < 0 || index >= count {
 		return subscriptions.ErrInvalid
 	}
+	var current bool
+	if e = tx.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM mail_processing_items newer WHERE newer.owner_id=i.owner_id AND newer.message_id=i.message_id AND newer.state IN ('succeeded','not_related') AND (newer.created_at,newer.id)>(i.created_at,i.id)) FROM mail_processing_items i WHERE i.owner_id=$1 AND i.id=$2`, owner, result).Scan(&current); e != nil {
+		return subscriptionError(e)
+	}
+	if !current {
+		return subscriptions.ErrConflict
+	}
+	return nil
+}
+func sourceSubscription(ctx context.Context, tx pgx.Tx, owner, id, result string, index int) error {
+	if e := validateCandidateSource(ctx, tx, owner, result, index); e != nil {
+		return e
+	}
 	var dismissed bool
-	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM subscription_candidate_dismissals WHERE owner_id=$1 AND result_id=$2 AND event_index=$3)`, owner, result, index).Scan(&dismissed); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM subscription_candidate_dismissals d JOIN mail_processing_items i ON i.owner_id=d.owner_id AND i.id=d.result_id WHERE d.owner_id=$1 AND d.result_id=$2 AND i.events->d.event_index=i.events->$3::integer)
+ OR EXISTS(SELECT 1 FROM subscription_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id WHERE s.owner_id=$1 AND s.result_id=$2 AND i.events->s.event_index=i.events->$3::integer)`, owner, result, index).Scan(&dismissed); e != nil {
 		return subscriptionError(e)
 	}
 	if dismissed {
 		return subscriptions.ErrConflict
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO subscription_sources(owner_id,subscription_id,result_id,event_index) VALUES($1,$2,$3,$4)`, owner, id, result, index)
+	_, e := tx.Exec(ctx, `INSERT INTO subscription_sources(owner_id,subscription_id,result_id,event_index) VALUES($1,$2,$3,$4)`, owner, id, result, index)
 	return subscriptionError(e)
 }
 func completeSubscription(ctx context.Context, tx pgx.Tx, owner, id, action string) (subscriptions.Subscription, error) {
@@ -184,6 +198,11 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 	}
 	if in.SourceResultID != nil {
 		if e = sourceSubscription(ctx, tx, owner, id, *in.SourceResultID, *in.SourceEventIndex); e != nil {
+			return subscriptions.Subscription{}, e
+		}
+	}
+	for _, source := range in.AdditionalSources {
+		if e = sourceSubscription(ctx, tx, owner, id, source.ResultID, source.EventIndex); e != nil {
 			return subscriptions.Subscription{}, e
 		}
 	}
@@ -251,26 +270,36 @@ func (r *SubscriptionRepository) AttachSource(ctx context.Context, owner, id str
 		return subscriptions.Subscription{}, e
 	}
 	defer tx.Rollback(ctx)
-	var attached string
-	e = tx.QueryRow(ctx, `SELECT subscription_id FROM subscription_sources WHERE owner_id=$1 AND result_id=$2 AND event_index=$3`, owner, in.SourceResultID, in.SourceEventIndex).Scan(&attached)
-	if e == nil {
+	refs := append([]subscriptions.CandidateSourceRef{{ResultID: in.SourceResultID, EventIndex: in.SourceEventIndex}}, in.AdditionalSources...)
+	missing := []subscriptions.CandidateSourceRef{}
+	for _, ref := range refs {
+		var attached string
+		e = tx.QueryRow(ctx, `SELECT subscription_id FROM subscription_sources WHERE owner_id=$1 AND result_id=$2 AND event_index=$3`, owner, ref.ResultID, ref.EventIndex).Scan(&attached)
+		if errors.Is(e, pgx.ErrNoRows) {
+			missing = append(missing, ref)
+			continue
+		}
+		if e != nil {
+			return subscriptions.Subscription{}, subscriptionError(e)
+		}
 		if attached != id {
 			return subscriptions.Subscription{}, subscriptions.ErrConflict
 		}
+	}
+	if len(missing) == 0 {
 		s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
 		if e == nil {
 			e = fillSubscription(ctx, tx, owner, &s)
 		}
 		return s, e
 	}
-	if !errors.Is(e, pgx.ErrNoRows) {
-		return subscriptions.Subscription{}, subscriptionError(e)
-	}
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return subscriptions.Subscription{}, e
 	}
-	if e = sourceSubscription(ctx, tx, owner, id, in.SourceResultID, in.SourceEventIndex); e != nil {
-		return subscriptions.Subscription{}, e
+	for _, ref := range missing {
+		if e = sourceSubscription(ctx, tx, owner, id, ref.ResultID, ref.EventIndex); e != nil {
+			return subscriptions.Subscription{}, e
+		}
 	}
 	if _, e = tx.Exec(ctx, `UPDATE subscriptions SET version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id); e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)

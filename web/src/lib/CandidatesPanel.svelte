@@ -45,6 +45,7 @@
                 candidate.event.event_type
               ]}</span
             ><span class="secondary">{candidate.account_label}</span>
+            <span class="secondary">関連メール {candidate.mail_count} 件</span>
             <span class="secondary"
               ><MailReceivedDate receivedAt={candidate.received_at} /></span
             ></td

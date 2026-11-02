@@ -1,5 +1,10 @@
 import type { TokenProvider } from './api.ts';
 import {
+  parseAdditionalSources,
+  type CandidateSource,
+  type CandidateSources,
+} from './candidate-selection.ts';
+import {
   array,
   choice,
   createDailyRequest,
@@ -24,6 +29,7 @@ export type Candidate = {
   account_label: string;
   event: ProcessingEvent;
   mail_count: number;
+  related_count?: number;
 };
 export type CandidateFilter = {
   q?: string;
@@ -50,7 +56,50 @@ export type ImportSummary = {
 };
 export function createApprovalAPI(base: string, fetcher: typeof fetch = fetch) {
   const request = createDailyRequest(base, fetcher);
+  const parsePage = (value: unknown): CandidatePage => {
+    const v = record(value);
+    return {
+      ...pagination(v),
+      candidates: array(v.candidates, (x) => {
+        const c = record(x);
+        return {
+          received_at: nullable(c.received_at ?? null, timestamp),
+          result_id: uuid(c.result_id),
+          event_index: integer(c.event_index, 0, 31),
+          account_id: uuid(c.account_id),
+          account_label: text(c.account_label, 200),
+          event: parseProcessingEvent(c.event),
+          mail_count: integer(c.mail_count, 1),
+          related_count: integer(c.related_count ?? 1, 1),
+        };
+      }),
+    };
+  };
   return {
+    async related(
+      anchor: CandidateSource,
+      limit: number,
+      offset: number,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<CandidatePage> {
+      const query = input(
+        () =>
+          new URLSearchParams({
+            result_id: uuid(anchor.result_id),
+            event_index: String(integer(anchor.event_index, 0, 31)),
+            limit: String(integer(limit, 1, 100)),
+            offset: String(integer(offset)),
+          }),
+      );
+      return parsePage(
+        await request(
+          `/v1/subscriptions/candidates/related?${query}`,
+          token,
+          signal,
+        ),
+      );
+    },
     async candidates(
       f: CandidateFilter,
       token: TokenProvider,
@@ -71,33 +120,19 @@ export function createApprovalAPI(base: string, fetcher: typeof fetch = fetch) {
             offset: String(integer(f.offset)),
           }),
       );
-      const v = record(
+      return parsePage(
         await request(`/v1/subscriptions/candidates?${q}`, token, signal),
       );
-      return {
-        ...pagination(v),
-        candidates: array(v.candidates, (x) => {
-          const c = record(x);
-          return {
-            received_at: nullable(c.received_at ?? null, timestamp),
-            result_id: uuid(c.result_id),
-            event_index: integer(c.event_index, 0, 31),
-            account_id: uuid(c.account_id),
-            account_label: text(c.account_label, 200),
-            event: parseProcessingEvent(c.event),
-            mail_count: integer(c.mail_count, 1),
-          };
-        }),
-      };
     },
     async dismiss(
-      source: Pick<Candidate, 'result_id' | 'event_index'>,
+      source: CandidateSources,
       token: TokenProvider,
       signal?: AbortSignal,
     ) {
       const body = input(() => ({
         source_result_id: uuid(source.result_id),
         source_event_index: integer(source.event_index, 0, 31),
+        ...parseAdditionalSources(source, source.additional_sources),
         confirmed: true,
       }));
       await request(

@@ -70,8 +70,9 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	})
 	register("POST /v1/subscriptions", 201, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.CreateInput
-		keys := append(append([]string{}, subscriptionValueKeys...), "request_id", "source_result_id", "source_event_index", "confirmed")
-		if e := readSubscriptionJSONOptional(w, r, &in, keys, subscriptionLifecycleKeys, "service", "status", "request_id", "confirmed", "contract_kind"); e != nil {
+		keys := append(append([]string{}, subscriptionValueKeys...), "request_id", "source_result_id", "source_event_index", "confirmed", "additional_sources")
+		optional := append(append([]string{}, subscriptionLifecycleKeys...), "additional_sources")
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, optional, "service", "status", "request_id", "confirmed", "contract_kind", "additional_sources"); e != nil {
 			return nil, e
 		}
 		if _, e := subscriptions.NormalizeCreate(in); e != nil {
@@ -102,8 +103,8 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	})
 	register("POST /v1/subscriptions/{id}/sources", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.SourceInput
-		keys := []string{"expected_version", "source_result_id", "source_event_index", "confirmed"}
-		if e := readSubscriptionJSON(w, r, &in, keys, keys...); e != nil {
+		keys := []string{"expected_version", "source_result_id", "source_event_index", "confirmed", "additional_sources"}
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, []string{"additional_sources"}, keys...); e != nil {
 			return nil, e
 		}
 		if !subscriptions.ValidSourceInput(in) {

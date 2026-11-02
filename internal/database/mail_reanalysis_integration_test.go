@@ -120,7 +120,7 @@ func TestMailReanalysisEligibilityAndCancelledCandidate(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, err := r.Candidates(ctx, f.owner, subscriptions.AnalysisFilter{AccountID: f.account, Limit: 100})
-	if err != nil || page.Total != 3 {
+	if err != nil || page.Total != 1 || len(page.Candidates) != 1 || page.Candidates[0].RelatedCount != 3 {
 		t.Fatal("cancelled reanalysis lost candidates", page, err)
 	}
 }
@@ -165,6 +165,9 @@ func TestMailReanalysisDecisionBeforeCallAndDuringCall(t *testing.T) {
 			label := "subscription_related"
 			if err := f.repo.Finish(ctx, l, mailprocessing.Completion{State: "succeeded", Classification: &label, Events: []ai.Event{{Service: "New", EventType: "renewal"}}}); err != nil {
 				t.Fatal(err)
+			}
+			if err := r.DismissCandidate(ctx, f.owner, subscriptions.DismissInput{SourceResultID: old, SourceEventIndex: 0, Confirmed: true}); err != nil {
+				t.Fatal("exact dismissal replay must survive later reanalysis", err)
 			}
 			page, err := r.Candidates(ctx, f.owner, subscriptions.AnalysisFilter{AccountID: f.account, Limit: 100})
 			if err != nil || page.Total != 0 {
@@ -299,6 +302,15 @@ func TestMailReanalysisSuccessfulResultReplacesCandidates(t *testing.T) {
 			}
 			if err := f.repo.Finish(ctx, l, c); err != nil {
 				t.Fatal(err)
+			}
+			if _, err := r.RelatedCandidates(ctx, f.owner, old, 0, 20, 0); !errors.Is(err, subscriptions.ErrNotFound) {
+				t.Fatal("stale related anchor remains readable", err)
+			}
+			create := subscriptionInput()
+			zero := 0
+			create.SourceResultID, create.SourceEventIndex = &old, &zero
+			if _, err := r.Create(ctx, f.owner, create); !errors.Is(err, subscriptions.ErrConflict) {
+				t.Fatal("stale source remains approvable", err)
 			}
 			page, err := r.Candidates(ctx, f.owner, subscriptions.AnalysisFilter{AccountID: f.account, Limit: 100})
 			if err != nil {

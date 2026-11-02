@@ -1,5 +1,6 @@
 import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
 import { createFeed } from './daily-controller.ts';
+import type { CandidateSources } from './candidate-selection.ts';
 import type { ProcessingEvent } from './mail-processing-api.ts';
 import {
   parseValues,
@@ -87,7 +88,7 @@ export function createSubscriptionEditor(
   onDenied: () => void,
   randomUUID = () => crypto.randomUUID(),
   initial: Subscription | null = null,
-  source: { result_id: string; event_index: number } | null = null,
+  source: CandidateSources | null = null,
   draft?: { store: SubscriptionDrafts; key: string },
 ) {
   let view: EditorView = {
@@ -270,6 +271,13 @@ export function createSubscriptionEditor(
           request_id: randomUUID(),
           source_result_id: source?.result_id ?? null,
           source_event_index: source?.event_index ?? null,
+          ...(source?.additional_sources
+            ? {
+                additional_sources: source.additional_sources.map((s) => ({
+                  ...s,
+                })),
+              }
+            : {}),
           confirmed: true,
         };
         await submit(pending);
