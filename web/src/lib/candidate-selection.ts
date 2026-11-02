@@ -59,6 +59,14 @@ export function createCandidateSelection(anchor: CandidateSource) {
         });
       return true;
     },
+    togglePage(page: CandidateSource[], checked: boolean) {
+      if (checked) return this.selectPage(page);
+      for (const source of page) selected.delete(key(source));
+      return true;
+    },
+    clear() {
+      selected.clear();
+    },
     snapshot(): CandidateSources | null {
       const [primary, ...additional_sources] = selected.values();
       return primary
@@ -69,4 +77,38 @@ export function createCandidateSelection(anchor: CandidateSource) {
         : null;
     },
   };
+}
+export async function loadCandidateGroup<T extends CandidateSource>(
+  read: (
+    offset: number,
+    signal: AbortSignal,
+  ) => Promise<{
+    candidates: T[];
+    total: number;
+    offset: number;
+    limit: number;
+  }>,
+  signal: AbortSignal,
+): Promise<T[]> {
+  const rows = new Map<string, T>();
+  let offset = 0;
+  let total: number | undefined;
+  while (true) {
+    signal.throwIfAborted();
+    const page = await read(offset, signal);
+    signal.throwIfAborted();
+    if (page.total > 100 || page.offset !== offset || page.limit < 1)
+      throw new Error('selection_limit');
+    if (total !== undefined && total !== page.total)
+      throw new Error('incomplete_selection');
+    total = page.total;
+    for (const row of page.candidates) rows.set(key(row), row);
+    if (rows.size > 100) throw new Error('selection_limit');
+    if (offset + page.limit >= page.total) {
+      if (rows.size !== total) throw new Error('incomplete_selection');
+      return [...rows.values()];
+    }
+    if (!page.candidates.length) throw new Error('incomplete_selection');
+    offset += page.limit;
+  }
 }

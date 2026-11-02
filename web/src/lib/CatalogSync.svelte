@@ -195,7 +195,10 @@
                 }}
                 disabled={busy}
               />{/if}
-            <ActionGroup class={['actions', 'part-CatalogSync-actions']}>
+            <ActionGroup
+              spacing="both"
+              class={['actions', 'part-CatalogSync-actions']}
+            >
               <Button wrap type="submit" disabled={busy}>同期設定を保存</Button
               ><Button
                 wrap

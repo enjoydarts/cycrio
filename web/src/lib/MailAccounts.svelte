@@ -5,6 +5,7 @@
     mailServiceForAccount,
   } from './mail-service-presets.ts';
   import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api.ts';
@@ -353,20 +354,24 @@
       </p>{:else if view.accounts.length >= 10}<p role="alert">
         接続できるメールは10件までです。
       </p>{/if}
-    {#if view.status === 'error'}<Button
+    <ActionGroup spacing="before">
+      {#if view.status === 'error'}<Button
+          wrap
+          type="button"
+          class={['mail-button', 'part-MailAccounts-mail-button']}
+          onclick={async () => {
+            await controller?.refresh();
+            if (controller?.state().status === 'ready') controller.newAccount();
+          }}>再試行</Button
+        >{/if}
+      <Button
         wrap
+        type="button"
         class={['mail-button', 'part-MailAccounts-mail-button']}
-        onclick={async () => {
-          await controller?.refresh();
-          if (controller?.state().status === 'ready') controller.newAccount();
-        }}>再試行</Button
-      >{/if}
-    <Button
-      wrap
-      class={['mail-button', 'part-MailAccounts-mail-button']}
-      disabled={busy}
-      onclick={closeConnection}>戻る</Button
-    >
+        disabled={busy}
+        onclick={closeConnection}>戻る</Button
+      >
+    </ActionGroup>
   {/if}
   <Modal
     open={view.form !== null}

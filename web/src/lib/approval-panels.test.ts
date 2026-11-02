@@ -56,7 +56,38 @@ test('candidate list exposes extracted price and a review action without technic
   assert.match(body, /1,200|1200/);
   assert.match(body, /確認する/);
   assert.match(body, /不要/);
+  assert.doesNotMatch(body, /関連メール\s*1\s*件/);
   assert.doesNotMatch(body, /解析失敗|自動登録待ち|メール件名|差出人/);
+});
+test('candidate list offers page selection, clear and bulk exclusion without merging contracts', async () => {
+  const candidate = {
+    result_id: 'a',
+    event_index: 0,
+    account_id: 'mail',
+    account_label: '個人メール',
+    mail_count: 2,
+    event: {
+      service: 'Example',
+      plan: null,
+      event_type: 'renewal',
+      amount: null,
+      currency: null,
+      interval_unit: null,
+      interval_count: null,
+    },
+  };
+  const body = await html('CandidatesPanel', {
+    page: { candidates: [candidate], total: 12, limit: 20, offset: 0 },
+    onSelect: () => {},
+    onSelectionChange: () => {},
+    selectedCandidates: [candidate],
+    onBulkDismiss: () => {},
+    onSelectAll: () => {},
+  });
+  assert.match(body, /このページをすべて選択/);
+  assert.match(body, /選択解除/);
+  assert.match(body, /選択した候補を除外/);
+  assert.match(body, /関連メール\s*2\s*件/);
 });
 test('summary distinguishes email counts, candidate counts, and registered contracts', async () => {
   const body = await html('AccountImportSummary', {

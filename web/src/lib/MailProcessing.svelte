@@ -265,11 +265,13 @@
             <dd>{run.unknown_count}</dd>
           </div>
         </dl>
-        {#if processingActive(run)}<Button
-            wrap
-            type="button"
-            disabled={view.status === 'saving'}
-            onclick={() => controller?.cancel(run.id)}>解析を停止</Button
+        {#if processingActive(run)}<ActionGroup spacing="before"
+            ><Button
+              wrap
+              type="button"
+              disabled={view.status === 'saving'}
+              onclick={() => controller?.cancel(run.id)}>解析を停止</Button
+            ></ActionGroup
           >{/if}
       </li>{:else}<li class="help">
         解析履歴はありません。条件を確認して明示的に開始してください。

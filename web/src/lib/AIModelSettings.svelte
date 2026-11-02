@@ -163,6 +163,7 @@
     )}
   </div>
   <ActionGroup
+    spacing="both"
     class={[
       'actions save-settings',
       'part-AIModelSettings-actions',

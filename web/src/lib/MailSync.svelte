@@ -1,5 +1,6 @@
 <script lang="ts">
   import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import { onMount } from 'svelte';
   import type { TokenProvider } from './api.ts';
   import type { MailAccount, ProbeError } from './mail-api.ts';
@@ -278,11 +279,13 @@
         {#if run.error_code}<p class="sync-help">
             {reasons[run.error_code]}
           </p>{/if}
-        {#if syncActive(run)}<Button
-            wrap
-            type="button"
-            disabled={view.status === 'saving'}
-            onclick={() => controller?.cancel(run.id)}>同期を停止</Button
+        {#if syncActive(run)}<ActionGroup spacing="before"
+            ><Button
+              wrap
+              type="button"
+              disabled={view.status === 'saving'}
+              onclick={() => controller?.cancel(run.id)}>同期を停止</Button
+            ></ActionGroup
           >{/if}
       </li>
     {:else}<li class="sync-empty">

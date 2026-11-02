@@ -9,9 +9,11 @@
   import {
     createCandidateSelection,
     candidateSourceKey,
+    loadCandidateGroup,
     type CandidateSources,
   } from './candidate-selection.ts';
   import ActionGroup from './ActionGroup.svelte';
+  import SelectionToolbar from './SelectionToolbar.svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
   import { ApiError } from './api.ts';
@@ -60,7 +62,10 @@
     session.onDenied,
   );
   let disposed = false,
-    dismissAbort: AbortController | undefined;
+    dismissAbort: AbortController | undefined,
+    selectionAbort: AbortController | undefined;
+  let selecting = $state(false),
+    selectionLoadError = $state<string | null>(null);
   onMount(() => {
     if ((candidate.related_count ?? 1) > 1) void feed.load(0);
   });
@@ -68,6 +73,7 @@
     disposed = true;
     feed.dispose();
     dismissAbort?.abort();
+    selectionAbort?.abort();
     onBusyChange(false);
   });
   function changedSelection(ok: boolean) {
@@ -78,9 +84,10 @@
   function choose(next: 'create' | 'attach' | 'dismiss') {
     if (
       busy ||
+      selecting ||
       uncertain ||
       selected.length === 0 ||
-      (selected.length > 1 && !groupConfirmed)
+      (next !== 'dismiss' && selected.length > 1 && !groupConfirmed)
     )
       return;
     source = selection.snapshot();
@@ -108,7 +115,49 @@
     busy = $state(false),
     uncertain = $state(false),
     error = $state<string | null>(null);
-  const selectionBlocked = $derived(busy || uncertain || action !== null);
+  const selectionBlocked = $derived(
+    busy || selecting || uncertain || action !== null,
+  );
+  const pageSelectedCount = $derived(
+    related.page?.candidates.filter((row) =>
+      selected.some(
+        (item) => candidateSourceKey(item) === candidateSourceKey(row),
+      ),
+    ).length ?? 0,
+  );
+  async function selectAllRelated() {
+    if (selectionBlocked) return;
+    selecting = true;
+    selectionLoadError = null;
+    selectionAbort = new AbortController();
+    onBusyChange(true);
+    try {
+      const rows = await loadCandidateGroup(
+        (offset, signal) =>
+          api.related(candidate, 50, offset, session.token, signal),
+        selectionAbort.signal,
+      );
+      if (disposed) return;
+      for (const row of rows) known.set(candidateSourceKey(row), row);
+      changedSelection(selection.selectPage(rows));
+    } catch (error) {
+      if (disposed) return;
+      if (error instanceof Error && error.message === 'selection_limit')
+        selectionError = true;
+      else {
+        const code =
+          error instanceof ApiError ? error.code : 'dependency_unavailable';
+        selectionLoadError = processingErrors[code];
+        if (['authentication_required', 'access_denied'].includes(code))
+          session.onDenied();
+      }
+    } finally {
+      if (!disposed) {
+        selecting = false;
+        onBusyChange(false);
+      }
+    }
+  }
   function frozen(value: boolean) {
     busy = value;
     onBusyChange(value);
@@ -142,19 +191,38 @@
 </script>
 
 <div class="daily">
-  <p class="muted">{candidate.account_label}</p>
-  <p class="muted"><MailReceivedDate receivedAt={candidate.received_at} /></p>
+  {#if action === null}
+    <div class="review-summary">
+      <strong>{candidate.event.service ?? 'サービス名未確認'}</strong>
+      <p>
+        {money(candidate.event.amount, candidate.event.currency)} · {cycle(
+          candidate.event.interval_unit,
+          candidate.event.interval_count,
+        )}
+      </p>
+      <p class="muted">
+        {candidate.account_label} · {eventNames[candidate.event.event_type]}
+      </p>
+      <p class="muted">
+        <MailReceivedDate receivedAt={candidate.received_at} />
+      </p>
+    </div>
+    <details>
+      <summary>このメールの詳細</summary><EventFields event={candidate.event} />
+    </details>
+  {/if}
   {#if (candidate.related_count ?? 1) > 1 && action === null}
     <section class="related" aria-label="関連メールの比較">
-      <h3>
-        関連メール {candidate.mail_count} 件・候補 {candidate.related_count} 件
-      </h3>
-      <p class="notice">
-        同じ契約に関する情報か、受信日時と抽出値を比較してください。選んだ候補だけを一度に処理します。別の契約を自動で統合しません。
-      </p>
-      <p role="status">選択中 {selected.length} 件（最大100件）</p>
-      <details open>
-        <summary>関連候補を比較・選択</summary>
+      <p role="status">選択中 {selected.length} 件</p>
+      <details>
+        <summary
+          >{candidate.mail_count > 1
+            ? '関連メールを比較・選択'
+            : 'このメール内の情報を比較・選択'}（{candidate.related_count}件）</summary
+        >
+        <p class="notice">
+          まとめて登録する場合は、同じ契約の情報か確認して選択してください。
+        </p>
         {#if related.status === 'loading'}<p role="status">
             関連メールを読み込み中…
           </p>
@@ -168,18 +236,35 @@
             >関連メールを再読み込み</Button
           >
         {:else if related.page}
-          <Button
-            type="button"
-            wrap
+          <SelectionToolbar
+            selectedCount={selected.length}
+            pageCount={related.page.candidates.length}
+            allPageSelected={related.page.candidates.length > 0 &&
+              pageSelectedCount === related.page.candidates.length}
+            partialPageSelected={pageSelectedCount > 0 &&
+              pageSelectedCount < related.page.candidates.length}
             disabled={selectionBlocked}
-            onclick={() =>
-              changedSelection(selection.selectPage(related.page!.candidates))}
-            >このページの候補を追加選択</Button
-          >
+            busy={selecting}
+            totalCount={related.page.total}
+            onTogglePage={(checked) =>
+              changedSelection(
+                selection.togglePage(related.page!.candidates, checked),
+              )}
+            onClear={() => {
+              selection.clear();
+              changedSelection(true);
+            }}
+            onSelectAll={related.page.total <= 100
+              ? selectAllRelated
+              : undefined}
+          />
+          {#if related.page.total > 100}<p class="muted">
+              一度に選択できるのは100件までです。ページごとに選択してください。
+            </p>{/if}
           <DataTable responsive="cards" class="related-list">
             <thead
               ><tr
-                ><th>候補の選択</th><th>受信日時・接続</th><th
+                ><th>メールの選択</th><th>受信日時・接続</th><th
                   >抽出金額・周期</th
                 ><th>抽出日付</th></tr
               ></thead
@@ -200,7 +285,7 @@
                           changedSelection(
                             selection.toggle(row, e.currentTarget.checked),
                           )}
-                      />この抽出情報を処理する</label
+                      />このメールを選択</label
                     >
                     <strong>{row.event.service ?? 'サービス名未確認'}</strong>
                     <span class="secondary"
@@ -263,20 +348,21 @@
           />
         {/if}
       </details>
+      {#if selectionLoadError}<p role="alert">{selectionLoadError}</p>{/if}
       {#if selectionError}<p role="alert">
-          一度に選択できる候補は100件までです。
+          一度に選択できるのは100件までです。
         </p>{/if}
       {#if selected.length > 1}<label class="check"
           ><input
             type="checkbox"
             bind:checked={groupConfirmed}
             disabled={selectionBlocked}
-          />選択した候補は同じ契約の情報であることを確認しました</label
+          />選択したメールは同じ契約の情報であることを確認しました</label
         >{/if}
     </section>
   {/if}
   {#if source && action}<p class="notice">
-      選択した {1 + (source.additional_sources?.length ?? 0)} 件の抽出情報を処理します。
+      選択したメール：{1 + (source.additional_sources?.length ?? 0)} 件
     </p>{/if}
   {#if action === 'create'}
     <SubscriptionForm
@@ -299,43 +385,43 @@
     />
   {:else if action === 'dismiss'}
     <p>
-      「{candidate.event.service ??
-        'サービス名未確認'}」を確認待ちから除外します。登録済みのサブスクは変更しません。
+      選択した {1 + (source?.additional_sources?.length ?? 0)} 件を確認待ちから除外します。登録済みのサブスクは変更しません。
     </p>
     {#if error}<p role="alert" class="notice">{error}</p>{/if}
     <Button wrap type="button" disabled={busy} onclick={dismiss}
-      >{uncertain ? '同じ要求で除外を確認' : 'この候補を除外する'}</Button
+      >{uncertain ? '同じ要求で除外を確認' : '選択したメールを除外する'}</Button
     >
   {:else}
-    <EventFields event={candidate.event} />
-    <p class="notice">
-      抽出された金額・周期を確認してから登録してください。既存の契約から届いた情報なら、そのサブスクに紐付けられます。
-    </p>
-    <ActionGroup class={['actions', 'part-CandidateDetail-actions']}>
+    <ActionGroup
+      spacing="both"
+      class={['actions', 'part-CandidateDetail-actions']}
+    >
       <Button
         wrap
         variant="primary"
         class={['primary']}
         type="button"
-        disabled={selected.length === 0 ||
+        disabled={selectionBlocked ||
+          selected.length === 0 ||
           (selected.length > 1 && !groupConfirmed)}
         onclick={() => choose('create')}>新規サブスクに登録</Button
       ><Button
         wrap
         type="button"
-        disabled={selected.length === 0 ||
+        disabled={selectionBlocked ||
+          selected.length === 0 ||
           (selected.length > 1 && !groupConfirmed)}
         onclick={() => choose('attach')}>既存のサブスクに紐付ける</Button
       ><Button
         wrap
         type="button"
-        disabled={selected.length === 0 ||
-          (selected.length > 1 && !groupConfirmed)}
+        disabled={selectionBlocked || selected.length === 0}
         onclick={() => choose('dismiss')}>不要として除外</Button
       >
     </ActionGroup>
   {/if}
   {#if action}<ActionGroup
+      spacing="before"
       class={[
         'actions back',
         'part-CandidateDetail-actions',
@@ -364,7 +450,7 @@
     padding-block: 12px;
     font-weight: 600;
   }
-  :global(.part-CandidateDetail-back) {
-    margin-top: 24px;
+  .review-summary p {
+    margin-block: 8px;
   }
 </style>

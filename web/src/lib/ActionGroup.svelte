@@ -6,11 +6,13 @@
     class: className,
     stack = false,
     align = 'start',
+    spacing = 'none',
     ...attributes
   }: HTMLAttributes<HTMLDivElement> & {
     children: Snippet;
     stack?: boolean;
     align?: 'start' | 'end' | 'between';
+    spacing?: 'none' | 'before' | 'after' | 'both';
   } = $props();
 </script>
 
@@ -20,6 +22,8 @@
   class:stack
   class:end={align === 'end'}
   class:between={align === 'between'}
+  class:space-before={spacing === 'before' || spacing === 'both'}
+  class:space-after={spacing === 'after' || spacing === 'both'}
 >
   {@render children()}
 </div>
@@ -36,6 +40,12 @@
   .stack {
     flex-direction: column;
     align-items: flex-start;
+  }
+  .space-before {
+    margin-block-start: 16px;
+  }
+  .space-after {
+    margin-block-end: 16px;
   }
   .end {
     justify-content: flex-end;

@@ -31,6 +31,8 @@
     listURL,
   } from './list-search-sort.ts';
   import CandidateDetail from './CandidateDetail.svelte';
+  import CandidateBulkDismiss from './CandidateBulkDismiss.svelte';
+  import { loadCandidateListSelection } from './candidate-list-selection.ts';
   import AnalysisHistory from './AnalysisHistory.svelte';
   import Modal from './Modal.svelte';
   import './daily.css';
@@ -45,6 +47,11 @@
     initialAction = $state<'dismiss' | null>(null),
     busy = $state(false),
     notice = $state('');
+  let listSelection = $state<Candidate[]>([]),
+    bulkCandidates = $state<Candidate[]>([]),
+    selectingAll = $state(false),
+    selectionScope = $state('');
+  let selectAllAbort: AbortController | undefined;
   let view = $state<FeedView<CandidatePage>>({
     page: null,
     status: 'idle',
@@ -70,6 +77,9 @@
   }
   function denied() {
     selected = null;
+    listSelection = [];
+    bulkCandidates = [];
+    selectAllAbort?.abort();
     drafts.clear();
     session.onDenied();
   }
@@ -95,9 +105,47 @@
   }
   function done() {
     selected = null;
+    listSelection = [];
+    bulkCandidates = [];
+    notice = '';
     busy = false;
     void controller?.load(filter);
     void workspace?.refresh();
+  }
+  async function selectAllCandidates() {
+    if (busy || selectingAll || bulkCandidates.length) return;
+    selectAllAbort?.abort();
+    const current = new AbortController();
+    selectAllAbort = current;
+    const currentFilter = { ...filter },
+      scope = JSON.stringify(filter);
+    selectingAll = true;
+    notice = '';
+    try {
+      const rows = await loadCandidateListSelection(
+        (offset) =>
+          api.candidates(
+            { ...currentFilter, limit: 100, offset },
+            session.token,
+            current.signal,
+          ),
+        current.signal,
+      );
+      if (
+        !disposed &&
+        !current.signal.aborted &&
+        scope === JSON.stringify(filter)
+      )
+        listSelection = rows;
+    } catch (e) {
+      if (disposed || current.signal.aborted) return;
+      const code = e instanceof ApiError ? e.code : 'dependency_unavailable';
+      notice = processingErrors[code];
+      if (code === 'authentication_required' || code === 'access_denied')
+        denied();
+    } finally {
+      if (!disposed && selectAllAbort === current) selectingAll = false;
+    }
   }
   onMount(() => {
     controller = createFeed(
@@ -111,8 +159,18 @@
       disposed = true;
       controller?.dispose();
       abort?.abort();
+      selectAllAbort?.abort();
       drafts.clear();
     };
+  });
+  $effect(() => {
+    const next = JSON.stringify(filter);
+    if (next !== selectionScope) {
+      selectionScope = next;
+      listSelection = [];
+      selectAllAbort?.abort();
+      selectingAll = false;
+    }
   });
   $effect(() => {
     const c = controller,
@@ -140,7 +198,10 @@
       history ||
       !controller ||
       ['loading', 'denied', 'disposed'].includes(view.status) ||
-      busy
+      busy ||
+      selectingAll ||
+      listSelection.length > 0 ||
+      bulkCandidates.length > 0
     )
       return;
     const timer = setTimeout(() => void controller?.load(filter), 5000);
@@ -178,7 +239,7 @@
           >メールを取り込む</ActionLink
         >{/if}{/snippet}
   </LibraryHeader>
-  {#if notice && busy}<p class="notice" role="status">{notice}</p>{/if}
+  {#if notice}<p class="notice" role="status">{notice}</p>{/if}
   {#if accountError}<p class="notice" role="alert">
       メール接続を読み込めませんでした。<Button wrap onclick={loadAccounts}
         >再読み込み</Button
@@ -251,6 +312,16 @@
       {#if view.page}<CandidatesPanel
           page={view.page}
           filtered={!!filter.q}
+          selectedCandidates={listSelection}
+          selectionBusy={busy || selectingAll}
+          onSelectionChange={(rows) => {
+            if (!busy && !selectingAll) listSelection = rows;
+          }}
+          onSelectAll={selectAllCandidates}
+          onBulkDismiss={() => {
+            if (listSelection.length && !busy)
+              bulkCandidates = $state.snapshot(listSelection);
+          }}
           onClear={() =>
             goto(listURL(page.url, { q: '', sort: 'received_desc' }))}
           onSelect={(candidate) => {
@@ -298,6 +369,24 @@
         onDone={done}
         onBusyChange={(value) => (busy = value)}
       />{/key}{/if}
+</Modal>
+<Modal
+  open={bulkCandidates.length > 0}
+  title="選択した候補を除外"
+  {busy}
+  onclose={() => {
+    bulkCandidates = [];
+  }}
+>
+  {#if bulkCandidates.length}<CandidateBulkDismiss
+      candidates={bulkCandidates}
+      onDone={done}
+      onCancel={() => {
+        bulkCandidates = [];
+      }}
+      onDenied={denied}
+      onBusyChange={(value) => (busy = value)}
+    />{/if}
 </Modal>
 
 <style>

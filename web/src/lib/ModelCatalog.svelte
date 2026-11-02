@@ -430,19 +430,22 @@
                         >非対応</option
                       ></select
                     >
-                    <Button
-                      wrap
-                      variant="primary"
-                      class={['primary']}
-                      disabled={busy}>モデル情報を保存</Button
-                    >
-                    <Button
-                      wrap
-                      type="button"
-                      disabled={busy}
-                      onclick={reloadModelDraft}
-                      >最新のモデル情報を読み直す（入力を破棄）</Button
-                    >
+                    <ActionGroup spacing="before">
+                      <Button
+                        wrap
+                        type="submit"
+                        variant="primary"
+                        class={['primary']}
+                        disabled={busy}>モデル情報を保存</Button
+                      >
+                      <Button
+                        wrap
+                        type="button"
+                        disabled={busy}
+                        onclick={reloadModelDraft}
+                        >最新のモデル情報を読み直す（入力を破棄）</Button
+                      >
+                    </ActionGroup>
                   </form>{/if}
               </details>
               <details>
@@ -582,9 +585,15 @@
             ><option value="">不明</option><option value="true">対応</option
             ><option value="false">非対応</option></select
           >
-          <Button wrap variant="primary" class={['primary']} disabled={busy}
-            >モデルを追加</Button
-          >
+          <ActionGroup spacing="before">
+            <Button
+              wrap
+              type="submit"
+              variant="primary"
+              class={['primary']}
+              disabled={busy}>モデルを追加</Button
+            >
+          </ActionGroup>
         </form>
       </section>
     </div>

@@ -145,6 +145,41 @@ test('ActionGroup and DataTable expose wrapping layout and accessible native tab
   assert.match(compact, /class="[^"]*\bcompact\b/);
 });
 
+test('ActionGroup separates content only when explicitly requested and keeps compact groups unchanged', async () => {
+  const Group = await component('ActionGroup');
+  const compact = render(Group, { props: { children } }).body;
+  assert.doesNotMatch(compact, /space-before|space-after/);
+  for (const spacing of ['before', 'after', 'both'] as const) {
+    const html = render(Group, { props: { children, spacing } }).body;
+    assert.equal(html.includes('space-before'), spacing !== 'after');
+    assert.equal(html.includes('space-after'), spacing !== 'before');
+    assert.doesNotMatch(html, /spacing=/);
+  }
+  const source = await readFile(
+    new URL('./ActionGroup.svelte', import.meta.url),
+    'utf8',
+  );
+  const { css } = compile(source, { generate: 'client' });
+  assert.match(css!.code, /\.space-before[^}]*margin-block-start:\s*16px/);
+  assert.match(css!.code, /\.space-after[^}]*margin-block-end:\s*16px/);
+  assert.match(css!.code, /gap:\s*8px/);
+});
+
+test('model editor saves and reloads through one spaced action group', async () => {
+  const source = await readFile(
+    new URL('./ModelCatalog.svelte', import.meta.url),
+    'utf8',
+  );
+  const form = source.slice(
+    source.indexOf('<form onsubmit={(event) => update'),
+    source.indexOf('</form>{/if}'),
+  );
+  assert.match(
+    form,
+    /<ActionGroup spacing="before">[\s\S]*type="submit"[\s\S]*モデル情報を保存[\s\S]*type="button"[\s\S]*最新のモデル情報を読み直す[\s\S]*<\/ActionGroup>/,
+  );
+});
+
 test('Clerk Last used fallback still targets the external widget native button', async () => {
   const source = await readFile(
     new URL('./AppAccess.svelte', import.meta.url),

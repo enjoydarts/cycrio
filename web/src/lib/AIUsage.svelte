@@ -201,7 +201,7 @@
           {#if view.filter.account_id}<p>
               メール接続：<strong>{accountName}</strong>
             </p>{:else}<p>メール接続：すべて</p>{/if}
-          <ActionGroup>
+          <ActionGroup spacing="before">
             {#if view.filter.account_id}<Button
                 type="button"
                 wrap

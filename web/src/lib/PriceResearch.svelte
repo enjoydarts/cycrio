@@ -128,7 +128,7 @@
   <p class="muted">
     手入力の価格上書きと過去の価格は保持します。確認できない価格は「不明」のままにし、無料として扱いません。
   </p>
-  <ActionGroup>
+  <ActionGroup spacing="both">
     <ActionLink wrap href="/settings/credentials"
       >料金調査に使う API キーを登録・更新</ActionLink
     >
@@ -184,7 +184,7 @@
             disabled={locked}
             type="search"
           />
-          <ActionGroup
+          <ActionGroup spacing="before"
             ><Button wrap type="submit" disabled={locked}
               >調査モデルを検索</Button
             ></ActionGroup
@@ -249,7 +249,7 @@
           設定を保存するとテスト結果は無効になります。定期更新は
           Web検索テストの成功まで保留されます。モデル一覧の同期後も、この設定に従って価格を調査します。
         </p>
-        <ActionGroup
+        <ActionGroup spacing="both"
           ><Button
             wrap
             type="button"
