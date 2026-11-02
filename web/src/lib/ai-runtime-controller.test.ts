@@ -9,7 +9,7 @@ import {
   canActivate,
 } from './ai-runtime-controller.ts';
 import { id, runtime, run, report, call } from './airuntime-test-fixtures.ts';
-import type { AIRuntimeAPI } from './airuntime-api.ts';
+import { parseRuntimeState, type AIRuntimeAPI } from './airuntime-api.ts';
 import type { CatalogAPI } from './catalog-api.ts';
 const deferred = <T>() => {
   let resolve!: (v: T) => void;
@@ -48,6 +48,26 @@ const catalog = {
   }),
 } as unknown as CatalogAPI;
 const token = async () => 'token';
+
+test('new runtime defaults allow 8192 tokens while retaining explicit saved budgets', async () => {
+  for (const saved of [null, 1024, 16384]) {
+    const value = parseRuntimeState(runtime());
+    if (saved === null) value.draft = null;
+    else value.draft!.max_output_tokens = saved;
+    const controller = createRuntimeController(
+      fakeAPI({ state: async () => value }),
+      catalog,
+      token,
+      () => {},
+      () => {},
+    );
+    await controller.load();
+    assert.equal(
+      controller.state().form?.values.max_output_tokens,
+      saved ?? 8192,
+    );
+  }
+});
 test('OpenRouter approval slugs are rejected before saving or paid test when malformed', async () => {
   for (const slug of [
     'vendor/a/b',

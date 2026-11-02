@@ -14,6 +14,29 @@ import {
 } from './ai-setup-test-fixtures.ts';
 import { parseRuntimeState } from './airuntime-api.ts';
 import { runtime, run, id } from './airuntime-test-fixtures.ts';
+
+test('new AI setup reserves 8192 output tokens including reasoning and preserves saved limits', async () => {
+  for (const saved of [null, 1024, 16384]) {
+    const { api, state } = setupFixture();
+    if (saved === null) state.runtime.draft = null;
+    else state.runtime.draft!.max_output_tokens = saved;
+    const controller = createAISetupController(
+      api,
+      async () => 'token',
+      () => {},
+      () => {},
+    );
+    await controller.load();
+    assert.equal(
+      controller.state().selection?.values.max_output_tokens,
+      saved ?? 8192,
+    );
+    assert.equal(
+      controller.state().routeLimits?.max_output_tokens,
+      saved ?? 8192,
+    );
+  }
+});
 test('a previous HTTP 400 test does not prevent loading model and price selections', async () => {
   const { api, state } = setupFixture();
   state.runtime.latest_test = {

@@ -29,6 +29,7 @@ import {
   isPrimaryModel,
 } from './model-catalog.ts';
 import { pendingTest } from './ai-runtime-controller.ts';
+import { defaultMaxOutputTokens } from './ai-defaults.ts';
 export type SetupStage = 'models' | 'test' | 'permission';
 type Selection = {
   primary: string;
@@ -263,7 +264,7 @@ export function createAISetupController(
   ) {
     const criteria = {
       max_input_bytes: values?.max_input_bytes ?? 16384,
-      max_output_tokens: values?.max_output_tokens ?? 1024,
+      max_output_tokens: values?.max_output_tokens ?? defaultMaxOutputTokens,
     };
     const read = (offset: number) => {
       if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
@@ -344,7 +345,7 @@ export function createAISetupController(
       route_id: chosen?.id ?? '',
       route_tag: chosen?.tag ?? '',
       max_input_bytes: p?.max_input_bytes ?? 16384,
-      max_output_tokens: p?.max_output_tokens ?? 1024,
+      max_output_tokens: p?.max_output_tokens ?? defaultMaxOutputTokens,
       timeout_seconds: p?.timeout_seconds ?? 30,
     };
   }
@@ -410,7 +411,10 @@ export function createAISetupController(
       });
       const criteria = view.selection?.values ??
         runtime.draft ??
-        runtime.active ?? { max_input_bytes: 16384, max_output_tokens: 1024 };
+        runtime.active ?? {
+          max_input_bytes: 16384,
+          max_output_tokens: defaultMaxOutputTokens,
+        };
       const routes = await allRoutes(signal, criteria);
       if (!current(seq)) return;
       emit({
@@ -458,7 +462,7 @@ export function createAISetupController(
       signal = abort.signal;
     const criteria = view.selection?.values ?? {
       max_input_bytes: 16384,
-      max_output_tokens: 1024,
+      max_output_tokens: defaultMaxOutputTokens,
     };
     emit({ routeLoading: true, routeError: false });
     const request = { promise: Promise.resolve() };

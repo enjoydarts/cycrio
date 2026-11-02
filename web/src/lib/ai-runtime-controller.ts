@@ -1,4 +1,5 @@
 import { ApiError, type TokenProvider } from './api.ts';
+import { defaultMaxOutputTokens } from './ai-defaults.ts';
 import type { CatalogAPI, Model, SettingsState } from './catalog-api.ts';
 import { createRevisionDraft, type RevisionDraft } from './model-catalog.ts';
 import type {
@@ -86,7 +87,8 @@ export const outcomeNames: Record<string, string> = {
   model_mismatch: 'モデル不一致',
   invalid_output: '出力形式が不正',
   refusal: '応答拒否',
-  incomplete: '応答未完了',
+  incomplete:
+    '応答が途中で終了しました。出力上限や待機上限を確認してください。',
   generation_mismatch: '生成 ID 不一致',
   provider_unavailable: '配信先を利用できません',
   timeout: '時間切れ',
@@ -223,7 +225,7 @@ export function createRuntimeController(
     return {
       catalog_settings_id: settings.id ?? '',
       max_input_bytes: p?.max_input_bytes ?? 8192,
-      max_output_tokens: p?.max_output_tokens ?? 1024,
+      max_output_tokens: p?.max_output_tokens ?? defaultMaxOutputTokens,
       timeout_seconds: p?.timeout_seconds ?? 30,
       openrouter_provider: p?.openrouter_provider ?? '',
     };
