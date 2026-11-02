@@ -1,5 +1,165 @@
 [
   {
+    "slug": "docomo",
+    "title": "NTTドコモ",
+    "file": "docomo.png",
+    "sourceUrl": "https://www.docomo.ne.jp/assets/etc.clientlibs/docommon/clientlibs/v1/clientlib-resource/resources/apple-touch-icon-180x180.png",
+    "sha256": "588e587507745b6821f5a8166712c3ed12b1badf6293a973d210d3f042f6f175",
+    "credit": "NTTドコモ"
+  },
+  {
+    "slug": "au",
+    "title": "au",
+    "file": "au.ico",
+    "sourceUrl": "https://www.au.com/content/dam/au-com/common/icon/favicon.ico",
+    "sha256": "b782322617ee082a14267aeccc63bf44a32dc7c755a9351c009c06a425794e97",
+    "credit": "au"
+  },
+  {
+    "slug": "softbank",
+    "title": "SoftBank",
+    "file": "softbank.ico",
+    "sourceUrl": "https://www.softbank.jp/site/set/common/p/img/favicon.ico",
+    "sha256": "a4c0a4b9f35aa94f73593e57513d0025243bd13236f74d9c545f7580c066267a",
+    "credit": "SoftBank"
+  },
+  {
+    "slug": "rakutenmobile",
+    "title": "楽天モバイル",
+    "file": "rakutenmobile.png",
+    "sourceUrl": "https://network.mobile.rakuten.co.jp/apple-touch-icon.png",
+    "sha256": "46827b9fe8821f3c15d5dd85330ecca9bc63d8fe1dd91b158d885e3d9ce85c40",
+    "credit": "楽天モバイル"
+  },
+  {
+    "slug": "ahamo",
+    "title": "ahamo",
+    "file": "ahamo.png",
+    "sourceUrl": "https://cache.cil.ahamo.com/common/images/apple-touch-icon.png",
+    "sha256": "10c9f63d720a30d265e101deb8d73852fe1b6b194f326f414dfe0b1e6a2d8a58",
+    "credit": "ahamo"
+  },
+  {
+    "slug": "povo",
+    "title": "povo",
+    "file": "povo.ico",
+    "sourceUrl": "https://povo.jp/favicon.ico",
+    "sha256": "3f509c9e2f4a18089511de985d8d873aa58a9936b923a280e05b5307b4ca224f",
+    "credit": "povo"
+  },
+  {
+    "slug": "uqmobile",
+    "title": "UQ mobile",
+    "file": "uqmobile.ico",
+    "sourceUrl": "https://www.uqwimax.jp/favicon.ico",
+    "sha256": "7f90597096bfcd73bcd9f0089298e416488f0b913dfa100930239ad7bd0893c8",
+    "credit": "UQ mobile"
+  },
+  {
+    "slug": "ymobile",
+    "title": "Y!mobile",
+    "file": "ymobile.png",
+    "sourceUrl": "https://www.ymobile.jp/common_c/images/common/apple_touch_icon.png",
+    "sha256": "6a5902ffc2b5d3bbc96a30f3eafe837a0d2460c7a1bb2177b40681d99f5c4cf5",
+    "credit": "Y!mobile"
+  },
+  {
+    "slug": "linemo",
+    "title": "LINEMO",
+    "file": "linemo.ico",
+    "sourceUrl": "https://www.linemo.jp/assets/images/common/favicon.ico",
+    "sha256": "f16e142908e3689c296590e2d66747a52234793c7c6df9ff4fd69602be30b5eb",
+    "credit": "LINEMO"
+  },
+  {
+    "slug": "iijmobile",
+    "title": "IIJモバイル",
+    "file": "iijmobile.ico",
+    "sourceUrl": "https://www.iij.ad.jp/favicon.ico",
+    "sha256": "c2f2e042e0cef3b2672be7d1b543a6b864045c45eddb2cc34761bb9a420552b8",
+    "credit": "IIJモバイル"
+  },
+  {
+    "slug": "iijmio",
+    "title": "IIJmio",
+    "file": "iijmio.svg",
+    "sourceUrl": "https://www.iij.ad.jp/images_renewal/index_logo03.svg",
+    "sha256": "f68c54d392976bcfa9fdd0b60fb5da9a6e97f5457149af5c54babb9d95aca5f2",
+    "credit": "IIJmio / Internet Initiative Japan"
+  },
+  {
+    "slug": "mineo",
+    "title": "mineo",
+    "file": "mineo.svg",
+    "sourceUrl": "https://mineo.jp/asset/img/common/template/logo_mineo.svg",
+    "sha256": "bc8e15d73d0c4813a5b5d39fa07e0528e1b97e4ba0badb8fb426f735608f6fe5",
+    "credit": "mineo / OPTAGE"
+  },
+  {
+    "slug": "nihontsushin",
+    "title": "日本通信SIM",
+    "file": "nihontsushin.png",
+    "sourceUrl": "https://www.nihontsushin.com/apple-touch-icon.png",
+    "sha256": "f3b081e17bb093f588994bc4163b7096a72a7e81d7da2df2791d3f97a2b34d31",
+    "credit": "日本通信SIM"
+  },
+  {
+    "slug": "bmobile",
+    "title": "b-mobile",
+    "file": "bmobile.png",
+    "sourceUrl": "https://www.bmobile.ne.jp/apple-touch-icon.png",
+    "sha256": "9a0dae9ac247a02ce1cc957f7ce15eea2a1e21a13f38c71af3349e9c9175fedf",
+    "credit": "b-mobile"
+  },
+  {
+    "slug": "hismobile",
+    "title": "HISモバイル",
+    "file": "hismobile.ico",
+    "sourceUrl": "https://his-mobile.com/wp-content/themes/hismobile/images/favicon.ico",
+    "sha256": "15768cbf044afbe1759d759b16289b03b92a3916231f47fe4ead47e95ed8a4db",
+    "credit": "HISモバイル"
+  },
+  {
+    "slug": "nuromobile",
+    "title": "NUROモバイル",
+    "file": "nuromobile.png",
+    "sourceUrl": "https://mobile.nuro.jp/apple-touch-icon.png",
+    "sha256": "454ab1294c6dadec0030b6f819e7ff484f19fb5484e08d5e95ff93bb4888a46b",
+    "credit": "NUROモバイル"
+  },
+  {
+    "slug": "aeonmobile",
+    "title": "イオンモバイル",
+    "file": "aeonmobile.png",
+    "sourceUrl": "https://aeonmobile.jp/common/img/favicon256.png",
+    "sha256": "af929c68e396bc8b5a6e033f433f083d509042e8237a650f9276146fa0505404",
+    "credit": "イオンモバイル"
+  },
+  {
+    "slug": "bicsim",
+    "title": "BIC SIM",
+    "file": "bicsim.ico",
+    "sourceUrl": "https://bicsim.com/ico/favicon.ico",
+    "sha256": "587927b3479a507294345665a275a4a7d1cdc5af0c4032863ab46848aa34b8d9",
+    "credit": "BIC SIM"
+  },
+  {
+    "slug": "linksmate",
+    "title": "LinksMate",
+    "file": "linksmate.png",
+    "sourceUrl": "https://linksmate.jp/img/common/apple-touch/favi_180.png",
+    "sha256": "55befba53ef3c759e7ee46b120600cd946d7d217044be4066114aafce700fb49",
+    "credit": "LinksMate"
+  },
+  {
+    "slug": "tonemobile",
+    "title": "TONEモバイル",
+    "file": "tonemobile.png",
+    "sourceUrl": "https://tone.ne.jp/assets/img/logo/tone_icon.png",
+    "sha256": "da1389783f844d400ce27f847be9eb426fe7338bbc690b7d91b345dfc75c6988",
+    "credit": "TONEモバイル"
+  },
+  {
     "slug": "bookwalker",
     "title": "BOOK☆WALKER",
     "file": "bookwalker.png",

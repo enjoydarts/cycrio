@@ -11,6 +11,69 @@ export type ServiceLogo = {
 
 const aliases = new Map<string, string>();
 const names: [string, string[]][] = [
+  ['docomo', ['NTTドコモ', 'NTT DOCOMO', 'ドコモ', 'docomo']],
+  ['au', ['au', 'エーユー', 'au（KDDI）']],
+  ['softbank', ['SoftBank', 'ソフトバンク', 'SoftBank Mobile']],
+  [
+    'rakutenmobile',
+    [
+      '楽天モバイル',
+      'Rakuten Mobile',
+      '楽天モバイル 最強プラン',
+      '楽天モバイル Rakuten最強プラン',
+    ],
+  ],
+  ['ahamo', ['ahamo', 'アハモ', 'ahamo 大盛り']],
+  ['povo', ['povo', 'povo2.0', 'povo1.0', 'ポヴォ']],
+  ['uqmobile', ['UQ mobile', 'UQモバイル', 'ユーキューモバイル']],
+  ['ymobile', ['Y!mobile', 'ワイモバイル']],
+  [
+    'linemo',
+    ['LINEMO', 'ラインモ', 'LINEMO ベストプラン', 'LINEMO ベストプランV'],
+  ],
+  [
+    'iijmobile',
+    [
+      'IIJモバイル',
+      'IIJ Mobile',
+      'IIJモバイルサービス',
+      ...['I', 'D', 'K'].map((type) => `IIJモバイルサービス/タイプ${type}`),
+    ],
+  ],
+  [
+    'iijmio',
+    [
+      'IIJmio',
+      'アイアイジェイミオ',
+      'IIJmioモバイルサービス',
+      'IIJmio ギガプラン',
+    ],
+  ],
+  ['mineo', ['mineo', 'マイネオ', 'mineo マイピタ', 'mineo マイそく']],
+  ['nihontsushin', ['日本通信SIM', '日本通信SIM 合理的シンプル290プラン']],
+  ['bmobile', ['b-mobile', 'bモバイル', 'ビーモバイル']],
+  ['hismobile', ['HISモバイル', 'HIS Mobile', 'エイチアイエスモバイル']],
+  ['nuromobile', ['NUROモバイル', 'nuro mobile', 'ニューロモバイル']],
+  ['aeonmobile', ['イオンモバイル', 'AEON Mobile']],
+  ['bicsim', ['BIC SIM', 'ビックシム', 'ビックSIM']],
+  ['linksmate', ['LinksMate', 'リンクスメイト']],
+  ['tonemobile', ['TONEモバイル', 'トーンモバイル', 'TONE mobile']],
+  [
+    'x',
+    [
+      'X Premium',
+      'X Premium+',
+      'X Premium Plus',
+      'X Basic',
+      'Xプレミアム',
+      'Xプレミアムプラス',
+      'X ベーシック',
+      'Twitter Blue',
+      'Twitterブルー',
+      'ツイッターブルー',
+      'X（旧Twitter） Premium',
+    ],
+  ],
   ['netflix', ['Netflix', 'ネットフリックス']],
   ['spotify', ['Spotify', 'スポティファイ']],
   [
@@ -262,6 +325,26 @@ for (const [slug, variants] of names) {
 }
 
 const domains: Record<string, string> = {
+  'docomo.ne.jp': 'docomo',
+  'au.com': 'au',
+  'softbank.jp': 'softbank',
+  'network.mobile.rakuten.co.jp': 'rakutenmobile',
+  'ahamo.com': 'ahamo',
+  'povo.jp': 'povo',
+  'ymobile.jp': 'ymobile',
+  'linemo.jp': 'linemo',
+  'iijmio.jp': 'iijmio',
+  'mineo.jp': 'mineo',
+  'nihontsushin.com': 'nihontsushin',
+  'bmobile.ne.jp': 'bmobile',
+  'his-mobile.com': 'hismobile',
+  'mobile.nuro.jp': 'nuromobile',
+  'aeonmobile.jp': 'aeonmobile',
+  'bicsim.com': 'bicsim',
+  'linksmate.jp': 'linksmate',
+  'tone.ne.jp': 'tonemobile',
+  'x.com': 'x',
+  'twitter.com': 'x',
   'netflix.com': 'netflix',
   'spotify.com': 'spotify',
   'youtube.com': 'youtube',
@@ -394,6 +477,14 @@ export function resolveServiceLogo(
       )
         return null;
       const host = url.hostname.replace(/^www\./, '');
+      // These corporate hosts also serve other products; require a mobile path.
+      if (
+        host === 'iij.ad.jp' &&
+        /^\/biz\/iijmobile(?:-dk)?(?:\/|$)/i.test(url.pathname)
+      )
+        return lookup('iijmobile');
+      if (host === 'uqwimax.jp' && /^\/mobile(?:\/|$)/i.test(url.pathname))
+        return lookup('uqmobile');
       if (host === 'amazon.co.jp' || host === 'amazon.com') {
         const product = amazonProductPaths.find(([path]) =>
           path.test(url.pathname),
