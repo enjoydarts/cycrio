@@ -31,6 +31,17 @@ const ready = () => ({
   status: 'ready' as const,
   error: null,
 });
+test('home AI wait explains administrator automatic resumption without asking owner to reconfigure', async () => {
+  const Component = (await import(await componentURL('OverviewPanel'))).default;
+  const view = ready();
+  view.page.connections[0].automation_state = 'enabled';
+  view.page.connections[0].ready = false;
+  view.page.connections[0].blocked_reasons = ['runtime_inactive'];
+  const html = render(Component, { props: { view } }).body;
+  assert.match(html, /管理者のAI設定待ち/);
+  assert.match(html, /自動で再開/);
+  assert.doesNotMatch(html, /取り込みの準備条件を確認してください/);
+});
 test('home HTML shows saved dates, unknown charges and review count without monthly payment totals', async () => {
   const Component = (await import(await componentURL('OverviewPanel'))).default;
   const html = render(Component, { props: { view: ready() } }).body;

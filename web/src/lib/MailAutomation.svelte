@@ -18,6 +18,8 @@
   import {
     automationProgressStatus,
     automationProgressDescription,
+    automationAIWaiting,
+    automationAISetupPath,
   } from './mail-automation-progress.ts';
   import { automationSetupLink } from './setup-readiness.ts';
   import MailProcessingModels from './MailProcessingModels.svelte';
@@ -44,12 +46,13 @@
     controller = $state<ReturnType<typeof createMailAutomationController>>(),
     reviewing = $state(false);
   const s = $derived(view.snapshot),
+    aiWaiting = $derived(s ? automationAIWaiting(s) : false),
     draft = $derived(view.draft),
     frozen = $derived(view.busy || !!view.pending),
     needsReview = $derived(
       s?.state === 'not_configured' ||
         s?.state === 'needs_confirmation' ||
-        reviewing,
+        (reviewing && !aiWaiting),
     );
   const reasons = $derived(s?.preparation_blocked_reasons ?? []);
   const blockedLabels: Record<string, string> = {
@@ -199,6 +202,16 @@
       <p class="status" role="status">
         {automationProgressStatus(s)}
       </p>
+      {#if aiWaiting && session.user?.role === 'platform_admin'}
+        <ActionLink
+          wrap
+          href={automationSetupLink(
+            automationAISetupPath([s.reason, ...s.blocked_reasons, ...reasons]),
+            returnTo,
+            account.id,
+          )}>管理者のAI設定を確認する</ActionLink
+        >
+      {/if}
       {#if s.state === 'enabled' && s.retry_at}<p>
           メールの確認を一時的に待機しています。次の再試行：{processingDate(
             s.retry_at,
@@ -240,7 +253,7 @@
             ? processingDate(s.last_success_at)
             : 'まだありません'}（日本時間）
         </p>
-        {#if s.state === 'enabled'}<p class="muted">
+        {#if s.state === 'enabled' && !aiWaiting}<p class="muted">
             アプリを閉じても取り込み・解析は続きます。サブスクへの登録には承認が必要です。
           </p>{:else if s.state === 'stopped'}<p class="muted">
             この接続の取り込み・解析は停止中です。{blockedLabels[s.reason] ??
@@ -387,14 +400,14 @@
           新着確認5分ごと
         </p>
         <p>抽出された契約候補は、確認・承認してからサブスクへ登録します。</p>
-        <Button
-          wrap
-          disabled={frozen}
-          onclick={() => {
-            reviewing = true;
-            controller?.adopt();
-          }}>条件を見直す</Button
-        >
+        {#if !aiWaiting}<Button
+            wrap
+            disabled={frozen}
+            onclick={() => {
+              reviewing = true;
+              controller?.adopt();
+            }}>条件を見直す</Button
+          >{/if}
       </details>{/if}
   {/if}
 </section>

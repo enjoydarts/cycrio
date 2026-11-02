@@ -17,7 +17,7 @@ func (r *MailAutomationRepository) Tick(ctx context.Context, limit int) (int, er
 	if limit < 1 || limit > 100 {
 		return 0, mailautomation.ErrInvalid
 	}
-	rows, e := r.pool.Query(ctx, `SELECT a.owner_id,a.account_id FROM mail_automations a JOIN users u ON u.id=a.owner_id AND u.state='active' WHERE a.state='enabled' ORDER BY a.updated_at,a.id LIMIT $1`, limit)
+	rows, e := r.pool.Query(ctx, `SELECT a.owner_id,a.account_id FROM mail_automations a JOIN users u ON u.id=a.owner_id AND u.state='active' WHERE a.state='enabled' OR (a.state='needs_confirmation' AND a.reason IN ('runtime_inactive','policy_disabled','full_email_not_allowed','policy_reconfirmation_required','configuration_unavailable','configuration_changed') AND coalesce((SELECT action FROM mail_automation_audit WHERE automation_id=a.id ORDER BY version DESC,created_at DESC,id DESC LIMIT 1),'')<>'stopped') ORDER BY a.updated_at,a.id LIMIT $1`, limit)
 	if e != nil {
 		return 0, processingError(e)
 	}
@@ -57,18 +57,23 @@ func (r *MailAutomationRepository) tickAccount(ctx context.Context, owner, accou
 		return e
 	}
 	defer tx.Rollback(ctx)
-	var id, state, lastDiscovery, lastProcessing string
+	var id, state, previousReason, lastDiscovery, lastProcessing string
 	var generation, version int64
 	var due bool
 	var backoff bool
 	var retryLane string
 	var retryWindow int
-	e = tx.QueryRow(ctx, `SELECT id,state,generation,version,last_discovery_lane,last_processing_lane,next_check_at<=clock_timestamp(),coalesce(retry_after>clock_timestamp(),false),retry_lane,retry_window_index FROM mail_automations WHERE owner_id=$1 AND account_id=$2`, owner, account).Scan(&id, &state, &generation, &version, &lastDiscovery, &lastProcessing, &due, &backoff, &retryLane, &retryWindow)
+	e = tx.QueryRow(ctx, `SELECT id,state,reason,generation,version,last_discovery_lane,last_processing_lane,next_check_at<=clock_timestamp(),coalesce(retry_after>clock_timestamp(),false),retry_lane,retry_window_index FROM mail_automations WHERE owner_id=$1 AND account_id=$2`, owner, account).Scan(&id, &state, &previousReason, &generation, &version, &lastDiscovery, &lastProcessing, &due, &backoff, &retryLane, &retryWindow)
 	if e != nil {
 		return processingError(e)
 	}
-	if state != "enabled" {
+	if state != "enabled" && !(state == "needs_confirmation" && administratorAutomationReason(previousReason)) {
 		return nil
+	}
+	// Every visited candidate moves to the back of the bounded scan, including
+	// unchanged AI waits and legacy pauses that cannot safely recover.
+	if _, e = tx.Exec(ctx, `UPDATE mail_automations SET updated_at=clock_timestamp() WHERE id=$1`, id); e != nil {
+		return processingError(e)
 	}
 	var saved mailautomation.Basis
 	var scope mailautomation.Scope
@@ -86,8 +91,30 @@ func (r *MailAutomationRepository) tickAccount(ctx context.Context, owner, accou
 	if basis.AccountVersion != saved.AccountVersion {
 		reason = "account_changed"
 	}
-	if basis.ProfileID != saved.ProfileID || basis.PolicyVersion != saved.PolicyVersion {
-		reason = "configuration_changed"
+	if state == "needs_confirmation" {
+		// Recover legacy AI pauses only while owner consent and explicit-stop
+		// history still apply. The immutable initial scope remains untouched.
+		var stopped bool
+		if e = tx.QueryRow(ctx, `SELECT coalesce((SELECT action='stopped' FROM mail_automation_audit WHERE automation_id=$1 ORDER BY version DESC,created_at DESC,id DESC LIMIT 1),false)`, id).Scan(&stopped); e != nil {
+			return processingError(e)
+		}
+		if stopped || basis.AccountVersion != saved.AccountVersion || (reason != "" && !administratorAutomationReason(reason)) {
+			return processingError(tx.Commit(ctx))
+		}
+		if _, e = tx.Exec(ctx, `UPDATE mail_automations SET state='enabled',reason='' WHERE id=$1`, id); e != nil {
+			return processingError(e)
+		}
+	}
+	if reason == "" && administratorAutomationReason(previousReason) {
+		if _, e = tx.Exec(ctx, `UPDATE mail_automations SET state='enabled',reason='',version=version+1,updated_at=clock_timestamp() WHERE id=$1`, id); e != nil {
+			return processingError(e)
+		}
+		version++
+		if e = auditAutomation(ctx, tx, owner, account, id, generation, version, "resumed", previousReason); e != nil {
+			return e
+		}
+		// Legacy paused runs were cancelled; existing waiting runs have also
+		// already been stopped before this transition.
 	}
 	if reason != "" {
 		if e = pauseAutomation(ctx, tx, id, reason); e != nil {
@@ -150,9 +177,6 @@ func (r *MailAutomationRepository) tickAccount(ctx context.Context, owner, accou
 		if e = createAutomaticProcessing(ctx, tx, owner, account, id, generation, version, basis, lastProcessing); e != nil {
 			return e
 		}
-	}
-	if _, e = tx.Exec(ctx, `UPDATE mail_automations SET updated_at=clock_timestamp() WHERE id=$1`, id); e != nil {
-		return processingError(e)
 	}
 	return processingError(tx.Commit(ctx))
 }

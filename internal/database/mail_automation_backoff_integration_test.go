@@ -132,7 +132,7 @@ func TestMailAutomationDiscoveryRetriesKeepSnapshotAndServerFailureBudget(t *tes
 	}
 }
 
-func TestMailAutomationNeedsConfirmationCannotBeClearedByStopAfterKeyRecovery(t *testing.T) {
+func TestMailAutomationAIWaitingCanBeExplicitlyStoppedAfterKeyRecovery(t *testing.T) {
 	f, r, in := automaticFixture(t)
 	ctx := context.Background()
 	automaticBootstrap(t, f, r, in, 1)
@@ -145,18 +145,19 @@ func TestMailAutomationNeedsConfirmationCannotBeClearedByStopAfterKeyRecovery(t 
 		t.Fatal("unavailable key sent data", e)
 	}
 	v, e := r.Read(ctx, f.owner, f.account)
-	if e != nil || v.State != "needs_confirmation" {
+	if e != nil || v.State != "enabled" || v.Ready {
 		t.Fatal(v, e)
 	}
 	if _, e = f.runtime.pool.Exec(ctx, `UPDATE credential_versions SET state='active' WHERE id=$1`, w.Profile.Primary.CredentialID); e != nil {
 		t.Fatal(e)
 	}
 	v, e = r.Stop(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()})
-	if e != nil || v.State != "needs_confirmation" {
-		t.Fatal("stop cleared required confirmation", v, e)
+	if e != nil || v.State != "stopped" {
+		t.Fatal("stop did not preserve owner intent", v, e)
 	}
-	if _, e = r.Resume(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()}); !errors.Is(e, mailautomation.ErrConflict) {
-		t.Fatal("old consent revived", e)
+	// Administrator key preparation no longer revokes the owner's scope.
+	if _, e = r.Resume(ctx, f.owner, f.account, mailautomation.Control{ExpectedSettingsVersion: v.Version, RequestID: uuid.NewString()}); e != nil {
+		t.Fatal("restored key prevented explicit resume", e)
 	}
 	var calls int
 	if e = f.runtime.pool.QueryRow(ctx, `SELECT count(*) FROM ai_calls WHERE scope='user'`).Scan(&calls); e != nil || calls != 0 {

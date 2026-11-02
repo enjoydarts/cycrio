@@ -107,23 +107,24 @@ func automationState(ctx context.Context, tx pgx.Tx, owner, account string) (mai
 	if e != nil {
 		return out, e
 	}
-	// Preparation is the fresh administrator/account basis. Saved scope guards
-	// below are intentionally separate so the owner can explicitly reconfirm.
+	// Only the owner's account basis requires a fresh scope confirmation.
 	out.PreparationReady = len(out.BlockedReasons) == 0
 	out.PreparationBlockedReasons = append([]string{}, out.BlockedReasons...)
 	if out.ID != "" {
 		if out.Basis.AccountVersion != saved.AccountVersion {
 			out.BlockedReasons = append(out.BlockedReasons, "account_changed")
 		}
-		if out.Basis.ProfileID != saved.ProfileID || out.Basis.PolicyVersion != saved.PolicyVersion {
-			out.BlockedReasons = append(out.BlockedReasons, "configuration_changed")
-		}
 		if out.State == "needs_confirmation" {
 			out.BlockedReasons = append(out.BlockedReasons, out.Reason)
 		}
-		if len(out.BlockedReasons) > 0 && out.State == "enabled" {
-			out.State = "needs_confirmation"
-			out.Reason = out.BlockedReasons[0]
+		if out.State == "enabled" {
+			for _, reason := range out.BlockedReasons {
+				if !administratorAutomationReason(reason) {
+					out.State = "needs_confirmation"
+					out.Reason = reason
+					break
+				}
+			}
 		}
 		if e = tx.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap' AND NOT done),NOT EXISTS(SELECT 1 FROM mail_automation_progress p WHERE p.automation_id=$1 AND p.generation=$2 AND p.lane='historical' AND NOT done) AND EXISTS(SELECT 1 FROM mail_automation_progress p JOIN mail_automation_scopes s USING(automation_id,generation) WHERE p.automation_id=$1 AND p.generation=$2 AND p.lane='historical' AND p.before=s.before)`, out.ID, out.Generation).Scan(&out.Progress.BootstrapComplete, &out.Progress.HistoricalComplete); e != nil {
 			return out, mailautomation.ErrUnavailable
@@ -319,10 +320,10 @@ func (r *MailAutomationRepository) control(ctx context.Context, owner, account s
 	if e = stopAutomaticRuns(ctx, tx, v.ID); e != nil {
 		return mailautomation.State{}, e
 	}
-	// Required confirmation is never cleared by ordinary resume or stop, even
-	// when an administrator subsequently restores an unavailable key/profile.
+	// Owner confirmation survives stop; an AI wait can always be explicitly
+	// stopped without leaving a recoverable legacy pause behind.
 	reason := v.Reason
-	if v.State == "needs_confirmation" {
+	if v.State == "needs_confirmation" && !administratorAutomationReason(v.Reason) {
 		target = "needs_confirmation"
 	} else {
 		reason = ""
@@ -336,20 +337,56 @@ func (r *MailAutomationRepository) control(ctx context.Context, owner, account s
 	return automationReply(ctx, tx, owner, account, in.RequestID, doc)
 }
 
+// Administrator preparation is transient and never revokes the owner's scope.
+func administratorAutomationReason(reason string) bool {
+	switch reason {
+	case "runtime_inactive", "policy_disabled", "full_email_not_allowed", "policy_reconfirmation_required", "configuration_unavailable", "configuration_changed":
+		return true
+	}
+	return false
+}
+
 // pauseAutomation is only called with owner/account/automation locks held.
 func pauseAutomation(ctx context.Context, tx pgx.Tx, id, reason string) error {
-	var owner, account, state string
+	var owner, account, state, previous string
 	var generation, version int64
-	if e := tx.QueryRow(ctx, `SELECT owner_id,account_id,generation,version,state FROM mail_automations WHERE id=$1`, id).Scan(&owner, &account, &generation, &version, &state); e != nil {
+	if e := tx.QueryRow(ctx, `SELECT owner_id,account_id,generation,version,state,reason FROM mail_automations WHERE id=$1`, id).Scan(&owner, &account, &generation, &version, &state, &previous); e != nil {
 		return processingError(e)
 	}
 	if state != "enabled" {
 		return nil
 	}
+	// Worker guards may report a generic configuration change. An owner-side
+	// account change always wins, including when AI preparation also changed.
+	var unchanged bool
+	if e := tx.QueryRow(ctx, `SELECT a.version=s.account_version FROM mail_accounts a JOIN mail_automation_scopes s ON s.account_id=a.id WHERE s.automation_id=$1 AND s.generation=$2`, id, generation).Scan(&unchanged); e != nil {
+		return processingError(e)
+	}
+	if !unchanged {
+		reason = "account_changed"
+	} else if administratorAutomationReason(reason) {
+		_, reasons, e := automationReadiness(ctx, tx, owner, account, true)
+		if e != nil {
+			return e
+		}
+		for _, current := range reasons {
+			if !administratorAutomationReason(current) {
+				reason = current
+				break
+			}
+		}
+	}
+	target := "needs_confirmation"
+	if administratorAutomationReason(reason) {
+		target = "enabled"
+		if previous == reason {
+			return nil
+		}
+	}
 	if e := stopAutomaticRuns(ctx, tx, id); e != nil {
 		return e
 	}
-	if _, e := tx.Exec(ctx, `UPDATE mail_automations SET version=version+1,state='needs_confirmation',reason=$2,retry_after=NULL,retry_lane='',updated_at=clock_timestamp() WHERE id=$1`, id, reason); e != nil {
+	if _, e := tx.Exec(ctx, `UPDATE mail_automations SET version=version+1,state=$3,reason=$2,retry_after=NULL,retry_lane='',updated_at=clock_timestamp() WHERE id=$1`, id, reason, target); e != nil {
 		return processingError(e)
 	}
 	return auditAutomation(ctx, tx, owner, account, id, generation, version+1, "paused", reason)

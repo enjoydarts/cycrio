@@ -147,6 +147,8 @@ test('import progress is visible before any AI run exists and shows discovery st
     account_id: 'account',
     state: 'enabled',
     reason: '',
+    ready: true,
+    blocked_reasons: [],
     scope: { since: '2025-01-01', before: '2026-01-01' },
     retry_at: null,
     last_success_at: null,
@@ -249,6 +251,31 @@ test('import progress prioritizes stopped, confirmation and retry states over bo
     );
     assert.match(body, new RegExp(expected));
     assert.doesNotMatch(body, /初回同期の準備中|同期位置を確認しています/);
+  }
+});
+
+test('import progress shows administrator wait with retained counts and automatic resumption', async () => {
+  const state = {
+    ...gettingStartedFixture().automation!,
+    id: 'automation',
+    state: 'enabled',
+    ready: false,
+    preparation_ready: false,
+    reason: 'configuration_changed',
+    preparation_blocked_reasons: ['configuration_changed'],
+  };
+  state.progress.completed_count = 23;
+  for (const compact of [false, true]) {
+    const body = visible(
+      await html('ImportProgressPanel', {
+        entries: [{ label: 'Outlook', state }],
+        compact,
+      }),
+    );
+    assert.match(body, /管理者のAI設定待ち/);
+    assert.match(body, /進捗.*保持.*自動.*再開/);
+    assert.doesNotMatch(body, /条件の再確認が必要|再開を確認|初回同期の準備中/);
+    if (!compact) assert.match(body, /23 件/);
   }
 });
 test('import progress advances from bootstrap to discovery, analysis and new mail without stale preparation', async () => {

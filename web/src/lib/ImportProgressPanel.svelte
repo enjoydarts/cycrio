@@ -5,6 +5,7 @@
   import {
     automationProgressStatus,
     automationProgressDescription,
+    automationAIWaiting,
   } from './mail-automation-progress.ts';
   let {
     entries,
@@ -49,7 +50,7 @@
               s.scope.before,
             )}（日本時間・終了日を含む）
           </p>{/if}
-        {#if s.reason && (compact || s.state !== 'enabled')}<p
+        {#if s.reason && !automationAIWaiting(s) && (compact || s.state !== 'enabled')}<p
             class="warning"
             role="status"
           >
@@ -69,7 +70,9 @@
           {automationProgressDescription(s)}
         </p>
         <a href={'/import?account_id=' + s.account_id}
-          >取り込みの設定・再開を確認</a
+          >{automationAIWaiting(s)
+            ? '取り込み状況を見る'
+            : '取り込みの設定・再開を確認'}</a
         >
         {#if s.recent_sync_runs.length}<details>
             <summary>探索履歴</summary>

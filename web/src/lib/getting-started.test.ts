@@ -57,6 +57,34 @@ test('changed conditions and unknown automation blockers never claim readiness',
   assert.equal(gettingStartedGuide(page, false).stage, 'confirmation');
 });
 
+test('enabled imports wait for administrators and resume after AI changes without owner checks', () => {
+  const page = gettingStartedFixture();
+  page.automation!.state = 'enabled';
+  page.automation!.basis.policy_version++;
+  assert.equal(gettingStartedGuide(page, false).stage, 'importing');
+  page.automation!.ready = false;
+  page.automation!.preparation_ready = false;
+  page.automation!.preparation_blocked_reasons = [
+    'policy_reconfirmation_required',
+  ];
+  page.preview!.ready = false;
+  page.preview!.blocked_reason = 'policy_reconfirmation_required';
+  const owner = gettingStartedGuide(page, false);
+  assert.equal(owner.title, '管理者のAI設定待ち');
+  assert.match(owner.description, /自動.*再開/);
+  assert.equal(owner.href, null);
+  assert.equal(
+    gettingStartedGuide(page, true).href,
+    '/settings/ai?stage=permission',
+  );
+  page.automation!.state = 'stopped';
+  assert.equal(gettingStartedGuide(page, false).stage, 'stopped');
+  page.automation!.state = 'needs_confirmation';
+  page.automation!.reason = 'account_changed';
+  page.automation!.blocked_reasons = ['account_changed'];
+  assert.equal(gettingStartedGuide(page, false).stage, 'confirmation');
+});
+
 test('import progress does not promise registration without knowing owner automation preference', () => {
   const page = gettingStartedFixture();
   page.automation!.state = 'enabled';

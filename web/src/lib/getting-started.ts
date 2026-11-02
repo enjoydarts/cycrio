@@ -10,6 +10,11 @@ import type {
 } from './mail-automation-api.ts';
 import { createFeed } from './daily-controller.ts';
 import { processingAction, setupReadiness } from './setup-readiness.ts';
+import {
+  automationAIWaiting,
+  automationAISetupPath,
+  automationAIWaitingDescription,
+} from './mail-automation-progress.ts';
 
 export type GettingStartedPage = {
   accounts: MailAccount[];
@@ -100,6 +105,40 @@ export function gettingStartedGuide(
       label: 'メール解析で確認する',
       href: analysis,
     };
+  if (automation.state === 'stopped')
+    return {
+      stage: 'stopped',
+      title: '自動取り込みは停止中です',
+      description:
+        '再開する場合は、これまでの進捗と取り込み条件を確認してください。',
+      label: '停止状態と再開条件を見る',
+      href: analysis,
+    };
+  if (automationAIWaiting(automation))
+    return {
+      stage: 'preparation',
+      title: '管理者のAI設定待ち',
+      description: automationAIWaitingDescription,
+      label: admin
+        ? '管理者のAI設定を確認する'
+        : '管理者の準備をお待ちください',
+      href: admin
+        ? automationAISetupPath([
+            automation.reason,
+            ...automation.blocked_reasons,
+            ...automation.preparation_blocked_reasons,
+          ])
+        : null,
+    };
+  if (automation.state === 'needs_confirmation')
+    return {
+      stage: 'confirmation',
+      title: '取り込み条件の確認が必要です',
+      description:
+        'メール接続や対象フォルダーに変更があります。メール解析画面で内容を確認してください。',
+      label: '取り込み条件を確認する',
+      href: analysis,
+    };
   if (
     !preview.full_email_allowed ||
     (!preview.ready && preview.blocked_reason !== 'processing_active')
@@ -140,9 +179,10 @@ export function gettingStartedGuide(
   if (
     automation.basis.account_version !== account.version ||
     automation.basis.account_version !== preview.expected_version ||
-    automation.basis.runtime_version !== preview.runtime_version ||
-    automation.basis.profile_id !== (preview.profile_id ?? '') ||
-    automation.basis.policy_version !== preview.policy_version
+    (automation.state === 'not_configured' &&
+      (automation.basis.runtime_version !== preview.runtime_version ||
+        automation.basis.profile_id !== (preview.profile_id ?? '') ||
+        automation.basis.policy_version !== preview.policy_version))
   )
     return {
       stage: 'changed',
@@ -152,17 +192,7 @@ export function gettingStartedGuide(
       label: '取り込み条件を確認する',
       href: analysis,
     };
-  if (automation.state === 'stopped')
-    return {
-      stage: 'stopped',
-      title: '自動取り込みは停止中です',
-      description:
-        '再開する場合は、これまでの進捗と取り込み条件を確認してください。',
-      label: '停止状態と再開条件を見る',
-      href: analysis,
-    };
   if (
-    automation.state === 'needs_confirmation' ||
     !automation.preparation_ready ||
     (automation.state === 'enabled' && !automation.ready)
   )

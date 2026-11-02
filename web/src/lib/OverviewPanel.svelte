@@ -9,6 +9,10 @@
   import { money, cycle } from './daily-text.ts';
   import { processingDate } from './mail-processing-text.ts';
   import { inclusiveEnd } from './mail-automation-api.ts';
+  import {
+    automationAIWaiting,
+    automationAIWaitingDescription,
+  } from './mail-automation-progress.ts';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   let {
@@ -147,15 +151,22 @@
             <a href="/settings/mail">メール連携を管理</a>
           </div>
           {#if report.connections.length}<ul class="connection-list">
-              {#each report.connections as connection (connection.id)}<li>
+              {#each report.connections as connection (connection.id)}
+                {@const aiWaiting = automationAIWaiting({
+                  ...connection,
+                  state: connection.automation_state,
+                })}
+                <li>
                   <strong>{connection.label}</strong>
                   <p>
-                    {connectionNames[connection.state]} · {automationNames[
-                      connection.automation_state
-                    ]}
+                    {connectionNames[connection.state]} · {aiWaiting
+                      ? '管理者のAI設定待ち'
+                      : automationNames[connection.automation_state]}
                   </p>
                   {#if connection.blocked_reasons.length}<p>
-                      取り込みの準備条件を確認してください。
+                      {aiWaiting
+                        ? automationAIWaitingDescription
+                        : '取り込みの準備条件を確認してください。'}
                     </p>{/if}
                   <p class="muted">
                     最終メール確認：{connection.last_success_at
