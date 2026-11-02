@@ -11,6 +11,89 @@ export type ServiceLogo = {
 
 const aliases = new Map<string, string>();
 const names: [string, string[]][] = [
+  ['techlib', ['TechLib', 'テックリブ']],
+  ['tohocinemas', ['シネマイレージカード', 'シネマイレージ']],
+  ['adguard', ['AdGuard License']],
+  ['apple', ['AppleCare+', 'AppleCare+ 盗難・紛失プラン']],
+  ['azure', ['Azure', 'Microsoft Azure']],
+  ['excitemobile', ['BB.exciteモバイル', 'エキサイトモバイル']],
+  ['cocchi', ['COCCHi', 'コッチ']],
+  ['claude', ['Claude by Anthropic']],
+  ['conohawing', ['ConoHa WING', 'ConoHa WING ベーシック']],
+  ['dmmrental', ['DMM 月額レンタルサービス', 'DMM宅配レンタル']],
+  ['fanzatv', ['FANZA TV', 'FANZA TV Plus']],
+  ['fantia', ['Fantia', 'ファンティア']],
+  ['franklymail', ['FranklyMail']],
+  ['googlecloud', ['Google Cloud Platform & APIs']],
+  ['iijmio', ['IIJmio モバイル']],
+  ['iconpackstudio', ['Icon Pack Studio', 'IPS Pro (Icon Pack Studio)']],
+  ['mangomail', ['Mango Mail', 'Mango Dashboard']],
+  ['miraimind', ['MiraiMind', 'MiraiMind-君の「推し」を、君の手で']],
+  ['misskey', ['MisskeyHQ']],
+  ['multiecube', ['Multiecube', 'マルチエキューブ']],
+  ['mykirin', ['My KIRIN']],
+  ['qobuz', ['Qobuz']],
+  ['tohoone', ['TOHO-ONE']],
+  ['unextmobile', ['U-NEXT MOBILE']],
+  ['wordpress', ['WordPress.com']],
+  [
+    'yahoonavi',
+    [
+      'Yahoo!カーナビ',
+      'Yahoo!カーナビプラス',
+      'Yahoo!カーナビ - 広い道を優先案内、渋滞情報',
+    ],
+  ],
+  ['youtube', ['YouTube channel membership']],
+  ['atone', ['atone']],
+  ['docomo', ['d Wi-Fi']],
+  ['onamae', ['お名前.com ドメイン登録']],
+  ['sakuramail', ['さくらのメールボックス']],
+  ['amemil', ['アメミル']],
+  ['coloria', ['カラリア', 'カラリア 香りの定期便']],
+  ['cmoa', ['コミックシーモア']],
+  [
+    'zenrinnavi',
+    ['ゼンリン地図ナビ', 'ゼンリン地図ナビ-カーナビ/住宅地図/地図アプリ'],
+  ],
+  ['niconico', ['ニコニコチャンネル']],
+  ['norton', ['ノートン', 'ノートン™ IDアドバイザー']],
+  ['bandai', ['バンダイチャンネル']],
+  ['vandle', ['ポチっとチャージ', 'バンドルカード']],
+  ['suica', ['モバイルSuica会員', 'モバイルSuica']],
+  [
+    'yumobile',
+    [
+      'y.u mobile',
+      'y.u mobile サービス利用料',
+      'ワイユ-モバイル',
+      'ワイユ-モバイル サ-ビスリヨウリヨウ',
+    ],
+  ],
+  ['aeoncinema', ['ワタシアタープラス', 'ワタシアター会員サービス']],
+  ['wagakki', ['和楽器バンド Official Website']],
+  ['nikkeixtech', ['日経クロステック']],
+  ['matsuben', ['松弁ネット']],
+  [
+    'telnavi',
+    [
+      '電話帳ナビ',
+      '電話帳ナビ-迷惑電話と迷惑メッセージを自動判別で強力ブロック',
+    ],
+  ],
+  ['gmobb', ['GMOとくとくBB', 'WiMAX +5G ギガ放題接続サービス']],
+  ['justmyshop', ['Just MyShop']],
+  [
+    'googlecloud',
+    [
+      'Google Cloud Platform',
+      'Google Cloud',
+      'GCP',
+      'グーグルクラウド',
+      'グーグルクラウドプラットフォーム',
+    ],
+  ],
+  ['rentio', ['Rentio', 'レンティオ']],
   [
     'nijisanjifanclub',
     [
@@ -372,6 +455,36 @@ for (const [slug, variants] of names) {
 }
 
 const domains: Record<string, string> = {
+  'techlib.jp': 'techlib',
+  'techlib.co.jp': 'techlib',
+  'tohotheater.jp': 'tohocinemas',
+  'azure.microsoft.com': 'azure',
+  'portal.azure.com': 'azure',
+  'fantia.jp': 'fantia',
+  'franklymail.com': 'franklymail',
+  'iconpackstudio.com': 'iconpackstudio',
+  'mymangomail.com': 'mangomail',
+  'miraimind.ai': 'miraimind',
+  'multiecube.com': 'multiecube',
+  'qobuz.com': 'qobuz',
+  'toho-one.com': 'tohoone',
+  'mobile.unext.jp': 'unextmobile',
+  'wordpress.com': 'wordpress',
+  'carnavi.yahoo.co.jp': 'yahoonavi',
+  'atone.be': 'atone',
+  'coloria.jp': 'coloria',
+  'cmoa.jp': 'cmoa',
+  'dmapnavi.jp': 'zenrinnavi',
+  'b-ch.com': 'bandai',
+  'vandle.jp': 'vandle',
+  'xtech.nikkei.com': 'nikkeixtech',
+  'telnavi.jp': 'telnavi',
+  'aeoncinema.com': 'aeoncinema',
+  'yumobile.jp': 'yumobile',
+  'justmyshop.com': 'justmyshop',
+  'cloud.google.com': 'googlecloud',
+  'console.cloud.google.com': 'googlecloud',
+  'rentio.jp': 'rentio',
   'obsidian.md': 'obsidian',
   'onamae.com': 'onamae',
   'muumuu-domain.com': 'muumuu',
@@ -538,6 +651,17 @@ export function resolveServiceLogo(
       )
         return null;
       const host = url.hostname.replace(/^www\./, '');
+      if (host === 'dmm.com' && /^\/rental(?:\/|$)/i.test(url.pathname))
+        return lookup('dmmrental');
+      if (host === 'sakura.ne.jp' && /^\/mail(?:\/|$)/i.test(url.pathname))
+        return lookup('sakuramail');
+      if (
+        host === 'bb.excite.co.jp' &&
+        /^\/exmb\/sim(?:\/|$)/i.test(url.pathname)
+      )
+        return lookup('excitemobile');
+      if (host === 'conoha.jp' && /^\/wing(?:\/|$)/i.test(url.pathname))
+        return lookup('conohawing');
       if (host === 'nijisanji.jp' && /^\/fanclubs(?:\/|$)/i.test(url.pathname))
         return lookup('nijisanjifanclub');
       if (
@@ -571,7 +695,16 @@ export function resolveServiceLogo(
       return null;
     }
   }
+  // An explicit platform marker is sufficient; never infer a creator's platform
+  // from their name or accept URL-like text as a channel label.
+  if (
+    !/^[a-z][a-z\d+.-]*:/i.test(value) &&
+    /\(\s*YouTube\s*\)$/i.test(value.normalize('NFKC'))
+  )
+    return lookup('youtube');
   const key = normalizeBrandName(value);
+  if (/^推しドラ[-－]ホロライブ[\p{L}\p{N} ]+$/u.test(value.normalize('NFKC')))
+    return lookup('yahoonavi');
   const exact = brand(key);
   if (exact) return exact;
   for (let end = key.length - 1; end >= 3; end--) {

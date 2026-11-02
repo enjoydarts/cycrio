@@ -4,6 +4,29 @@ import { resolveServiceLogo } from './service-logos.ts';
 
 const services: [string, string[]][] = [
   [
+    'googlecloud',
+    [
+      'Google Cloud Platform',
+      'Google Cloud',
+      'GCP',
+      'グーグルクラウド',
+      'グーグルクラウドプラットフォーム',
+      'ＧＣＰ',
+      'https://cloud.google.com/',
+      'https://console.cloud.google.com/billing',
+    ],
+  ],
+  [
+    'rentio',
+    [
+      'Rentio',
+      'レンティオ',
+      'Rentio 月額プラン',
+      'レンティオ 月額プラン',
+      'https://www.rentio.jp/',
+    ],
+  ],
+  [
     'nijisanjifanclub',
     [
       'にじさんじ FAN CLUB',
@@ -107,6 +130,10 @@ test('registrar aliases reject misleading names and hosts and unrelated shared-h
     'https://event.nijisanji.app/other/',
     'https://nijisanji.jp.evil.example/fanclubs',
     'https://evil.example/?service=Cloudflare%20Registrar',
+    'Google Cloud Platform Consulting',
+    'Rentio Consulting',
+    'https://cloud.google.com.evil.example',
+    'https://rentio.jp.evil.example',
   ])
     assert.equal(resolveServiceLogo(name), null, name);
 });

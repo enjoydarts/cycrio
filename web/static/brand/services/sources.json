@@ -1,5 +1,345 @@
 [
   {
+    "slug": "tohocinemas",
+    "title": "TOHOシネマズ",
+    "file": "tohocinemas.png",
+    "sourceUrl": "https://www.tohotheater.jp/responsive/images/icon/TClogo_main.png",
+    "sourcePage": "https://www.tohotheater.jp/",
+    "credit": "TOHO CINEMAS",
+    "sha256": "b7acebad8e18e496c9852fd9284488c6b1489809ac280277b2a3ac50877f59ba"
+  },
+  {
+    "slug": "techlib",
+    "title": "TechLib",
+    "file": "techlib.png",
+    "sourceUrl": "https://techlib.co.jp/wp-content/themes/wp_techlib_260422_3/assets/img/apple-touch-icon.png",
+    "sourcePage": "https://techlib.co.jp/",
+    "credit": "TechLib",
+    "sha256": "7f07d8c48b6f9472def206e0219dded1d2dd1170ae8613a21ad6a334721ddf22"
+  },
+  {
+    "slug": "azure",
+    "title": "Microsoft Azure",
+    "file": "azure.ico",
+    "sourceUrl": "https://azure.microsoft.com/favicon.ico?v2",
+    "sha256": "90cdaf487716184e4034000935c605d1633926d348116d198f355a98b8c6cd21",
+    "credit": "Microsoft Azure",
+    "sourcePage": "https://azure.microsoft.com/ja-jp/"
+  },
+  {
+    "slug": "excitemobile",
+    "title": "BB.exciteモバイル",
+    "file": "excitemobile.svg",
+    "sourceUrl": "https://image.bb.excite.co.jp/bb-front/common/logo/logo_exmb.svg",
+    "sha256": "cfb44ef80a2bc1a5da48773902733fa71f7424401e38ca3e0b8c0e7973319892",
+    "credit": "BB.exciteモバイル",
+    "sourcePage": "https://bb.excite.co.jp/exmb/sim/"
+  },
+  {
+    "slug": "cocchi",
+    "title": "COCCHi",
+    "file": "cocchi.png",
+    "sourceUrl": "https://jpn.pioneer/ja/carrozzeria/carnavi/navigationapp/cocchi/assets/img/common/icon_cocchi.png",
+    "sha256": "8d2cd045831fee2aeddab063660a1883c0db7d1a8dc676c6d385d50d3139bcac",
+    "credit": "COCCHi",
+    "sourcePage": "https://jpn.pioneer/ja/carrozzeria/carnavi/navigationapp/cocchi/"
+  },
+  {
+    "slug": "conohawing",
+    "title": "ConoHa WING",
+    "file": "conohawing.png",
+    "sourceUrl": "https://www.conoha.jp/wing_59681/common/images/favicon.png",
+    "sha256": "8fc7c3af16a1228ac5619f2444ed1b312bb3e8b54472c3f34411806ce1d5c206",
+    "credit": "ConoHa WING",
+    "sourcePage": "https://www.conoha.jp/wing/"
+  },
+  {
+    "slug": "dmmrental",
+    "title": "DMM宅配レンタル",
+    "file": "dmmrental.png",
+    "sourceUrl": "https://p.dmm.com/p/general/rental/apple-touch-icon.png",
+    "sha256": "896cf78d04195a205419fdd58daa556a6ed279da2b81110d139a810ea53a4705",
+    "credit": "DMM宅配レンタル",
+    "sourcePage": "https://www.dmm.com/rental/"
+  },
+  {
+    "slug": "fantia",
+    "title": "Fantia",
+    "file": "fantia.png",
+    "sourceUrl": "https://fantia.jp/assets/customers/apple-touch-icon-7c45e89fc530b2b3c1bd0f4497693fa2c174f0650cd9082824b4dd7e47bfefef.png",
+    "sha256": "7c45e89fc530b2b3c1bd0f4497693fa2c174f0650cd9082824b4dd7e47bfefef",
+    "credit": "Fantia",
+    "sourcePage": "https://fantia.jp/"
+  },
+  {
+    "slug": "franklymail",
+    "title": "FranklyMail",
+    "file": "franklymail.png",
+    "sourceUrl": "https://franklymail.com/apple-touch-icon.png",
+    "sha256": "873502c2cfd620989277d5e808e6dbb623d1bd6f99b79e63930c6701f959a918",
+    "credit": "FranklyMail",
+    "sourcePage": "https://franklymail.com/"
+  },
+  {
+    "slug": "iconpackstudio",
+    "title": "Icon Pack Studio",
+    "file": "iconpackstudio.png",
+    "sourceUrl": "https://cdn.prod.website-files.com/5e99ca7d7ded0cd02970dcf9/5e9ebfdff28ec55a3b3cd668_Webclip.png",
+    "sha256": "d05f42db36d75e717ba341c6dc344b99728e8b8fa6734164d3ee692a5dc64d56",
+    "credit": "Icon Pack Studio",
+    "sourcePage": "https://www.iconpackstudio.com/"
+  },
+  {
+    "slug": "mangomail",
+    "title": "Mango Mail",
+    "file": "mangomail.png",
+    "sourceUrl": "https://mymangomail.com/assets/appicon300.png",
+    "sha256": "67a92bb39a5cdf421fd64f6d51e773c7a3b81d94a5a435d749605d439edd2005",
+    "credit": "Mango Mail",
+    "sourcePage": "https://mymangomail.com/"
+  },
+  {
+    "slug": "miraimind",
+    "title": "MiraiMind",
+    "file": "miraimind.png",
+    "sourceUrl": "https://oversea.hellogroupcdn.com/s1/u/ibjjeahbh/Raburo/1736252448803-logo0107.png",
+    "sha256": "47eae1c3e9329f8616aea37536594e7c93e8c734e502b5efcb41412958ae8bf2",
+    "credit": "MiraiMind",
+    "sourcePage": "https://miraimind.ai/ja/"
+  },
+  {
+    "slug": "multiecube",
+    "title": "マルチエキューブ",
+    "file": "multiecube.png",
+    "sourceUrl": "https://multiecube.com/icon-512x512.png",
+    "sha256": "7cd2c49b71041783ee50dfbded3bba8201f96f4e3da5c8e72c40a76353d38924",
+    "credit": "マルチエキューブ",
+    "sourcePage": "https://multiecube.com/"
+  },
+  {
+    "slug": "mykirin",
+    "title": "My KIRIN",
+    "file": "mykirin.png",
+    "sourceUrl": "https://www.kirin.co.jp/assets/images/icon-webicon.png",
+    "sha256": "d54b16c7641b5850826a54e00622177a34fc6b29325fe683332461b289d45fb1",
+    "credit": "My KIRIN",
+    "sourcePage": "https://www.kirin.co.jp/"
+  },
+  {
+    "slug": "qobuz",
+    "title": "Qobuz",
+    "file": "qobuz.png",
+    "sourceUrl": "https://static.qobuz.com/images/favicon/apple-touch-icon.png",
+    "sha256": "9b93c6b5bcbeb5a209a6e0c3b727eb891c49f5f9a44057a779ec7bc365869773",
+    "credit": "Qobuz",
+    "sourcePage": "https://www.qobuz.com/"
+  },
+  {
+    "slug": "tohoone",
+    "title": "TOHO-ONE",
+    "file": "tohoone.png",
+    "sourceUrl": "https://www.toho-one.com/apple-touch-icon.png",
+    "sha256": "3baba96064bff7d2a937ec23485648f368d00174e1b8d1efadc203bee3a452f2",
+    "credit": "TOHO-ONE",
+    "sourcePage": "https://www.toho-one.com/"
+  },
+  {
+    "slug": "unextmobile",
+    "title": "U-NEXT MOBILE",
+    "file": "unextmobile.png",
+    "sourceUrl": "https://mobile.unext.jp/img/apple-touch-icon.png",
+    "sha256": "a168cb95db1ce977b1f453357a50c01ec4a5ff7ad098e786a06fff9939d38a66",
+    "credit": "U-NEXT MOBILE",
+    "sourcePage": "https://mobile.unext.jp/"
+  },
+  {
+    "slug": "yahoonavi",
+    "title": "Yahoo!カーナビ",
+    "file": "yahoonavi.png",
+    "sourceUrl": "https://s.yimg.jp/images/carnavi/promo/lp/img/apple-touch-icon-precomposed.png",
+    "sha256": "9d4cfcc738e537b656b20d73cde229043e193e838c7f4c9a7ca6f0184ecec04b",
+    "credit": "Yahoo!カーナビ",
+    "sourcePage": "https://carnavi.yahoo.co.jp/"
+  },
+  {
+    "slug": "atone",
+    "title": "atone",
+    "file": "atone.png",
+    "sourceUrl": "https://atone.be/apple-icon.png",
+    "sha256": "c0e2ace456576376b3b20d2a4adf2dffcc2fbfbafa98863c389281b400de9094",
+    "credit": "atone",
+    "sourcePage": "https://atone.be/"
+  },
+  {
+    "slug": "sakuramail",
+    "title": "さくらのメールボックス",
+    "file": "sakuramail.png",
+    "sourceUrl": "https://www.sakura.ad.jp/resource/favicon/sakura_logo.png",
+    "sha256": "52c5e67ffbeb9bd3eb6c7068819796ccc899369fa225df038786622f90561c36",
+    "credit": "さくらのメールボックス",
+    "sourcePage": "https://www.sakura.ne.jp/mail/"
+  },
+  {
+    "slug": "coloria",
+    "title": "カラリア",
+    "file": "coloria.png",
+    "sourceUrl": "https://coloria.jp/apple-touch-icon.png",
+    "sha256": "70f90923f21871d54df1145777e249a0ade05972734114cd73068ec5f9f3f18d",
+    "credit": "カラリア",
+    "sourcePage": "https://coloria.jp/"
+  },
+  {
+    "slug": "cmoa",
+    "title": "コミックシーモア",
+    "file": "cmoa.png",
+    "sourceUrl": "https://c-cmoa.akamaized.net/ext/pcc/images/webclipicon/icon_cmoa.png",
+    "sha256": "afc9b8f489dde8d8d9d8283986edd90c25a0567b94317cc3b8bd427ca2ddc05e",
+    "credit": "コミックシーモア",
+    "sourcePage": "https://www.cmoa.jp/"
+  },
+  {
+    "slug": "zenrinnavi",
+    "title": "ゼンリン地図ナビ",
+    "file": "zenrinnavi.png",
+    "sourceUrl": "https://dmapnavi.jp/smart/top/img/lpimg/common_img/icon_map_app.png?20251002",
+    "sha256": "aebf5293d4c8e3b50dab05cbb9b54de043441cc73cb80b2af969935defc61e8c",
+    "credit": "ゼンリン地図ナビ",
+    "sourcePage": "https://dmapnavi.jp/"
+  },
+  {
+    "slug": "bandai",
+    "title": "バンダイチャンネル",
+    "file": "bandai.png",
+    "sourceUrl": "https://www.b-ch.com/apple-icon.png?bb8394099766a873",
+    "sha256": "2365b82d5b51afe0d28e5ec524ecb34fbe4dfb955fc02aeb6e97363424df5c21",
+    "credit": "バンダイチャンネル",
+    "sourcePage": "https://www.b-ch.com/"
+  },
+  {
+    "slug": "vandle",
+    "title": "バンドルカード",
+    "file": "vandle.png",
+    "sourceUrl": "https://storage.googleapis.com/production-os-assets/assets/391b55ac-19ab-472d-9ed2-d4a84b92f425",
+    "sha256": "bfc3694d391b71d434ebc0c49513111d8c5761333301f8dacb6b1e712d8c7615",
+    "credit": "バンドルカード",
+    "sourcePage": "https://vandle.jp/"
+  },
+  {
+    "slug": "nikkeixtech",
+    "title": "日経クロステック",
+    "file": "nikkeixtech.png",
+    "sourceUrl": "https://xtech.nikkei.com/apple-touch-icon.png",
+    "sha256": "f3fed1b024465913419f91dc6bde5b658219cff47bf7f5d7a1129f4e4556a6a3",
+    "credit": "日経クロステック",
+    "sourcePage": "https://xtech.nikkei.com/"
+  },
+  {
+    "slug": "telnavi",
+    "title": "電話帳ナビ",
+    "file": "telnavi.png",
+    "sourceUrl": "https://play-lh.googleusercontent.com/mps1uhqKFF0qiZ2znJW-B8wKCS_BaTnbXYkZG3Fxt_-IjlHgb9zsOSF2-991jky002bS_w5feHaClwpOPTqNCtI=s0-br30",
+    "sha256": "c1322a0c709bd07b8ab2010054b845843c719d3fa6fcc50ae31ad7277ab4e524",
+    "credit": "電話帳ナビ",
+    "sourcePage": "https://www.telnavi.jp/"
+  },
+  {
+    "slug": "aeoncinema",
+    "title": "イオンシネマ",
+    "file": "aeoncinema.png",
+    "sourceUrl": "https://www.aeoncinema.com/assets_2025/img/apple-touch-icon.png",
+    "sha256": "03fda076b46e61d81fab5a83722421d53720a710941ff704d9e15f17405c8519",
+    "credit": "イオンシネマ",
+    "sourcePage": "https://www.aeoncinema.com/"
+  },
+  {
+    "slug": "yumobile",
+    "title": "y.u mobile",
+    "file": "yumobile.png",
+    "sourceUrl": "https://www.yumobile.jp/static/apple-touch-icon.png",
+    "sha256": "f56ebd8a1c0d4aa95df7ad359a2d83416f51b539fa2e93aad5283d36c3b8e488",
+    "credit": "y.u mobile",
+    "sourcePage": "https://www.yumobile.jp/"
+  },
+  {
+    "slug": "justmyshop",
+    "title": "Just MyShop",
+    "file": "justmyshop.png",
+    "sourceUrl": "https://www.justmyshop.com/logo.png",
+    "sha256": "3fe29326d7748781809757faa7a9b76602ff78b212884a274e54d0ff3a14a84f",
+    "credit": "Just MyShop",
+    "sourcePage": "https://www.justmyshop.com/"
+  },
+  {
+    "slug": "suica",
+    "title": "モバイルSuica",
+    "file": "suica.jpg",
+    "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/e3/94/5e/e3945e1a-9f9c-221a-961b-b546a40d172e/AppIcon-0-0-1x_U007emarketing-0-6-0-85-220.png/512x512bb.jpg",
+    "sha256": "c36c885871232bb5d0b482874f98c9997bc3f82e0d549aae9359419dd1845574",
+    "credit": "East Japan Railway Company",
+    "sourcePage": "https://apps.apple.com/jp/app/suica/id1156875272?uo=4"
+  },
+  {
+    "slug": "amemil",
+    "title": "アメミル",
+    "file": "amemil.jpg",
+    "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple221/v4/da/33/42/da3342f5-fa95-e425-8157-7f7ab1212e20/Amemil-0-0-1x_U007epad-0-0-0-1-0-0-85-220.png/512x512bb.jpg",
+    "sha256": "0e2db988029715805e43bf87cd0da36e910f718c055aaa74863da2ef3c282dd3",
+    "credit": "Shimadzu Business Systems Corporation",
+    "sourcePage": "https://apps.apple.com/jp/app/%E3%82%A2%E3%83%A1%E3%83%9F%E3%83%AB-%EF%BD%B0-%E3%82%B2%E3%83%AA%E3%83%A9%E8%B1%AA%E9%9B%A8%E3%82%92%E9%AB%98%E7%B2%BE%E5%BA%A6%E3%81%AB%E4%BA%88%E6%B8%AC%E3%81%99%E3%82%8B%E9%9B%A8%E9%9B%B2%E3%83%AC%E3%83%BC%E3%83%80%E3%83%BC/id640441905?uo=4"
+  },
+  {
+    "slug": "wagakki",
+    "title": "和楽器バンド",
+    "file": "wagakki.png",
+    "sourceUrl": "https://wagakkiband.com/assets/wagakkiband/app/apple-touch-icon.png",
+    "sha256": "835f63e7ea65bc40084cb0775f99e0e0bee3fed8bb217a7f8cb1983ccdd68755",
+    "credit": "和楽器バンド",
+    "sourcePage": "https://wagakkiband.com/assets/wagakkiband/app/ogp.png"
+  },
+  {
+    "slug": "fanzatv",
+    "title": "FANZA TV",
+    "file": "fanzatv.svg",
+    "sourceUrl": "https://image.support.dmm.co.jp/upload/image/3c3f793d-9366-4321-95dd-3007ba56ba9b.svg",
+    "sourcePage": "https://support.fanza.jp/fanza-tv",
+    "sha256": "c80999ec6040b27ad27bcad6e00600393725b9d0c4e7138bf97640447a4812f0",
+    "credit": "FANZA TV / DMM"
+  },
+  {
+    "slug": "gmobb",
+    "title": "GMOとくとくBB",
+    "file": "gmobb.png",
+    "sourceUrl": "https://internet.gmo/favicon_144x144.png",
+    "sourcePage": "https://internet.gmo/",
+    "sha256": "245089b3e4d8249b72bd54c2e269760e262ff601682c4f35660eed9cd168b8be",
+    "credit": "GMO Internet"
+  },
+  {
+    "slug": "matsuben",
+    "title": "松弁ネット",
+    "file": "matsuben.jpg",
+    "sourceUrl": "https://is1-ssl.mzstatic.com/image/thumb/Purple211/v4/37/12/e1/3712e11d-d56b-6010-6faf-d7cdb8eff5c1/AppIcon-0-0-1x_U007emarketing-0-8-0-85-220.png/512x512bb.jpg",
+    "sourcePage": "https://apps.apple.com/jp/app/%E6%9D%BE%E5%B1%8B%E3%83%95%E3%83%BC%E3%82%BA%E5%85%AC%E5%BC%8F%E3%82%A2%E3%83%97%E3%83%AA/id662011115?uo=4",
+    "sha256": "020622ce858b73abeaa3149a4ad24fdae26c3bc5d88df05fcb51a7029a2764de",
+    "credit": "MATSUYA FOODS CO.,LTD."
+  },
+  {
+    "slug": "googlecloud",
+    "title": "Google Cloud",
+    "file": "googlecloud.png",
+    "sourceUrl": "https://www.gstatic.com/cgc/super_cloud_gradient.png",
+    "sha256": "a332b54b620a2fa04413561c01c925cd40f936581c7bed52df424ecccc9c08b4",
+    "credit": "Google Cloud"
+  },
+  {
+    "slug": "rentio",
+    "title": "Rentio",
+    "file": "rentio.png",
+    "sourceUrl": "https://fastly.rentio.jp/packs/images/favicons/apple-touch-icon-wrf560qg.png",
+    "sha256": "1a7c73249cf23ae38c5045fcaf93e0ce9d5e69117741646eadcd697ed02afd65",
+    "credit": "Rentio"
+  },
+  {
     "slug": "nijisanjifanclub",
     "title": "にじさんじ FAN CLUB",
     "file": "nijisanjifanclub.png",

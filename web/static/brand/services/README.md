@@ -1,5 +1,11 @@
 # サービスロゴの出典
 
+2026-11-02 に公開サービスのロゴと表記揺れを拡充しました。Azure、ConoHa WING、さくらのメールボックス、FranklyMail、Mango Mail、Fantia、FANZA TV、DMM宅配レンタル、Qobuz、TechLib、コミックシーモア、カラリア、各種ナビ・天気アプリ、国内モバイルサービス、映画館の会員サービスなどを補完しています。公式Webサイトのアイコンを優先し、Web上の取得が難しいアプリは提供者を確認したApp Store / Google Playの公式配布画像を使用します。画像は無加工で、参照ページは `sourcePage`、画像URL・提供元・SHA-256は `sources.json` に記録しています。
+
+Azureには公式サイト配信のMicrosoftアイコン、My KIRINにはKIRIN、GMOとくとくBBにはGMOインターネットの企業アイコン、松弁ネットには松屋フーズの公式アプリアイコンを使用します。FANZA TVは公式ヘルプのサービスカテゴリ画像を使用します。YouTubeは明示的なプラットフォーム表記があるメンバーシップに限って割り当て、個人名から推測しません。Yahoo!カーナビの推しドラ関連は[公式案内](https://carnavi.yahoo.co.jp/promo/oshidora/)で確認した製品表記に限定します。空欄・個人ドメイン名・一般的な料金項目など、提供元を識別できない名前は汎用アイコンを維持します。
+
+2026-11-02 に Google Cloud Platform / GCP とレンティオ（Rentio）を追加しました。どちらも公式サイトが指定するカラーアイコンを無加工で使用し、出典URLとSHA-256を `sources.json` に記録しています。Google Cloud は既存の単色カタログ画像を公式配信画像で補完し、Google Workspaceなど他のGoogle製品とは分離します。
+
 2026-11-02 に、にじさんじ FAN CLUB・Obsidian Sync・国内外の主要レジストラを追加しました。にじさんじ FAN CLUB は公式サイトのにじさんじアイコン、Obsidian SyncはObsidian公式のカラーアイコンを使います。にじさんじの共有サイトではファンクラブのパスだけを照合します。お名前.com、ムームードメイン、バリュードメイン、XServerドメイン、スタードメイン、ゴンベエドメイン、Dynadotは公式サイト配信画像を補完し、Cloudflare Registrar、GoDaddy、Namecheap、Porkbun、Gandi、Squarespace Domainsは既存カタログの各ブランド画像を使います。補完画像は無加工で、出典URLとSHA-256は `sources.json` に記録しています。
 
 2026-11-02 に主要キャリア・MVNOの公式サイト配信アイコンを追加しました。NTTドコモ、au、SoftBank、楽天モバイル、ahamo、povo、UQ mobile、Y!mobile、LINEMO、IIJモバイル、IIJmio、mineo、日本通信SIM、b-mobile、HISモバイル、NUROモバイル、イオンモバイル、BIC SIM、LinksMate、TONEモバイルに対応します。IIJモバイルはIIJ公式企業アイコンを使い、IIJmioとは画像を分けています。UQ mobileの公式サイト配信アイコンはUQブランド共通です。IIJとUQの共有ホストはモバイルのパスを明示的に照合し、他製品へ推測で割り当てません。画像は無加工、出典・SHA-256は `sources.json` に保存します。
