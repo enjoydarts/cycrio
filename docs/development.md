@@ -52,6 +52,8 @@ make test-web-browser
 
 ブラウザーテストは専用のComposeプロジェクトと内部ネットワークで動き、ポートをホストに公開しません。実メール、Clerk、AI、アプリDBや起動中の開発サービスは使いません。既存Web Dockerfileの固定Node・npmとlockfileを再利用し、開発用のnode_modulesやViteキャッシュを共有しません。Seleniumは[公式安定版](https://github.com/SeleniumHQ/docker-selenium/releases/tag/4.51.0-20261010)のタグとdigestを`compose.browser.yaml`に固定しています。終了時は成功・失敗にかかわらず専用コンテナとネットワークを削除します。
 
+開発サービスと検証処理が同時に動く環境に備え、Webの単体テストは同時2ファイルまで、ブラウザーテストはコンテナとJava・Nodeのヒープに上限を設けています。DB統合テスト、型検査、ビルド、ブラウザーテストは順番に実行してください。
+
 CIでも同じmakeコマンドを実行します。失敗時の画面・API要求・ブラウザーログ・Compose診断は`artifacts/browser/`へ出力し、CIでは7日間保存します。これらは合成データだけを含み、Gitの対象外です。テストfixtureは`web/browser-tests/`に置き、本番のルートへ追加しません。
 
 機能追加・不具合修正は、期待する振る舞いを先にテストで再現してから実装します。文書だけの変更は、リンク・構文・記載コマンドとの整合性を確認します。詳細は[AGENTS.md](../AGENTS.md)を参照してください。

@@ -43,6 +43,57 @@ async function click(expression) {
     {},
   );
 }
+async function closeMobileMenu() {
+  // The full-screen shade's center sits underneath the open sidebar. Wait for
+  // its transition, then hit-test and click the exposed shade using WebDriver.
+  await wait(
+    'document.querySelector("#workspace-sidebar").getBoundingClientRect().left===0',
+  );
+  const point = await js(`
+    const shade=document.querySelector('button[aria-label="メニューを閉じる"]');
+    const sidebar=document.querySelector('#workspace-sidebar');
+    const bounds=shade.getBoundingClientRect(), panel=sidebar.getBoundingClientRect();
+    const left=Math.max(0,bounds.left,panel.right), right=Math.min(innerWidth,bounds.right);
+    const x=Math.floor((left+right)/2);
+    const y=Math.floor((Math.max(0,bounds.top)+Math.min(innerHeight,bounds.bottom))/2);
+    return {x,y,exposedWidth:right-left,hitShade:document.elementFromPoint(x,y)===shade};
+  `);
+  assert.ok(
+    point.exposedWidth > 0,
+    'Mobile sidebar must leave an exposed shade',
+  );
+  assert.equal(
+    point.hitShade,
+    true,
+    'Close-menu click point must hit the exposed shade',
+  );
+  await api('POST', session + '/actions', {
+    actions: [
+      {
+        type: 'pointer',
+        id: 'sidebar-shade-pointer',
+        parameters: { pointerType: 'mouse' },
+        actions: [
+          {
+            type: 'pointerMove',
+            origin: 'viewport',
+            duration: 0,
+            x: point.x,
+            y: point.y,
+          },
+          { type: 'pointerDown', button: 0 },
+          { type: 'pointerUp', button: 0 },
+        ],
+      },
+    ],
+  });
+  await wait(
+    `document.querySelector('button[aria-label="メニューを開く"]').getAttribute('aria-expanded')==='false' && document.querySelector('button[aria-label="メニューを閉じる"]')===null && document.activeElement===document.querySelector('button[aria-label="メニューを開く"]')`,
+  );
+  await wait(
+    `document.querySelector('#workspace-sidebar').inert && document.querySelector('#workspace-sidebar').getBoundingClientRect().right<=0`,
+  );
+}
 const button = (label) =>
   `Array.from(document.querySelectorAll('button')).find(e=>e.textContent.trim()===${JSON.stringify(label)})`;
 async function input(expression, value, event = 'input') {
@@ -292,10 +343,7 @@ try {
       ['rgb(255, 146, 155)', 'rgb(108, 209, 164)'],
       'Stopped must be red and waiting must be green',
     );
-    if (width < 700)
-      await click(
-        'document.querySelector("button[aria-label=メニューを閉じる]")',
-      );
+    if (width < 700) await closeMobileMenu();
     assert.equal(
       await js(
         'return Array.from(document.querySelectorAll("dt")).filter(e=>e.textContent==="最終実行開始").length',
