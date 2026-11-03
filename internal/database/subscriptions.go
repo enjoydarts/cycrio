@@ -60,11 +60,11 @@ func (r *SubscriptionRepository) begin(ctx context.Context, owner string) (pgx.T
 }
 
 const effectiveNextBilling = `subscription_effective_next_billing(subscriptions,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date)`
-const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(` + effectiveNextBilling + `,'YYYY-MM-DD'),status,created_at,updated_at,provenance,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD'),next_billing_mode,display_name`
+const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(` + effectiveNextBilling + `,'YYYY-MM-DD'),status,created_at,updated_at,provenance,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD'),next_billing_mode,display_name,to_char(trial_end_date,'YYYY-MM-DD'),auto_renew,to_char(next_billing_date,'YYYY-MM-DD')`
 
 func scanSubscription(row pgx.Row) (subscriptions.Subscription, error) {
 	var s subscriptions.Subscription
-	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.Provenance, &s.ContractKind, &s.EffectiveDate, &s.AccessEndDate, &s.NextBillingMode, &s.DisplayName)
+	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.Provenance, &s.ContractKind, &s.EffectiveDate, &s.AccessEndDate, &s.NextBillingMode, &s.DisplayName, &s.TrialEndDate, &s.AutoRenew, &s.ManualNextBillingDate)
 	s.Sources = []subscriptions.Source{}
 	return s, subscriptionError(e)
 }
@@ -178,7 +178,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 	defer tx.Rollback(ctx)
 	var existing string
 	var same bool
-	e = tx.QueryRow(ctx, `SELECT id,request_doc=$3::jsonb FROM subscriptions WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&existing, &same)
+	e = tx.QueryRow(ctx, `SELECT id,('{"trial_end_date":null,"auto_renew":null}'::jsonb||request_doc)=('{"trial_end_date":null,"auto_renew":null}'::jsonb||$3::jsonb) FROM subscriptions WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&existing, &same)
 	if e == nil {
 		if !same {
 			return subscriptions.Subscription{}, subscriptions.ErrConflict
@@ -193,7 +193,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}
 	id := uuid.NewString()
-	_, e = tx.Exec(ctx, `INSERT INTO subscriptions(id,owner_id,request_id,request_doc,service,plan,amount,currency,interval_unit,interval_count,next_billing_date,status,contract_kind,effective_date,access_end_date,next_billing_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::date,$12,$13,$14::text::date,$15::text::date,$16)`, id, owner, in.RequestID, raw, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode)
+	_, e = tx.Exec(ctx, `INSERT INTO subscriptions(id,owner_id,request_id,request_doc,service,plan,amount,currency,interval_unit,interval_count,next_billing_date,status,contract_kind,effective_date,access_end_date,next_billing_mode,trial_end_date,auto_renew) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::date,$12,$13,$14::text::date,$15::text::date,$16,$17::text::date,$18)`, id, owner, in.RequestID, raw, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode, in.TrialEndDate, in.AutoRenew)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}
@@ -236,6 +236,10 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return subscriptions.Subscription{}, e
 	}
+	prior, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
+	if e != nil {
+		return subscriptions.Subscription{}, e
+	}
 	// The API date is a projection in automatic mode. Never save a calculated
 	// response date over the independently retained manual value.
 	var priorMode string
@@ -250,6 +254,12 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if in.NextBillingMode == "automatic" {
 		in.NextBillingDate = manualDate
 	}
+	// Legacy editors submit the effective projection. A suppressed null is not
+	// consent to erase the independently stored manual date. New editors use the
+	// raw DTO and mark explicit clears; non-null legacy edits remain compatible.
+	if in.NextBillingMode == "manual" && priorMode == "manual" && in.NextBillingDate == nil && !in.NextBillingDateExplicit && prior.NextBillingDate == nil {
+		in.NextBillingDate = manualDate
+	}
 	// Explicitly converting the contract to fixed-term removes recurring facts;
 	// a historical manual billing date cannot remain attached to that lifecycle.
 	if !in.PreserveLifecycle && in.ContractKind == "fixed_term" && priorKind != "fixed_term" {
@@ -257,21 +267,23 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 		in.NextBillingMode = "manual"
 	}
 	if in.PreserveLifecycle {
-		prior, err := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
-		if err != nil {
-			return subscriptions.Subscription{}, err
-		}
 		in.ContractKind, in.EffectiveDate, in.AccessEndDate = prior.ContractKind, prior.EffectiveDate, prior.AccessEndDate
-		in.Values, err = subscriptions.Normalize(in.Values)
-		if err != nil {
-			return subscriptions.Subscription{}, err
-		}
+	}
+	if in.PreserveTrialEndDate {
+		in.TrialEndDate = prior.TrialEndDate
+	}
+	if in.PreserveAutoRenew {
+		in.AutoRenew = prior.AutoRenew
+	}
+	in.Values, e = subscriptions.Normalize(in.Values)
+	if e != nil {
+		return subscriptions.Subscription{}, e
 	}
 	changedSchedule, e := invalidateSchedule(ctx, tx, owner, id, in)
 	if e != nil {
 		return subscriptions.Subscription{}, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,contract_kind=$11,effective_date=$12::text::date,access_end_date=$13::text::date,next_billing_mode=$14,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode)
+	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,contract_kind=$11,effective_date=$12::text::date,access_end_date=$13::text::date,next_billing_mode=$14,trial_end_date=$15::text::date,auto_renew=$16,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode, in.TrialEndDate, in.AutoRenew)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}

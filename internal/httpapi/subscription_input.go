@@ -67,6 +67,12 @@ func readSubscriptionJSONOptional(w http.ResponseWriter, r *http.Request, target
 	if e != nil || json.Unmarshal(raw, target) != nil {
 		return subscriptions.ErrInvalid
 	}
+	if in, ok := target.(*subscriptions.UpdateInput); ok {
+		_, present := values["trial_end_date"]
+		in.PreserveTrialEndDate = !present
+		_, present = values["auto_renew"]
+		in.PreserveAutoRenew = !present
+	}
 	return nil
 }
 func applicationQuery(raw string, allowed ...string) (url.Values, error) {

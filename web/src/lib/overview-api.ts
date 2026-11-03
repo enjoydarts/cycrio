@@ -28,6 +28,7 @@ export type OverviewCounts = {
   overdue: number;
   undated: number;
   later: number;
+  excluded: number;
 };
 export type UpcomingSubscription = SubscriptionValues &
   SubscriptionName & {
@@ -76,6 +77,7 @@ export function parseOverview(value: unknown): OverviewReport {
     overdue: integer(c.overdue),
     undated: integer(c.undated),
     later: integer(c.later),
+    excluded: integer(c.excluded ?? 0),
   };
   if (
     subscriptions.total !==
@@ -84,7 +86,8 @@ export function parseOverview(value: unknown): OverviewReport {
       subscriptions.upcoming +
         subscriptions.overdue +
         subscriptions.undated +
-        subscriptions.later
+        subscriptions.later +
+        subscriptions.excluded
   )
     return invalid();
   const upcoming = array(

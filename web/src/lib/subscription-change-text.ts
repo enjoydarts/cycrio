@@ -2,6 +2,8 @@ import type { ChangeKey, ChangeValue } from './subscription-changes-api.ts';
 import type { Subscription } from './subscriptions-api.ts';
 import { cycle } from './daily-text.ts';
 export const changeLabels: Record<ChangeKey, string> = {
+  trial_end_date: '無料期間終了日',
+  auto_renew: '自動更新',
   amount: '通常継続料金',
   currency: '通貨',
   interval: '請求周期',
@@ -28,6 +30,8 @@ const reasons: Record<string, string> = {
     '効力日だけでは変更時点を確定できません。契約編集で確認してください。',
   derived_billing_date:
     '請求周期を変更すると、次回請求日を元の起点から再計算します。推定日を確認してください。',
+  derived_billing_date_requires_lifecycle_review:
+    '次回請求日は利用終了日の選択も反映して、承認後に更新されます。',
   missing_counterpart:
     '通常継続料金と通貨の組み合わせが不足しています。契約編集で補完してください。',
 };
@@ -35,6 +39,7 @@ export const changeReason = (code: string) =>
   reasons[code] ?? '元情報を確認し、契約編集で変更してください。';
 export function changeValue(key: ChangeKey, value: ChangeValue) {
   if (value === null) return '不明';
+  if (typeof value === 'boolean') return value ? '有効' : '停止';
   if (typeof value === 'object') return cycle(value.unit, value.count);
   if (key === 'contract_kind')
     return value === 'recurring'

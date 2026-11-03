@@ -350,6 +350,12 @@
     {:else if view.reason === 'ended'}<p class="notice" role="alert">
         契約は終了済みです。次回予定は保存できません。
       </p>
+    {:else if view.reason === 'access_ended'}<p class="notice" role="alert">
+        利用終了日を過ぎています。次回予定は保存できません。
+      </p>
+    {:else if view.reason === 'after_access_end'}<p class="notice" role="alert">
+        計算候補が利用終了日より後のため、次回予定は保存できません。
+      </p>
     {:else if view.reason === 'request_conflict'}<p class="notice" role="alert">
         保存要求と受付済みの内容が一致しません。最新の契約を確認してください。
       </p>{/if}

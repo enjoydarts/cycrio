@@ -61,12 +61,20 @@ func (r *BillingScheduleRepository) Preview(ctx context.Context, owner, id strin
 		p.Reason = "ended"
 		return p, nil
 	}
+	if v.Subscription.AccessEndDate != nil && *v.Subscription.AccessEndDate < v.AsOf {
+		p.Reason = "access_ended"
+		return p, nil
+	}
 	p.CandidateDate, e = billingschedule.Next(normalized, v.AsOf)
 	if e != nil {
 		return p, e
 	}
 	if p.CandidateDate == nil {
 		p.Reason = "out_of_range"
+	}
+	if p.CandidateDate != nil && v.Subscription.AccessEndDate != nil && *p.CandidateDate > *v.Subscription.AccessEndDate {
+		p.CandidateDate = nil
+		p.Reason = "after_access_end"
 	}
 	return p, nil
 }
@@ -124,6 +132,9 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	if s.Status == "ended" {
 		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "ended"}
 	}
+	if s.AccessEndDate != nil && *s.AccessEndDate < today {
+		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "access_ended"}
+	}
 	var evidence *billingschedule.HistoryEvidence
 	if in.HistoryBasis != nil {
 		p, e := scheduleHistory(ctx, tx, owner, s, in.HistoryBasis.Filter, today)
@@ -149,6 +160,9 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 	}
 	if candidate == nil || *candidate != in.ExpectedCandidate {
 		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "preview_changed"}
+	}
+	if s.AccessEndDate != nil && *candidate > *s.AccessEndDate {
+		return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "after_access_end"}
 	}
 	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',next_billing_mode='manual',interval_unit=$3,interval_count=$4,next_billing_date=$5::text::date,version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.IntervalUnit, in.IntervalCount, *candidate)
 	if e != nil {

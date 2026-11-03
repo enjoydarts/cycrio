@@ -266,16 +266,14 @@ func TestSubscriptionChangeMigrationPreservesDateAndProtectsHistory(t *testing.T
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 31)
-	if e != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 32 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 32)
 	var before, after string
-	const snapshot = `SELECT jsonb_build_object('stored',to_jsonb(s),'sources',(SELECT jsonb_agg(to_jsonb(src)-'affects_billing_anchor' ORDER BY result_id,event_index) FROM subscription_sources src WHERE src.subscription_id=s.id),'effective_next',subscription_effective_next_billing(s,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date))::text FROM subscriptions s WHERE id=$1`
+	const snapshot = `SELECT jsonb_build_object('stored',to_jsonb(s)-'trial_end_date'-'auto_renew','sources',(SELECT jsonb_agg(to_jsonb(src)-'affects_billing_anchor' ORDER BY result_id,event_index) FROM subscription_sources src WHERE src.subscription_id=s.id),'effective_next',subscription_effective_next_billing(s,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date))::text FROM subscriptions s WHERE id=$1`
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&before); e != nil {
 		t.Fatal(e)
 	}
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 32, 32)
+	assertMigrationRange(t, up, e, 32, latestMigrationVersion)
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&after); e != nil || before != after {
 		t.Fatal(before, after, e)
 	}

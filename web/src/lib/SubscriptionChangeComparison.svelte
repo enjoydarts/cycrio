@@ -72,7 +72,7 @@
 {#if selected.includes('next_billing_date')}<p class="notice">
     次回請求日を反映すると、日付の設定は手動指定になります。
   </p>{/if}
-{#if selected.includes('interval') && !selected.includes('next_billing_date') && p.subscription.next_billing_mode === 'automatic'}<p
+{#if selected.includes('interval') && !selected.includes('next_billing_date') && !p.warnings.some((warning) => warning.code === 'derived_billing_date_requires_lifecycle_review') && p.subscription.next_billing_mode === 'automatic'}<p
     class="notice"
   >
     変更後の次回請求日（推定）：{p.derived_next_billing_date ??

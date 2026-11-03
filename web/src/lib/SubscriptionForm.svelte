@@ -3,6 +3,7 @@
   import Button from './Button.svelte';
   import CurrencySelect from './CurrencySelect.svelte';
   import BillingDateFields from './BillingDateFields.svelte';
+  import SubscriptionLifecycleFields from './SubscriptionLifecycleFields.svelte';
   import ExtractedChargeHint from './ExtractedChargeHint.svelte';
   import { onMount } from 'svelte';
   import { getAppSession } from './app-context.ts';
@@ -162,7 +163,9 @@
         disabled={frozen}
         oninput={(e) =>
           edit({ access_end_date: e.currentTarget.value || null })}
-      /></label
+      /><small class="muted"
+        >日本時間で当日を含む利用終了日です。翌日から現在費用・請求予定の対象外になります。</small
+      ></label
     >
     <label class="wide"
       >サービス名<input
@@ -173,6 +176,11 @@
         oninput={(e) => edit({ service: e.currentTarget.value })}
       /></label
     >
+    <SubscriptionLifecycleFields
+      values={view.values}
+      disabled={frozen}
+      onchange={edit}
+    />
     <label class="wide"
       >プラン（任意）<input
         maxlength="400"

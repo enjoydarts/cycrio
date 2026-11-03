@@ -39,6 +39,7 @@
   import SubscriptionNameModal from './SubscriptionNameModal.svelte';
   import SubscriptionChangeHistory from './SubscriptionChangeHistory.svelte';
   import { subscriptionTitle } from './subscription-title.ts';
+  import { lifecycleLabels } from './subscription-lifecycle.ts';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
@@ -313,6 +314,9 @@
         }}
       />{:else if tab !== 'sources'}
       <h2>契約内容</h2>
+      {#if lifecycleLabels(s).length}<p class="muted">
+          {lifecycleLabels(s).join(' · ')}
+        </p>{/if}
       <p class="muted">
         {s.provenance === 'automatic'
           ? 'メール解析から自動登録'
@@ -335,7 +339,25 @@
         </div>
         <div>
           <dt>利用終了日</dt>
-          <dd>{s.access_end_date ?? '不明'}</dd>
+          <dd>
+            {s.access_end_date
+              ? `${s.access_end_date}（当日を含む・日本時間）`
+              : '不明'}
+          </dd>
+        </div>
+        <div>
+          <dt>無料期間終了日</dt>
+          <dd>{s.trial_end_date ?? '不明'}</dd>
+        </div>
+        <div>
+          <dt>自動更新</dt>
+          <dd>
+            {s.auto_renew === true
+              ? '有効'
+              : s.auto_renew === false
+                ? '停止'
+                : '不明'}
+          </dd>
         </div>
         <div>
           <dt>料金</dt>

@@ -3,7 +3,14 @@
   import SubscriptionNameModal from '../src/lib/SubscriptionNameModal.svelte';
   import AnalysisAttach from '../src/lib/AnalysisAttach.svelte';
   import SubscriptionChangeHistory from '../src/lib/SubscriptionChangeHistory.svelte';
+  import SubscriptionListPanel from '../src/lib/SubscriptionListPanel.svelte';
+  import ReportsPanel from '../src/lib/ReportsPanel.svelte';
+  import {
+    reportFixture,
+    reportContractFixture,
+  } from '../src/lib/reports-fixtures.ts';
   import type { Subscription } from '../src/lib/subscriptions-api.ts';
+  import type { Report } from '../src/lib/reports-api.ts';
   import Modal from '../src/lib/Modal.svelte';
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
@@ -32,6 +39,9 @@
     interval_count: null,
     next_billing_date: null,
     next_billing_mode: 'manual' as const,
+    manual_next_billing_date: null,
+    trial_end_date: null,
+    auto_renew: null,
   };
   let current = $state({ ...initial, display_name: null as string | null });
   let nameOpen = $state(true);
@@ -67,9 +77,43 @@
     interval_unit: 'month',
     interval_count: 1,
     next_billing_date: '2027-11-01',
+    manual_next_billing_date: '2027-11-01',
+    auto_renew: mode === 'change-lifecycle' ? true : null,
+  };
+  const lifecycleInitial: Subscription = {
+    ...initial,
+    status: 'ended',
+    next_billing_date: null,
+    manual_next_billing_date: '2027-11-01',
+    auto_renew: false,
+  };
+  const lifecycleReport: Report = reportFixture();
+  lifecycleReport.contracts = [
+    {
+      ...reportContractFixture(),
+      access_end_date: '2026-10-31',
+      trial_end_date: null,
+      auto_renew: false,
+      monthly_amount: null,
+      annual_amount: null,
+      exclusion_reason: 'access_ended',
+    },
+  ];
+  lifecycleReport.coverage = {
+    ...lifecycleReport.coverage,
+    total_contracts: 1,
+    open_contracts: 1,
+    active_contracts: 1,
   };
   let changeSaved = $state<Subscription | null>(null);
-  installAPI(mode, mode.startsWith('change') ? changeInitial : initial);
+  installAPI(
+    mode,
+    mode.startsWith('change')
+      ? changeInitial
+      : mode === 'lifecycle-raw-edit'
+        ? lifecycleInitial
+        : initial,
+  );
   const saved = (value: Subscription) => {
     window.browserTest.saved = value;
     if (mode.startsWith('change')) changeSaved = value;
@@ -151,6 +195,39 @@
         }}
       />{/if}
   </Modal>
+{:else if mode === 'lifecycle-labels'}
+  <main class="daily">
+    <SubscriptionListPanel
+      items={[
+        {
+          ...initial,
+          trial_end_date: '2040-02-29',
+          auto_renew: false,
+          access_end_date: '2040-03-01',
+        },
+      ]}
+      onSelect={() => {}}
+    /><SubscriptionListPanel
+      layout="cards"
+      items={[
+        {
+          ...initial,
+          trial_end_date: '2040-02-29',
+          auto_renew: false,
+          access_end_date: '2020-03-01',
+        },
+      ]}
+      onSelect={() => {}}
+    />
+  </main>
+{:else if mode === 'lifecycle-report'}
+  <main class="daily">
+    <ReportsPanel
+      view={{ page: lifecycleReport, status: 'ready', error: null }}
+      month="2026-11"
+      currentMonth="2026-11"
+    />
+  </main>
 {:else if mode === 'name'}
   <main class="daily">
     <h1 data-title>{subscriptionTitle(current)}</h1>
@@ -174,7 +251,11 @@
 {:else}
   <main class="daily">
     <SubscriptionForm
-      initial={mode === 'edit' ? initial : null}
+      initial={mode === 'edit'
+        ? initial
+        : mode === 'lifecycle-raw-edit'
+          ? lifecycleInitial
+          : null}
       event={mode.startsWith('partial') || mode === 'transaction'
         ? event
         : null}

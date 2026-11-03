@@ -99,7 +99,7 @@ func TestSubscriptionNameMigrationPreservesValuesAndGuardsDown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT (to_jsonb(s)-'display_name')::text FROM subscriptions s WHERE id=$1`
+	const snapshot = `SELECT (to_jsonb(s)-'trial_end_date'-'auto_renew'-'display_name')::text FROM subscriptions s WHERE id=$1`
 	var before, after string
 	if err = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&before); err != nil {
 		t.Fatal(err)

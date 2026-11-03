@@ -100,6 +100,8 @@ type Event struct {
 	RecurringCurrency *string `json:"recurring_currency"`
 	EffectiveDate     *string `json:"effective_date"`
 	AccessEndDate     *string `json:"access_end_date"`
+	TrialEndDate      *string `json:"trial_end_date,omitempty"`
+	AutoRenew         *bool   `json:"auto_renew,omitempty"`
 	ContractKind      *string `json:"contract_kind"`
 }
 
@@ -110,6 +112,16 @@ func (e Event) MarshalJSON() ([]byte, error) {
 	var service *string
 	if e.Service != "" {
 		service = &e.Service
+	}
+	// Preserve historical event JSON when the new group is entirely unknown.
+	// If either fact exists, emit the complete nullable group for round trips.
+	if e.TrialEndDate != nil || e.AutoRenew != nil {
+		return json.Marshal(struct {
+			eventAlias
+			Service      *string `json:"service"`
+			TrialEndDate *string `json:"trial_end_date"`
+			AutoRenew    *bool   `json:"auto_renew"`
+		}{eventAlias: eventAlias(e), Service: service, TrialEndDate: e.TrialEndDate, AutoRenew: e.AutoRenew})
 	}
 	return json.Marshal(struct {
 		eventAlias

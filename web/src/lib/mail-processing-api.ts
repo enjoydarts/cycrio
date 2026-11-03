@@ -129,6 +129,8 @@ export type ProcessingEvent = {
   contract_kind?: 'recurring' | 'fixed_term' | null;
   effective_date?: string | null;
   access_end_date?: string | null;
+  trial_end_date?: string | null;
+  auto_renew?: boolean | null;
   plan: string | null;
   event_type:
     | 'invoice'
@@ -438,6 +440,16 @@ export function parseProcessingEvent(value: unknown): ProcessingEvent {
     ),
     effective_date: nullable(v.effective_date ?? null, date),
     access_end_date: nullable(v.access_end_date ?? null, date),
+    ...(v.trial_end_date === undefined
+      ? {}
+      : { trial_end_date: nullable(v.trial_end_date, date) }),
+    ...(v.auto_renew === undefined
+      ? {}
+      : {
+          auto_renew: nullable(v.auto_renew, (x) =>
+            typeof x === 'boolean' ? x : invalid(),
+          ),
+        }),
     plan: nullable(v.plan, (x) => text(x, 128)),
     event_type: choice(v.event_type, [
       'invoice',

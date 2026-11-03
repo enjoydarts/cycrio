@@ -25,6 +25,8 @@ import {
 import { parseSubscription, type Subscription } from './subscriptions-api.ts';
 
 export const changeFields = [
+  'trial_end_date',
+  'auto_renew',
   'amount',
   'currency',
   'interval',
@@ -36,7 +38,10 @@ export const changeFields = [
 ] as const;
 export type ChangeKey = (typeof changeFields)[number];
 export type ChangeValue =
-  string | null | { unit: 'day' | 'week' | 'month' | 'year'; count: number };
+  | boolean
+  | string
+  | null
+  | { unit: 'day' | 'week' | 'month' | 'year'; count: number };
 export type ChangeField = {
   key: ChangeKey;
   current: ChangeValue;
@@ -114,6 +119,10 @@ const evidence = (value: unknown): ChangeEvidence => {
 function fieldValue(field: ChangeKey, value: unknown): ChangeValue {
   return nullable(value, (v) => {
     switch (field) {
+      case 'auto_renew':
+        return typeof v === 'boolean' ? v : invalid();
+      case 'trial_end_date':
+        return date(v);
       case 'amount':
         return typeof v === 'string' && /^\d{1,24}(\.\d{1,12})?$/.test(v)
           ? v

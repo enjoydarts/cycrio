@@ -11,9 +11,9 @@ import (
 	"github.com/enjoydarts/cycrio/internal/ai"
 )
 
-const ChangeAlgorithmVersion = "subscription-change-v1"
+const ChangeAlgorithmVersion = "subscription-change-v2"
 
-var changeKeys = []string{"amount", "currency", "interval", "plan", "contract_kind", "effective_date", "access_end_date", "next_billing_date"}
+var changeKeys = []string{"amount", "currency", "interval", "plan", "contract_kind", "effective_date", "access_end_date", "next_billing_date", "trial_end_date", "auto_renew"}
 var changeToken = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type ChangePreviewInput struct {
@@ -173,11 +173,19 @@ func BuildChangePreview(s Subscription, source ChangeEvidence, additional []Chan
 	// that the owner's original contract start date should be replaced.
 	add("effective_date", changeValue(s.EffectiveDate), changeValue(e.EffectiveDate), "effective_date_requires_review")
 	add("access_end_date", changeValue(s.AccessEndDate), changeValue(e.AccessEndDate), "")
+	add("trial_end_date", changeValue(s.TrialEndDate), changeValue(e.TrialEndDate), "")
+	if e.AutoRenew != nil {
+		var prior any
+		if s.AutoRenew != nil {
+			prior = *s.AutoRenew
+		}
+		add("auto_renew", prior, *e.AutoRenew, "")
+	}
 	add("next_billing_date", changeValue(s.NextBillingDate), changeValue(e.NextBillingAt), fixed)
 	if e.EventType == "cancellation" || e.EventType == "suspension" || e.EventType == "payment_failed" {
 		p.Warnings = append(p.Warnings, ChangeWarning{Code: "cancellation_requires_review"})
 	}
-	if s.NextBillingMode == "automatic" && s.Status != "ended" && changeFieldExists(p.Fields, "interval") {
+	if s.NextBillingMode == "automatic" && s.Status != "ended" && (s.AccessEndDate == nil || *s.AccessEndDate >= today) && changeFieldExists(p.Fields, "interval") {
 		p.Warnings = append(p.Warnings, ChangeWarning{Code: "derived_billing_date", Field: "interval"})
 	}
 	return p
@@ -210,7 +218,7 @@ func SelectChangeValues(v Values, p ChangePreview, selected []string) (Values, e
 		}
 		raw, _ := json.Marshal(f.Proposed)
 		var value string
-		if key != "interval" {
+		if key != "interval" && key != "auto_renew" {
 			if json.Unmarshal(raw, &value) != nil {
 				return Values{}, ErrInvalid
 			}
@@ -226,6 +234,14 @@ func SelectChangeValues(v Values, p ChangePreview, selected []string) (Values, e
 			v.ContractKind = value
 		case "access_end_date":
 			v.AccessEndDate = &value
+		case "trial_end_date":
+			v.TrialEndDate = &value
+		case "auto_renew":
+			var renewal bool
+			if json.Unmarshal(raw, &renewal) != nil {
+				return Values{}, ErrInvalid
+			}
+			v.AutoRenew = &renewal
 		case "next_billing_date":
 			v.NextBillingDate = &value
 			v.NextBillingMode = "manual"

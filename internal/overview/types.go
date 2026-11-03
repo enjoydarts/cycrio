@@ -28,6 +28,7 @@ type Counts struct {
 	Overdue  int `json:"overdue"`
 	Undated  int `json:"undated"`
 	Later    int `json:"later"`
+	Excluded int `json:"excluded"`
 }
 type Upcoming struct {
 	DisplayName *string `json:"display_name"`

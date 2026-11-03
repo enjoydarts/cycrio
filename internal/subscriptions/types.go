@@ -20,6 +20,8 @@ type Values struct {
 	ContractKind    string  `json:"contract_kind,omitempty"`
 	EffectiveDate   *string `json:"effective_date,omitempty"`
 	AccessEndDate   *string `json:"access_end_date,omitempty"`
+	TrialEndDate    *string `json:"trial_end_date"`
+	AutoRenew       *bool   `json:"auto_renew"`
 	Service         string  `json:"service"`
 	Plan            *string `json:"plan"`
 	Amount          *string `json:"amount"`
@@ -42,10 +44,11 @@ type Source struct {
 	OriginalEvent        ai.Event   `json:"original_event"`
 }
 type Subscription struct {
-	DisplayName *string `json:"display_name"`
-	Provenance  string  `json:"provenance"`
-	ID          string  `json:"id"`
-	Version     int64   `json:"version"`
+	ManualNextBillingDate *string `json:"manual_next_billing_date"`
+	DisplayName           *string `json:"display_name"`
+	Provenance            string  `json:"provenance"`
+	ID                    string  `json:"id"`
+	Version               int64   `json:"version"`
 	Values
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -63,9 +66,12 @@ type UpdateInput struct {
 	Values
 	// Legacy HTTP editors omit the entire lifecycle group. Preserve it under the
 	// same version lock rather than clearing facts they have never displayed.
-	PreserveLifecycle bool  `json:"-"`
-	ExpectedVersion   int64 `json:"expected_version"`
-	Confirmed         bool  `json:"confirmed"`
+	PreserveLifecycle       bool  `json:"-"`
+	PreserveTrialEndDate    bool  `json:"-"`
+	PreserveAutoRenew       bool  `json:"-"`
+	NextBillingDateExplicit bool  `json:"next_billing_date_explicit,omitempty"`
+	ExpectedVersion         int64 `json:"expected_version"`
+	Confirmed               bool  `json:"confirmed"`
 }
 type DeleteInput struct {
 	ExpectedVersion int64 `json:"expected_version"`

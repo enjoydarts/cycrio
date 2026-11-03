@@ -88,6 +88,8 @@
       (x) =>
         x.status !== 'ended' &&
         x.contract_kind !== 'fixed_term' &&
+        x.exclusion_reason !== 'access_ended' &&
+        !x.billing_date_suppressed &&
         (!x.next_billing_date || x.next_billing_date < report!.as_of),
     ) ?? [],
   );
@@ -209,6 +211,11 @@
               集計できる登録料金がありません。
             </p>{/if}
           <div class="coverage">
+            <span
+              >利用終了 {report.contracts.filter(
+                (row) => row.exclusion_reason === 'access_ended',
+              ).length}</span
+            >
             <span>利用中 {report.coverage.active_contracts}</span><span
               >状態不明 {report.coverage.unknown_contracts}</span
             ><span>終了済み {report.coverage.ended_contracts}</span><span

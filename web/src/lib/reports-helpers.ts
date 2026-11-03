@@ -174,7 +174,12 @@ export function serviceBreakdown(contracts: ReportContract[]) {
     }
   >();
   for (const row of contracts) {
-    if (row.status === 'ended' || row.contract_kind === 'fixed_term') continue;
+    if (
+      row.status === 'ended' ||
+      row.contract_kind === 'fixed_term' ||
+      row.exclusion_reason === 'access_ended'
+    )
+      continue;
     const key = JSON.stringify([row.service, row.currency]),
       previous = groups.get(key);
     groups.set(key, {

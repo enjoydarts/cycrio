@@ -48,7 +48,7 @@ func Normalize(v Values) (Values, error) {
 	if (v.IntervalUnit == nil) != (v.IntervalCount == nil) || v.IntervalUnit != nil && (!slices.Contains([]string{"day", "week", "month", "year"}, *v.IntervalUnit) || *v.IntervalCount < 1 || *v.IntervalCount > 10000) {
 		return Values{}, ErrInvalid
 	}
-	for _, date := range []*string{v.NextBillingDate, v.EffectiveDate, v.AccessEndDate} {
+	for _, date := range []*string{v.NextBillingDate, v.EffectiveDate, v.AccessEndDate, v.TrialEndDate} {
 		if date == nil {
 			continue
 		}

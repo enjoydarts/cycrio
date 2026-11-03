@@ -476,6 +476,90 @@ try {
       );
       await layout();
     }
+    await visit('lifecycle-create', width);
+    await wait('document.querySelector("form input")!==null');
+    await input(field('サービス名'), 'Example Mail');
+    assert.equal(
+      await js('return ' + field('自動更新（任意）', 'select') + '.value'),
+      '',
+    );
+    await input(field('自動更新（任意）', 'select'), 'on', 'change');
+    assert.equal(
+      await js('return ' + field('自動更新（任意）', 'select') + '.value'),
+      'on',
+    );
+    await input(field('自動更新（任意）', 'select'), '', 'change');
+    await input(field('自動更新（任意）', 'select'), 'off', 'change');
+    await input(field('無料期間終了日'), '2028-02-29');
+    await input(field('利用終了日'), '2028-03-01');
+    assert.equal(
+      await js('return ' + field('通常継続料金') + '.value'),
+      '',
+      'Trial must not invent a recurring charge',
+    );
+    await click('document.querySelector("input[type=checkbox]")');
+    await click(button('サブスクを登録'));
+    await saved();
+
+    await visit('lifecycle-raw-edit', width);
+    await wait('document.querySelector("input[type=date]")!==null');
+    assert.equal(
+      await js('return ' + field('次回請求日（任意）') + '.value'),
+      '2027-11-01',
+    );
+    await input(field('プラン（任意）'), '仕事用');
+    await click('document.querySelector("input[type=checkbox]")');
+    await click(button('変更を保存'));
+    await saved();
+    await js('window.browserTest.saved=null');
+    await input(field('次回請求日（任意）'), '');
+    await click('document.querySelector("input[type=checkbox]")');
+    await click(button('変更を保存'));
+    await saved();
+
+    await visit('change-lifecycle', width);
+    await wait('document.querySelector("input[type=radio]")!==null');
+    await click('document.querySelector("input[type=radio]")');
+    await click(button('契約の変更を確認'));
+    await wait(
+      'document.querySelectorAll(".change-review input[type=checkbox]").length===5',
+    );
+    await click(
+      'document.querySelectorAll(".change-review input[type=checkbox]")[0]',
+    );
+    await click(
+      'document.querySelectorAll(".change-review input[type=checkbox]")[4]',
+    );
+    await click(button('選択した変更を反映'));
+    await saved();
+    assert.equal(await js('return window.browserTest.saved.auto_renew'), false);
+    assert.equal(await js('return window.browserTest.saved.status'), 'active');
+    await wait('document.querySelector(".change-history summary")!==null');
+    await click('document.querySelector(".change-history summary")');
+    assert.equal(
+      await js(
+        'return document.querySelector(".change-history [data-label=変更後]").textContent',
+      ),
+      '停止',
+    );
+    await layout();
+
+    await visit('lifecycle-labels', width);
+    await wait('document.body.textContent.includes("自動更新停止")');
+    assert.ok(
+      await js(
+        'return document.body.textContent.includes("利用終了予定 2040-03-01")&&document.body.textContent.includes("利用終了 2020-03-01")&&document.body.textContent.includes("利用中")',
+      ),
+    );
+    await layout();
+    await visit('lifecycle-report', width);
+    await wait(
+      'document.body.textContent.includes("集計できる登録料金がありません")',
+    );
+    assert.ok(
+      await js('return document.body.textContent.includes("利用終了 1")'),
+    );
+    await layout();
     const logs = await api('POST', session + '/log', { type: 'browser' });
     assert.deepEqual(
       logs.filter((entry) => ['SEVERE', 'WARNING'].includes(entry.level)),
@@ -496,6 +580,11 @@ try {
         'change-conflict',
         'change-uncertain',
         'change-source-conflict',
+        'lifecycle-create',
+        'lifecycle-raw-edit',
+        'change-lifecycle',
+        'lifecycle-labels',
+        'lifecycle-report',
       ],
       status: 'pass',
     });

@@ -2,6 +2,7 @@ import { ApiError, type ErrorCode, type TokenProvider } from './api.ts';
 import { createFeed } from './daily-controller.ts';
 import type { CandidateSources } from './candidate-selection.ts';
 import type { ProcessingEvent } from './mail-processing-api.ts';
+import { subscriptionEditorValues } from './subscription-lifecycle.ts';
 import {
   parseValues,
   type Subscription,
@@ -15,6 +16,8 @@ export const blankSubscription = (): SubscriptionValues => ({
   contract_kind: 'unknown',
   effective_date: null,
   access_end_date: null,
+  trial_end_date: null,
+  auto_renew: null,
   plan: null,
   amount: null,
   currency: null,
@@ -53,6 +56,8 @@ export const subscriptionFromEvent = (
   contract_kind: event.contract_kind ?? 'unknown',
   effective_date: event.effective_date ?? null,
   access_end_date: event.access_end_date ?? null,
+  trial_end_date: event.trial_end_date ?? null,
+  auto_renew: event.auto_renew ?? null,
   plan: event.plan,
   amount:
     event.contract_kind === 'fixed_term'
@@ -110,7 +115,7 @@ export function createSubscriptionEditor(
 ) {
   let view: EditorView = {
     values: initial
-      ? parseValues(initial)
+      ? parseValues(subscriptionEditorValues(initial))
       : {
           ...blankSubscription(),
           next_billing_mode: source ? 'automatic' : 'manual',
@@ -196,6 +201,7 @@ export function createSubscriptionEditor(
             {
               ...body,
               expected_version: view.baseline.version,
+              next_billing_date_explicit: true,
               confirmed: true,
             },
             token,
@@ -207,7 +213,7 @@ export function createSubscriptionEditor(
       publish({
         saved,
         baseline: saved,
-        values: parseValues(saved),
+        values: parseValues(subscriptionEditorValues(saved)),
         status: 'ready',
         dirty: false,
         confirmed: false,
@@ -351,7 +357,9 @@ export function createSubscriptionEditor(
       const baseline = view.latest ?? view.baseline;
       publish({
         baseline,
-        values: baseline ? parseValues(baseline) : blankSubscription(),
+        values: baseline
+          ? parseValues(subscriptionEditorValues(baseline))
+          : blankSubscription(),
         latest: null,
         conflict: false,
         confirmed: false,

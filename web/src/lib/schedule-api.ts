@@ -53,7 +53,13 @@ export type SchedulePreview = {
   as_of: string;
   timezone: 'Asia/Tokyo';
   candidate_date: string | null;
-  reason: '' | 'ended' | 'out_of_range' | 'fixed_term';
+  reason:
+    | ''
+    | 'ended'
+    | 'out_of_range'
+    | 'fixed_term'
+    | 'access_ended'
+    | 'after_access_end';
   algorithm_version: 'calendar-v1';
   overdue: boolean;
 };
@@ -86,8 +92,12 @@ export type ScheduleReason =
   | 'request_conflict'
   | 'history_changed'
   | 'ended'
-  | 'fixed_term';
+  | 'fixed_term'
+  | 'access_ended'
+  | 'after_access_end';
 const reasons: ScheduleReason[] = [
+  'access_ended',
+  'after_access_end',
   'version_conflict',
   'preview_expired',
   'preview_changed',
@@ -170,6 +180,8 @@ export function parseSchedulePreview(value: unknown): SchedulePreview {
     as_of = date(v.as_of),
     candidate_date = nullable(v.candidate_date, date),
     reason = choice(v.reason, [
+      'access_ended',
+      'after_access_end',
       '',
       'ended',
       'out_of_range',

@@ -81,6 +81,9 @@ export function installAPI(mode: string, initial: Subscription) {
             interval_unit: 'year',
             interval_count: 1,
             next_billing_at: '2027-12-01',
+            ...(mode === 'change-lifecycle'
+              ? { auto_renew: false, trial_end_date: '2028-02-29' }
+              : {}),
           },
         };
         if (method === 'GET' && url.pathname === '/synthetic/v1/subscriptions')
@@ -111,6 +114,17 @@ export function installAPI(mode: string, initial: Subscription) {
             timezone: 'Asia/Tokyo',
             algorithm_version: 'subscription-change-v1',
             fields: [
+              ...(mode === 'change-lifecycle'
+                ? [
+                    {
+                      key: 'auto_renew',
+                      current: true,
+                      proposed: false,
+                      selectable: true,
+                      reason: '',
+                    },
+                  ]
+                : []),
               {
                 key: 'amount',
                 current: before.amount,
@@ -154,7 +168,9 @@ export function installAPI(mode: string, initial: Subscription) {
             body.source_event_index !== 0 ||
             body.preview_token !== (version === 1 ? 'a' : 'b').repeat(64) ||
             !body.confirmed ||
-            !equal(body.selected_fields, ['amount'])
+            !equal(body.selected_fields, [
+              mode === 'change-lifecycle' ? 'auto_renew' : 'amount',
+            ])
           )
             fail('Unexpected approved change payload');
           if (
@@ -170,12 +186,20 @@ export function installAPI(mode: string, initial: Subscription) {
           }
           if (firstChangeBody && !equal(firstChangeBody, body))
             fail('Uncertain retry changed its frozen request');
-          const after = { ...before, amount: '19', version: version + 1 };
+          const after = {
+            ...before,
+            ...(mode === 'change-lifecycle'
+              ? { auto_renew: false }
+              : { amount: '19' }),
+            version: version + 1,
+          };
           applied = {
             request_id: body.request_id,
             applied_version: after.version,
             created_at: '2026-11-03T00:00:00Z',
-            selected_fields: ['amount'],
+            selected_fields: [
+              mode === 'change-lifecycle' ? 'auto_renew' : 'amount',
+            ],
             before,
             after,
             source,
@@ -259,6 +283,48 @@ export function installAPI(mode: string, initial: Subscription) {
           version: ++version,
         });
       }
+      if (mode === 'lifecycle-raw-edit') {
+        keys(body, [
+          'contract_kind',
+          'effective_date',
+          'access_end_date',
+          'trial_end_date',
+          'auto_renew',
+          'service',
+          'plan',
+          'amount',
+          'currency',
+          'interval_unit',
+          'interval_count',
+          'next_billing_date',
+          'next_billing_mode',
+          'status',
+          'confirmed',
+          'expected_version',
+          'next_billing_date_explicit',
+        ]);
+        if (
+          method !== 'PUT' ||
+          url.pathname !== `/synthetic/v1/subscriptions/${initial.id}` ||
+          body.expected_version !== version ||
+          !body.next_billing_date_explicit ||
+          !body.confirmed ||
+          body.status !== 'ended' ||
+          body.auto_renew !== false ||
+          body.next_billing_date !== (version === 1 ? '2027-11-01' : null)
+        )
+          fail(
+            'Raw manual date must survive unrelated edits and permit explicit clear',
+          );
+        version++;
+        return response({
+          ...initial,
+          ...body,
+          next_billing_date: null,
+          manual_next_billing_date: body.next_billing_date,
+          version,
+        });
+      }
       const editing = mode === 'edit';
       if (
         method !== (editing ? 'PUT' : 'POST') ||
@@ -270,6 +336,8 @@ export function installAPI(mode: string, initial: Subscription) {
         'contract_kind',
         'effective_date',
         'access_end_date',
+        'trial_end_date',
+        'auto_renew',
         'service',
         'plan',
         'amount',
@@ -284,7 +352,7 @@ export function installAPI(mode: string, initial: Subscription) {
       keys(body, [
         ...fields,
         ...(editing
-          ? ['expected_version']
+          ? ['expected_version', 'next_billing_date_explicit']
           : ['request_id', 'source_result_id', 'source_event_index']),
       ]);
       if (!body.confirmed || body.service !== 'Example Mail')
@@ -297,7 +365,10 @@ export function installAPI(mode: string, initial: Subscription) {
           body.source_event_index !== null)
       )
         fail('Unexpected create identity');
-      const expectedMoney = mode === 'register' ? [null, null] : ['9', 'USD'];
+      const expectedMoney =
+        mode === 'register' || mode === 'lifecycle-create'
+          ? [null, null]
+          : ['9', 'USD'];
       if (!equal([body.amount, body.currency], expectedMoney))
         fail('Unexpected money pair');
       if (
@@ -307,6 +378,13 @@ export function installAPI(mode: string, initial: Subscription) {
         )
       )
         fail('Unexpected optional cycle');
+      if (
+        mode === 'lifecycle-create' &&
+        (body.trial_end_date !== '2028-02-29' ||
+          body.auto_renew !== false ||
+          body.access_end_date !== '2028-03-01')
+      )
+        fail('Explicit lifecycle facts were changed');
       return response({ ...initial, ...body, version: editing ? 2 : 1 });
     } catch (error) {
       window.browserTest.errors.push(String(error));

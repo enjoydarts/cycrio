@@ -57,10 +57,8 @@ func scheduleOverdue(s subscriptions.Subscription, today string) bool {
 	return s.Status == "active" && s.NextBillingDate != nil && *s.NextBillingDate < today
 }
 func scheduleView(ctx context.Context, tx pgx.Tx, owner string, s subscriptions.Subscription, today string) (billingschedule.View, error) {
-	if s.NextBillingMode == "automatic" {
-		if e := tx.QueryRow(ctx, `SELECT to_char(subscription_effective_next_billing(subscriptions,$3::date),'YYYY-MM-DD') FROM subscriptions WHERE owner_id=$1 AND id=$2`, owner, s.ID, today).Scan(&s.NextBillingDate); e != nil {
-			return billingschedule.View{}, scheduleError(e)
-		}
+	if e := tx.QueryRow(ctx, `SELECT to_char(subscription_effective_next_billing(subscriptions,$3::date),'YYYY-MM-DD') FROM subscriptions WHERE owner_id=$1 AND id=$2`, owner, s.ID, today).Scan(&s.NextBillingDate); e != nil {
+		return billingschedule.View{}, scheduleError(e)
 	}
 	settings, manual, e := scheduleSettings(ctx, tx, owner, s.ID)
 	if e != nil {

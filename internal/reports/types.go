@@ -13,21 +13,25 @@ var (
 )
 
 type Contract struct {
-	DisplayName     *string `json:"display_name"`
-	NextBillingMode string  `json:"next_billing_mode"`
-	ID              string  `json:"id"`
-	Service         string  `json:"service"`
-	Plan            *string `json:"plan"`
-	Status          string  `json:"status"`
-	ContractKind    string  `json:"contract_kind"`
-	Amount          *string `json:"amount"`
-	Currency        *string `json:"currency"`
-	IntervalUnit    *string `json:"interval_unit"`
-	IntervalCount   *int    `json:"interval_count"`
-	NextBillingDate *string `json:"next_billing_date"`
-	MonthlyAmount   *string `json:"monthly_amount"`
-	AnnualAmount    *string `json:"annual_amount"`
-	ExclusionReason string  `json:"exclusion_reason"`
+	DisplayName           *string `json:"display_name"`
+	NextBillingMode       string  `json:"next_billing_mode"`
+	ID                    string  `json:"id"`
+	Service               string  `json:"service"`
+	Plan                  *string `json:"plan"`
+	Status                string  `json:"status"`
+	ContractKind          string  `json:"contract_kind"`
+	AccessEndDate         *string `json:"access_end_date"`
+	TrialEndDate          *string `json:"trial_end_date"`
+	AutoRenew             *bool   `json:"auto_renew"`
+	BillingDateSuppressed bool    `json:"billing_date_suppressed"`
+	Amount                *string `json:"amount"`
+	Currency              *string `json:"currency"`
+	IntervalUnit          *string `json:"interval_unit"`
+	IntervalCount         *int    `json:"interval_count"`
+	NextBillingDate       *string `json:"next_billing_date"`
+	MonthlyAmount         *string `json:"monthly_amount"`
+	AnnualAmount          *string `json:"annual_amount"`
+	ExclusionReason       string  `json:"exclusion_reason"`
 }
 
 type Record struct {

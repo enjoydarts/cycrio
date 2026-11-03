@@ -45,6 +45,11 @@ func scheduleHistory(ctx context.Context, tx pgx.Tx, owner string, s subscriptio
 		p.Reason = "fixed_term"
 		return p, nil
 	}
+	if s.AccessEndDate != nil && *s.AccessEndDate < today {
+		p.Status = "insufficient"
+		p.Reason = "access_ended"
+		return p, nil
+	}
 	if s.Status == "ended" {
 		p.Reason = "ended"
 	}
@@ -170,6 +175,10 @@ func scheduleHistory(ctx context.Context, tx pgx.Tx, owner string, s subscriptio
 				}
 				if c.CandidateDate == nil {
 					c.Reason = "out_of_range"
+				}
+				if c.CandidateDate != nil && s.AccessEndDate != nil && *c.CandidateDate > *s.AccessEndDate {
+					c.CandidateDate = nil
+					c.Reason = "after_access_end"
 				}
 			}
 			p.Candidates = append(p.Candidates, c)

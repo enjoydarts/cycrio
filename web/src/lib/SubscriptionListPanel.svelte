@@ -6,6 +6,7 @@
   import { money, cycle } from './daily-text.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
   import { subscriptionTitle } from './subscription-title.ts';
+  import { lifecycleLabels } from './subscription-lifecycle.ts';
   let {
     items,
     layout = 'list',
@@ -33,7 +34,8 @@
     class="brand-text"
     ><strong>{subscriptionTitle(item)}</strong>{#if item.display_name}<small
         >{item.service}</small
-      >{/if}<small>{item.plan ?? 'プラン不明'}</small></span
+      >{/if}<small>{item.plan ?? 'プラン不明'}</small
+    >{#each lifecycleLabels(item) as label}<small>{label}</small>{/each}</span
   >{/snippet}
 {#if layout === 'cards'}
   <div class="cards">

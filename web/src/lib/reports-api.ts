@@ -25,6 +25,10 @@ export type ReportContract = SubscriptionName & {
   plan: string | null;
   status: 'active' | 'ended' | 'unknown';
   contract_kind: 'recurring' | 'fixed_term' | 'unknown';
+  access_end_date?: string | null;
+  trial_end_date?: string | null;
+  auto_renew?: boolean | null;
+  billing_date_suppressed?: boolean;
   amount: string | null;
   currency: string | null;
   interval_unit: 'day' | 'week' | 'month' | 'year' | null;
@@ -37,6 +41,7 @@ export type ReportContract = SubscriptionName & {
     | ''
     | 'ended'
     | 'fixed_term'
+    | 'access_ended'
     | 'missing_amount'
     | 'missing_currency'
     | 'missing_interval';
@@ -169,6 +174,19 @@ export function parseReport(value: unknown): Report {
             'fixed_term',
             'unknown',
           ]),
+          ...(row.access_end_date === undefined
+            ? {}
+            : { access_end_date: nullable(row.access_end_date, date) }),
+          ...(row.trial_end_date === undefined
+            ? {}
+            : { trial_end_date: nullable(row.trial_end_date, date) }),
+          ...(row.auto_renew === undefined
+            ? {}
+            : {
+                auto_renew: nullable(row.auto_renew, (x) =>
+                  typeof x === 'boolean' ? x : invalid(),
+                ),
+              }),
           amount: nullable(row.amount, unsigned),
           currency: nullable(row.currency, currency),
           interval_unit: nullable(row.interval_unit, (x) =>
@@ -178,6 +196,12 @@ export function parseReport(value: unknown): Report {
             integer(x, 1, 10000),
           ),
           next_billing_date: nullable(row.next_billing_date, date),
+          billing_date_suppressed:
+            row.billing_date_suppressed === undefined
+              ? false
+              : typeof row.billing_date_suppressed === 'boolean'
+                ? row.billing_date_suppressed
+                : invalid(),
           ...(row.next_billing_mode === undefined
             ? {}
             : {
@@ -192,6 +216,7 @@ export function parseReport(value: unknown): Report {
             '',
             'ended',
             'fixed_term',
+            'access_ended',
             'missing_amount',
             'missing_currency',
             'missing_interval',
@@ -206,6 +231,14 @@ export function parseReport(value: unknown): Report {
             (!result.currency ||
               result.status === 'ended' ||
               result.contract_kind === 'fixed_term'))
+        )
+          return invalid();
+        if (
+          (result.exclusion_reason === 'access_ended' &&
+            (!result.access_end_date || result.access_end_date >= as_of)) ||
+          (result.monthly_amount !== null &&
+            result.access_end_date &&
+            result.access_end_date < as_of)
         )
           return invalid();
         return result;

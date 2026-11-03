@@ -198,6 +198,18 @@ func subscriptionChangePreview(ctx context.Context, tx pgx.Tx, owner, id string,
 			if e != nil {
 				return p, subscriptionError(e)
 			}
+			if s.ContractKind == "fixed_term" || s.AccessEndDate != nil && (*s.AccessEndDate < today || p.DerivedNextBillingDate != nil && *p.DerivedNextBillingDate > *s.AccessEndDate) {
+				p.DerivedNextBillingDate = nil
+			}
+			for _, lifecycle := range p.Fields {
+				if lifecycle.Key == "access_end_date" && lifecycle.Selectable {
+					// The final date depends on which fields the owner selects.
+					// Do not present the old cutoff as a definitive combined preview.
+					p.DerivedNextBillingDate = nil
+					p.Warnings = append(p.Warnings, subscriptions.ChangeWarning{Code: "derived_billing_date_requires_lifecycle_review", Field: "interval"})
+					break
+				}
+			}
 		}
 	}
 	doc, _ := json.Marshal(struct {
@@ -319,7 +331,7 @@ func (r *SubscriptionRepository) ApplyChange(ctx context.Context, owner, id stri
 	if e != nil {
 		return out, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,plan=$3,amount=$4,currency=$5,interval_unit=$6,interval_count=$7,next_billing_date=$8::text::date,next_billing_mode=$9,contract_kind=$10,access_end_date=$11::text::date,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, values.Plan, values.Amount, values.Currency, values.IntervalUnit, values.IntervalCount, values.NextBillingDate, values.NextBillingMode, values.ContractKind, values.AccessEndDate)
+	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,plan=$3,amount=$4,currency=$5,interval_unit=$6,interval_count=$7,next_billing_date=$8::text::date,next_billing_mode=$9,contract_kind=$10,access_end_date=$11::text::date,trial_end_date=$12::text::date,auto_renew=$13,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, values.Plan, values.Amount, values.Currency, values.IntervalUnit, values.IntervalCount, values.NextBillingDate, values.NextBillingMode, values.ContractKind, values.AccessEndDate, values.TrialEndDate, values.AutoRenew)
 	if e != nil {
 		return out, subscriptionError(e)
 	}

@@ -48,22 +48,23 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 	if err != nil {
 		return out, overview.ErrUnavailable
 	}
-	if err = tx.QueryRow(ctx, `WITH dated AS MATERIALIZED (SELECT status,subscription_effective_next_billing(subscriptions,$2::date) AS due FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL)
+	if err = tx.QueryRow(ctx, `WITH dated AS MATERIALIZED (SELECT status,subscription_effective_next_billing(subscriptions,$2::date) AS due,subscription_billing_suppression_reason(subscriptions,$2::date) IS NOT NULL AS excluded FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL)
  SELECT count(*),count(*) FILTER(WHERE status='active'),count(*) FILTER(WHERE status='ended'),count(*) FILTER(WHERE status='unknown'),
  count(*) FILTER(WHERE status<>'ended' AND due>=$2::date AND due<$3::date),
  count(*) FILTER(WHERE status<>'ended' AND due<$2::date),
- count(*) FILTER(WHERE status<>'ended' AND due IS NULL),
- count(*) FILTER(WHERE status<>'ended' AND due>=$3::date)
- FROM dated`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later); err != nil {
+ count(*) FILTER(WHERE status<>'ended' AND due IS NULL AND NOT excluded),
+ count(*) FILTER(WHERE status<>'ended' AND due>=$3::date),
+ count(*) FILTER(WHERE status<>'ended' AND excluded)
+ FROM dated`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later, &out.Subscriptions.Excluded); err != nil {
 		return out, overview.ErrUnavailable
 	}
-	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(due,'YYYY-MM-DD'),status,provenance,next_billing_mode,display_name FROM subscriptions CROSS JOIN LATERAL (SELECT subscription_effective_next_billing(subscriptions,$2::date) AS due) d WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND due>=$2::date AND due<$3::date ORDER BY due,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
+	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(due,'YYYY-MM-DD'),status,provenance,next_billing_mode,display_name,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD'),to_char(trial_end_date,'YYYY-MM-DD'),auto_renew FROM subscriptions CROSS JOIN LATERAL (SELECT subscription_effective_next_billing(subscriptions,$2::date) AS due) d WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND due>=$2::date AND due<$3::date ORDER BY due,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
 	if err != nil {
 		return out, overview.ErrUnavailable
 	}
 	for rows.Next() {
 		var item overview.Upcoming
-		if rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance, &item.NextBillingMode, &item.DisplayName) != nil {
+		if rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance, &item.NextBillingMode, &item.DisplayName, &item.ContractKind, &item.EffectiveDate, &item.AccessEndDate, &item.TrialEndDate, &item.AutoRenew) != nil {
 			rows.Close()
 			return out, overview.ErrUnavailable
 		}

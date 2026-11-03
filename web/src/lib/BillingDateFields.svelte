@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { SubscriptionValues } from './subscriptions-api.ts';
+  import { processingDate } from './mail-processing-text.ts';
   let {
     values,
     receivedAt = null,
@@ -34,7 +35,7 @@
     <p>{values.next_billing_date ?? '保存後に計算・条件不足の場合は不明'}</p>
     <small class="muted"
       >登録時に基準としたメール受信日（日本時間）と請求周期から計算します。{#if receivedAt}受信日時:
-        {receivedAt}{/if} 保存後の推定日を確認してください。</small
+        {processingDate(receivedAt)}{/if} 保存後の推定日を確認してください。</small
     >
   </div>
 {:else}
@@ -45,6 +46,8 @@
       {disabled}
       oninput={(e) =>
         onchange({ next_billing_date: e.currentTarget.value || null })}
-    /></label
+    /><small class="muted"
+      >保存した手動日は保持します。終了済み・利用終了日より後の日付は、現在の請求予定には表示しません。</small
+    ></label
   >
 {/if}

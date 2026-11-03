@@ -50,6 +50,20 @@
     <dd>{event.access_end_date ?? '不明'}</dd>
   </div>
   <div>
+    <dt>無料期間終了日</dt>
+    <dd>{event.trial_end_date ?? '不明'}</dd>
+  </div>
+  <div>
+    <dt>自動更新</dt>
+    <dd>
+      {event.auto_renew === true
+        ? '有効'
+        : event.auto_renew === false
+          ? '停止'
+          : '不明'}
+    </dd>
+  </div>
+  <div>
     <dt>請求日</dt>
     <dd>{event.billed_at ?? '不明'}</dd>
   </div>

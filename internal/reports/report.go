@@ -78,6 +78,8 @@ func Build(now time.Time, month string, contracts []Contract, records []Record) 
 		switch {
 		case c.Status == "ended":
 			c.ExclusionReason = "ended"
+		case c.AccessEndDate != nil && *c.AccessEndDate < report.AsOf:
+			c.ExclusionReason = "access_ended"
 		case c.ContractKind == "fixed_term":
 			c.ExclusionReason = "fixed_term"
 		case c.Amount == nil:
@@ -112,13 +114,13 @@ func Build(now time.Time, month string, contracts []Contract, records []Record) 
 		if c.Status != "ended" {
 			report.Coverage.OpenContracts++
 		}
-		if c.Status != "ended" && c.ContractKind != "fixed_term" {
+		if c.Status != "ended" && c.ContractKind != "fixed_term" && (c.AccessEndDate == nil || *c.AccessEndDate >= report.AsOf) {
 			if c.MonthlyAmount == nil {
 				report.Coverage.UnpricedContracts++
 			}
-			if c.NextBillingDate == nil {
+			if c.NextBillingDate == nil && !c.BillingDateSuppressed {
 				report.Coverage.MissingDateContracts++
-			} else {
+			} else if c.NextBillingDate != nil && !c.BillingDateSuppressed && (c.AccessEndDate == nil || *c.NextBillingDate <= *c.AccessEndDate) {
 				due, _ := time.ParseInLocation("2006-01-02", *c.NextBillingDate, japaneseTime)
 				if due.Before(date) {
 					report.Coverage.OverdueContracts++
@@ -225,9 +227,12 @@ func validateContract(c Contract) error {
 	if c.IntervalUnit != nil && !slices.Contains([]string{"day", "week", "month", "year"}, *c.IntervalUnit) || c.IntervalCount != nil && (*c.IntervalCount < 1 || *c.IntervalCount > 10000) {
 		return ErrInvalid
 	}
-	if c.NextBillingDate != nil {
-		d, err := time.Parse("2006-01-02", *c.NextBillingDate)
-		if err != nil || d.Year() < 1 || d.Format("2006-01-02") != *c.NextBillingDate {
+	for _, date := range []*string{c.NextBillingDate, c.AccessEndDate, c.TrialEndDate} {
+		if date == nil {
+			continue
+		}
+		d, err := time.Parse("2006-01-02", *date)
+		if err != nil || d.Year() < 1 || d.Format("2006-01-02") != *date {
 			return ErrInvalid
 		}
 	}

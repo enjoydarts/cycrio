@@ -37,7 +37,7 @@ func TestAutomaticBillingMigrationPreservesLegacyAndRefusesDateLoss(t *testing.T
 	if _, err = schedule.Save(ctx, f.owner, scheduled.ID, scheduleSave(1)); err != nil {
 		t.Fatal(err)
 	}
-	const snapshot = `SELECT jsonb_agg(to_jsonb(s)-'display_name'-'next_billing_mode' ORDER BY id)::text FROM subscriptions s`
+	const snapshot = `SELECT jsonb_agg(to_jsonb(s)-'trial_end_date'-'auto_renew'-'display_name'-'next_billing_mode' ORDER BY id)::text FROM subscriptions s`
 	var before, after string
 	if err = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 		t.Fatal(err)

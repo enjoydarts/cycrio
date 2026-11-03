@@ -93,7 +93,9 @@ func ExtractionSchema() map[string]any {
 	// reject null values inside enum even when the field type includes null.
 	intervalUnit := map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": []string{"day", "week", "month", "year"}}, map[string]any{"type": "null"}}}
 	props := map[string]any{"service": nullableString(), "plan": nullableString(), "event_type": map[string]any{"type": "string", "enum": []string{"invoice", "payment", "renewal", "refund", "change", "cancellation", "trial", "payment_failed", "payment_reminder", "suspension"}}, "amount": nullableString(), "currency": nullableString(), "billed_at": nullableString(), "period_start": nullableString(), "period_end": nullableString(), "next_billing_at": nullableString(), "interval_unit": intervalUnit, "interval_count": map[string]any{"type": []string{"integer", "null"}}, "recurring_amount": nullableString(), "recurring_currency": nullableString(), "effective_date": nullableString(), "access_end_date": nullableString(), "contract_kind": map[string]any{"anyOf": []any{map[string]any{"type": "string", "enum": []string{"recurring", "fixed_term"}}, map[string]any{"type": "null"}}}}
-	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count", "recurring_amount", "recurring_currency", "effective_date", "access_end_date", "contract_kind"}
+	props["trial_end_date"] = nullableString()
+	props["auto_renew"] = map[string]any{"type": []string{"boolean", "null"}}
+	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count", "recurring_amount", "recurring_currency", "effective_date", "access_end_date", "contract_kind", "trial_end_date", "auto_renew"}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"events"}, "properties": map[string]any{"events": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": props}}}}
 }
 func ValidateExtraction(b []byte) (Extraction, error) {
@@ -112,9 +114,10 @@ func ValidateExtraction(b []byte) (Extraction, error) {
 	}
 	keys := map[string]bool{"service": true, "plan": true, "event_type": true, "amount": true, "currency": true, "billed_at": true, "period_start": true, "period_end": true, "next_billing_at": true, "interval_unit": true, "interval_count": true}
 	newKeys := map[string]bool{"recurring_amount": true, "recurring_currency": true, "effective_date": true, "access_end_date": true, "contract_kind": true}
+	lifecycleKeys := map[string]bool{"trial_end_date": true, "auto_renew": true}
 	for _, v := range events {
 		m, ok := v.(map[string]any)
-		if !ok || (len(m) != len(keys) && len(m) != len(keys)+len(newKeys)) {
+		if !ok || (len(m) != len(keys) && len(m) != len(keys)+len(newKeys) && len(m) != len(keys)+len(newKeys)+len(lifecycleKeys)) {
 			return bad()
 		}
 		for k := range keys {
@@ -129,9 +132,24 @@ func ValidateExtraction(b []byte) (Extraction, error) {
 				}
 			}
 		}
+		if len(m) == len(keys)+len(newKeys)+len(lifecycleKeys) {
+			for k := range lifecycleKeys {
+				if _, exists := m[k]; !exists {
+					return bad()
+				}
+			}
+		}
 		for k, x := range m {
-			if !keys[k] && !newKeys[k] {
+			if !keys[k] && !newKeys[k] && !lifecycleKeys[k] {
 				return bad()
+			}
+			if k == "auto_renew" {
+				if x != nil {
+					if _, ok := x.(bool); !ok {
+						return bad()
+					}
+				}
+				continue
 			}
 			if k == "interval_count" {
 				if x != nil {

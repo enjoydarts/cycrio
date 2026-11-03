@@ -51,13 +51,13 @@ func (r *ReportsRepository) Read(ctx context.Context, owner, month string) (repo
 	}
 	contracts := []reports.Contract{}
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
-	rows, err := tx.Query(ctx, `SELECT id,service,plan,status,contract_kind,amount,currency,interval_unit,interval_count,to_char(subscription_effective_next_billing(subscriptions,$2::date),'YYYY-MM-DD'),next_billing_mode,display_name FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL ORDER BY service,id`, owner, now.In(jst).Format("2006-01-02"))
+	rows, err := tx.Query(ctx, `SELECT id,service,plan,status,contract_kind,amount,currency,interval_unit,interval_count,to_char(subscription_effective_next_billing(subscriptions,$2::date),'YYYY-MM-DD'),next_billing_mode,display_name,to_char(access_end_date,'YYYY-MM-DD'),to_char(trial_end_date,'YYYY-MM-DD'),auto_renew,subscription_billing_suppression_reason(subscriptions,$2::date) IS NOT NULL FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL ORDER BY service,id`, owner, now.In(jst).Format("2006-01-02"))
 	if err != nil {
 		return out, reports.ErrUnavailable
 	}
 	for rows.Next() {
 		var c reports.Contract
-		if rows.Scan(&c.ID, &c.Service, &c.Plan, &c.Status, &c.ContractKind, &c.Amount, &c.Currency, &c.IntervalUnit, &c.IntervalCount, &c.NextBillingDate, &c.NextBillingMode, &c.DisplayName) != nil {
+		if rows.Scan(&c.ID, &c.Service, &c.Plan, &c.Status, &c.ContractKind, &c.Amount, &c.Currency, &c.IntervalUnit, &c.IntervalCount, &c.NextBillingDate, &c.NextBillingMode, &c.DisplayName, &c.AccessEndDate, &c.TrialEndDate, &c.AutoRenew, &c.BillingDateSuppressed) != nil {
 			rows.Close()
 			return out, reports.ErrUnavailable
 		}

@@ -76,7 +76,7 @@ func TestReviewOutputSchemaRequiresAllFields(t *testing.T) {
 	item := ExtractionSchema()["properties"].(map[string]any)["events"].(map[string]any)["items"].(map[string]any)
 	props := item["properties"].(map[string]any)
 	required := item["required"].([]string)
-	if len(props) != 16 || len(required) != 16 {
+	if len(props) != 18 || len(required) != 18 {
 		t.Fatalf("incomplete output shape: props=%d required=%d", len(props), len(required))
 	}
 	for _, k := range required {

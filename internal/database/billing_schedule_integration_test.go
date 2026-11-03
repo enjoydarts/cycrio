@@ -78,7 +78,7 @@ func TestBillingScheduleReadSaveReplayAndLegacyChanges(t *testing.T) {
 	}
 	now = now.AddDate(0, 0, 1)
 	replay, e := r.Save(ctx, f.owner, s.ID, in)
-	if e != nil || replay.Receipt != saved.Receipt || replay.Current.Subscription.Version != current.Version || *replay.Current.Subscription.NextBillingDate != manual || replay.Current.NextDateSource != "manual" || replay.Current.Overdue {
+	if e != nil || replay.Receipt != saved.Receipt || replay.Current.Subscription.Version != current.Version || replay.Current.Subscription.NextBillingDate != nil || replay.Current.Subscription.ManualNextBillingDate == nil || *replay.Current.Subscription.ManualNextBillingDate != manual || replay.Current.NextDateSource != "unknown" || replay.Current.Overdue {
 		t.Fatal(replay, e)
 	}
 	changed := in

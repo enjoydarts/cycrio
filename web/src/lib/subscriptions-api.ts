@@ -31,6 +31,8 @@ export type SubscriptionValues = {
   contract_kind?: 'recurring' | 'fixed_term' | 'unknown';
   effective_date?: string | null;
   access_end_date?: string | null;
+  trial_end_date?: string | null;
+  auto_renew?: boolean | null;
   service: string;
   plan: string | null;
   amount: string | null;
@@ -45,6 +47,7 @@ export type Subscription = SubscriptionValues &
   SubscriptionName & {
     provenance?: 'automatic' | 'owner_confirmed';
     id: string;
+    manual_next_billing_date?: string | null;
     version: number;
     created_at: string;
     updated_at: string;
@@ -88,6 +91,7 @@ export type SubscriptionCreate = SubscriptionValues & {
   confirmed: boolean;
 };
 export type SubscriptionUpdate = SubscriptionValues & {
+  next_billing_date_explicit?: boolean;
   expected_version: number;
   confirmed: boolean;
 };
@@ -141,6 +145,16 @@ export function parseValues(value: unknown): SubscriptionValues {
     contract_kind,
     effective_date: nullable(v.effective_date ?? null, date),
     access_end_date: nullable(v.access_end_date ?? null, date),
+    ...(v.trial_end_date === undefined
+      ? {}
+      : { trial_end_date: nullable(v.trial_end_date, date) }),
+    ...(v.auto_renew === undefined
+      ? {}
+      : {
+          auto_renew: nullable(v.auto_renew, (x) =>
+            typeof x === 'boolean' ? x : invalid(),
+          ),
+        }),
     service: label(v.service),
     plan: nullable(v.plan, label),
     amount,
@@ -213,6 +227,11 @@ export function parseSubscription(value: unknown): Subscription {
         ? 'owner_confirmed'
         : choice(v.provenance, ['automatic', 'owner_confirmed'] as const),
     id: uuid(v.id),
+    ...(v.manual_next_billing_date === undefined
+      ? {}
+      : {
+          manual_next_billing_date: nullable(v.manual_next_billing_date, date),
+        }),
     version: integer(v.version, 1),
     created_at: timestamp(v.created_at),
     updated_at: timestamp(v.updated_at),
@@ -348,6 +367,12 @@ export function createSubscriptionsAPI(
     ) {
       const body = input(() => ({
         ...parseValues(v),
+        ...(v.next_billing_date_explicit === undefined
+          ? {}
+          : {
+              next_billing_date_explicit:
+                v.next_billing_date_explicit === true ? true : invalid(),
+            }),
         expected_version: integer(v.expected_version, 1),
         confirmed: confirm(v.confirmed),
       }));

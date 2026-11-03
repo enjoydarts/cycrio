@@ -13,6 +13,7 @@ export function overviewFixture() {
       overdue: 1,
       undated: 0,
       later: 0,
+      excluded: 0,
     },
     attention_messages: 3,
     upcoming: [
