@@ -31,14 +31,15 @@ type Values struct {
 	Status          string  `json:"status"`
 }
 type Source struct {
-	ReceivedAt    *time.Time `json:"received_at"`
-	AccountID     *string    `json:"account_id,omitempty"`
-	AccountLabel  *string    `json:"account_label,omitempty"`
-	Provider      *string    `json:"provider,omitempty"`
-	Provenance    string     `json:"provenance"`
-	ResultID      string     `json:"result_id"`
-	EventIndex    int        `json:"event_index"`
-	OriginalEvent ai.Event   `json:"original_event"`
+	AffectsBillingAnchor bool       `json:"affects_billing_anchor"`
+	ReceivedAt           *time.Time `json:"received_at"`
+	AccountID            *string    `json:"account_id,omitempty"`
+	AccountLabel         *string    `json:"account_label,omitempty"`
+	Provider             *string    `json:"provider,omitempty"`
+	Provenance           string     `json:"provenance"`
+	ResultID             string     `json:"result_id"`
+	EventIndex           int        `json:"event_index"`
+	OriginalEvent        ai.Event   `json:"original_event"`
 }
 type Subscription struct {
 	DisplayName *string `json:"display_name"`

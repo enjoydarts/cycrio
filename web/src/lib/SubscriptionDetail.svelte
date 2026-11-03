@@ -37,6 +37,7 @@
   } from './subscriptions-controller.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
   import SubscriptionNameModal from './SubscriptionNameModal.svelte';
+  import SubscriptionChangeHistory from './SubscriptionChangeHistory.svelte';
   import { subscriptionTitle } from './subscription-title.ts';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
@@ -379,6 +380,9 @@
         </div>
       </dl>
     {/if}
+    {#if tab === 'overview'}{#key `${s.id}/${s.version}`}<SubscriptionChangeHistory
+          id={s.id}
+        />{/key}{/if}
     {#if tab === 'sources' || (!embedded && tab !== 'history')}
       <h2>元の AI 抽出情報</h2>
       <p class="muted">

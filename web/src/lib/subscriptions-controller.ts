@@ -24,6 +24,15 @@ export const blankSubscription = (): SubscriptionValues => ({
   next_billing_mode: 'manual',
   status: 'active',
 });
+export const subscriptionBillingAnchor = (
+  subscription: Subscription,
+): string | null =>
+  subscription.sources
+    .filter((source) => source.affects_billing_anchor !== false)
+    .map((source) => source.received_at)
+    .filter((value): value is string => !!value)
+    .sort((a, b) => Date.parse(a) - Date.parse(b))
+    .at(-1) ?? null;
 export function parseSubscriptionDraft(
   values: SubscriptionValues,
 ): SubscriptionValues {

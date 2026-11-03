@@ -88,7 +88,6 @@ func TestAutomaticBillingPublicReadsAndManualOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	date, _ := time.Parse("2006-01-02", today)
-	tomorrow := date.AddDate(0, 0, 1).Format("2006-01-02")
 	yesterday := date.AddDate(0, 0, -1).Format("2006-01-02")
 	lease, works := processingBatch(t, f, 2)
 	label := "subscription_related"
@@ -163,7 +162,11 @@ func TestAutomaticBillingPublicReadsAndManualOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assertReads(tomorrow, 2)
+	// Evidence-only attachment must preserve the original automatic anchor.
+	if len(auto.Sources) != 2 || !auto.Sources[0].AffectsBillingAnchor || auto.Sources[1].AffectsBillingAnchor {
+		t.Fatal("attachment changed billing anchor eligibility", auto.Sources)
+	}
+	assertReads(today, 2)
 	future := date.AddDate(0, 0, 10)
 	view, err := NewBillingScheduleRepository(f.runtime.pool, func() time.Time { return future }).Get(ctx, f.owner, auto.ID)
 	if err != nil || view.Subscription.NextBillingDate == nil || *view.Subscription.NextBillingDate != future.Format("2006-01-02") || view.NextDateSource != "automatic" {
@@ -176,7 +179,7 @@ func TestAutomaticBillingPublicReadsAndManualOverride(t *testing.T) {
 	if err != nil || auto.NextBillingMode != "automatic" {
 		t.Fatal("legacy mode preservation", auto, err)
 	}
-	assertReads(tomorrow, 3)
+	assertReads(today, 3)
 	values = auto.Values
 	values.NextBillingMode = "manual"
 	values.NextBillingDate = &yesterday
@@ -187,7 +190,7 @@ func TestAutomaticBillingPublicReadsAndManualOverride(t *testing.T) {
 	values = auto.Values
 	values.NextBillingMode = "automatic"
 	auto, err = repo.Update(ctx, f.owner, auto.ID, subscriptions.UpdateInput{Values: values, ExpectedVersion: 4, Confirmed: true})
-	if err != nil || auto.NextBillingDate == nil || *auto.NextBillingDate != tomorrow {
+	if err != nil || auto.NextBillingDate == nil || *auto.NextBillingDate != today {
 		t.Fatal("return to automatic", auto, err)
 	}
 	var raw string

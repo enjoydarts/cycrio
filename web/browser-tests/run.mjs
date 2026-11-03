@@ -333,6 +333,101 @@ try {
       ),
     );
     await layout();
+    for (const mode of [
+      'change',
+      'change-conflict',
+      'change-uncertain',
+      'change-source-conflict',
+    ]) {
+      await visit(mode, width);
+      await wait('document.querySelector("input[type=radio]")!==null');
+      await click('document.querySelector("input[type=radio]")');
+      await click(button('契約の変更を確認'));
+      await wait(
+        'document.querySelectorAll(".change-review input[type=checkbox]").length===4',
+      );
+      const boxes =
+        'document.querySelectorAll(".change-review input[type=checkbox]")';
+      assert.equal(
+        await js(`return Array.from(${boxes}).some(e=>e.checked)`),
+        false,
+      );
+      await click(boxes + '[0]');
+      await click(boxes + '[3]');
+      await click(boxes + '[1]');
+      assert.equal(
+        await js(`return ${boxes}[3].checked`),
+        false,
+        'Changing selected fields must reset confirmation',
+      );
+      await click(boxes + '[1]');
+      await click(boxes + '[3]');
+      await layout();
+      await click(button('選択した変更を反映'));
+      if (mode === 'change-source-conflict') {
+        await wait(button('一覧に戻って最新の抽出結果を確認') + '!==undefined');
+        await click(button('最新の差分を確認し直す'));
+        await wait(
+          'window.browserTest.requests.filter(r=>r.url.endsWith("change-preview")).length===2 && Array.from(document.querySelectorAll("button")).some(e=>e.textContent.trim()==="一覧に戻って最新の抽出結果を確認")',
+        );
+        await click(button('一覧に戻って最新の抽出結果を確認'));
+        assert.equal(await js('return window.browserTest.back'), true);
+        await layout();
+        continue;
+      }
+      if (mode === 'change-conflict') {
+        await wait(button('最新の差分を確認し直す') + '!==undefined');
+        assert.equal(
+          await js(`return Array.from(${boxes}).some(e=>e.checked)`),
+          false,
+        );
+        await click(button('最新の差分を確認し直す'));
+        await wait(
+          'window.browserTest.requests.filter(r=>r.url.endsWith("change-preview")).length===2 && document.querySelectorAll(".change-review input[type=checkbox]").length===4',
+        );
+        assert.equal(
+          await js(`return Array.from(${boxes}).some(e=>e.checked)`),
+          false,
+        );
+        await click(boxes + '[0]');
+        await click(boxes + '[3]');
+        await click(button('選択した変更を反映'));
+      } else if (mode === 'change-uncertain') {
+        await wait(button('同じ要求で変更を確認') + '!==undefined');
+        assert.equal(
+          await js(`return Array.from(${boxes}).every(e=>e.disabled)`),
+          true,
+        );
+        assert.equal(
+          await js(
+            'return document.querySelector("input[type=radio]").disabled',
+          ),
+          true,
+        );
+        await click(button('同じ要求で変更を確認'));
+      }
+      await saved();
+      assert.deepEqual(
+        await js(
+          'const s=window.browserTest.saved;return [s.amount,s.currency,s.interval_unit,s.interval_count,s.next_billing_date]',
+        ),
+        ['19', 'USD', 'month', 1, '2027-11-01'],
+      );
+      await wait('document.querySelector(".change-history details")!==null');
+      await click('document.querySelector(".change-history summary")');
+      assert.ok(
+        await js(
+          'return document.querySelector(".change-history").textContent.includes("変更前")&&document.querySelector(".change-history").textContent.includes("変更後")',
+        ),
+      );
+      assert.equal(
+        await js(
+          'return document.querySelector(".change-history [data-label=変更後]").textContent',
+        ),
+        '19',
+      );
+      await layout();
+    }
     const logs = await api('POST', session + '/log', { type: 'browser' });
     assert.deepEqual(
       logs.filter((entry) => ['SEVERE', 'WARNING'].includes(entry.level)),
@@ -349,6 +444,10 @@ try {
         'name',
         'attach',
         'status',
+        'change',
+        'change-conflict',
+        'change-uncertain',
+        'change-source-conflict',
       ],
       status: 'pass',
     });

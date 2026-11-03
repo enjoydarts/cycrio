@@ -49,6 +49,7 @@ export type Subscription = SubscriptionValues &
     created_at: string;
     updated_at: string;
     sources: {
+      affects_billing_anchor?: boolean;
       received_at?: string | null;
       account_id?: string;
       account_label?: string;
@@ -181,6 +182,12 @@ export function parseSubscription(value: unknown): Subscription {
             };
       return {
         ...account,
+        affects_billing_anchor:
+          s.affects_billing_anchor === undefined
+            ? true
+            : typeof s.affects_billing_anchor === 'boolean'
+              ? s.affects_billing_anchor
+              : invalid(),
         received_at: nullable(s.received_at ?? null, timestamp),
         provenance:
           s.provenance === undefined

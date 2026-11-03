@@ -6,6 +6,7 @@
   import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
+  import SubscriptionChangeReview from './SubscriptionChangeReview.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import { getAppSession } from './app-context.ts';
@@ -29,6 +30,7 @@
     onSaved,
     onBackToResults,
     onBusyChange = () => {},
+    onFrozen = () => {},
   }: {
     result: Pick<AnalysisResult, 'id'>;
     index: number;
@@ -36,6 +38,7 @@
     onSaved: (s: Subscription) => void;
     onBackToResults: () => void;
     onBusyChange?: (busy: boolean) => void;
+    onFrozen?: (frozen: boolean) => void;
   } = $props();
   const session = getAppSession(),
     token = session.token,
@@ -58,8 +61,10 @@
     uncertain = $state(false),
     error = $state<string | null>(null),
     conflict = $state(false);
+  let changeMode = $state(false),
+    changeFrozen = $state(false);
   let pending: SourceInput | null = null;
-  const frozen = $derived(saving || uncertain);
+  const frozen = $derived(saving || uncertain || changeFrozen);
   const filter = () => ({
     q: searched,
     status: 'all' as const,
@@ -84,6 +89,7 @@
       controller?.dispose();
       abort?.abort();
       onBusyChange(false);
+      onFrozen(false);
     };
   });
   async function attach() {
@@ -91,6 +97,7 @@
     const s = selected;
     saving = true;
     onBusyChange(true);
+    onFrozen(true);
     error = null;
     abort = new AbortController();
     pending ??= {
@@ -157,6 +164,7 @@
       if (!disposed) {
         saving = false;
         onBusyChange(uncertain);
+        onFrozen(uncertain);
       }
     }
   }
@@ -174,6 +182,7 @@
         e.preventDefault();
         searched = query;
         selected = null;
+        changeMode = false;
         confirmed = false;
         conflict = false;
         load();
@@ -207,6 +216,7 @@
                     disabled={frozen}
                     onchange={() => {
                       selected = s;
+                      changeMode = false;
                       confirmed = false;
                       conflict = false;
                       latest = null;
@@ -245,52 +255,98 @@
         />
       </ActionGroup>{/if}
   </LibraryPanel>
-  <div class="attach-confirmation">
-    {#if conflict}<div class="notice" role="alert">
-        <p>
-          別の操作で契約または紐付けが更新されました。選択を残しています。最新の契約を確認してください。
-        </p>
-        {#if latest}<p>最新の名前: {subscriptionTitle(latest)}</p>
-          <Button
-            wrap
-            type="button"
-            disabled={saving}
-            onclick={() => {
-              selected = latest;
-              latest = null;
-              conflict = false;
-              confirmed = false;
-            }}>最新の契約を選択し直す</Button
-          >{/if}
-        <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
-          <Button wrap type="button" disabled={saving} onclick={onBackToResults}
-            >解析結果の一覧に戻って登録状況を更新</Button
-          >
-        </ActionGroup>
-      </div>{/if}
-    {#if selected}<p class="notice">
-        「{subscriptionTitle(selected)}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。
-      </p>{/if}
-    <label class="attach-confirm"
-      ><input
-        type="checkbox"
-        checked={confirmed}
-        disabled={!selected || frozen || conflict}
-        onchange={(e) => (confirmed = e.currentTarget.checked)}
-      /><span>紐付け先と元の抽出情報を確認しました</span></label
-    >
-    {#if error}<p class="notice error" role="alert">{error}</p>{/if}<Button
-      wrap
-      variant="primary"
-      class={['primary']}
-      type="button"
-      disabled={!selected || (!confirmed && !uncertain) || saving || conflict}
-      onclick={attach}
-      >{uncertain
-        ? '同じ要求で紐付けを確認'
-        : '確認したサブスクへ紐付ける'}</Button
-    >
-  </div>
+  {#if selected}<ActionGroup class="attach-confirmation">
+      <Button
+        type="button"
+        wrap
+        disabled={frozen}
+        aria-pressed={!changeMode}
+        onclick={() => {
+          changeMode = false;
+          confirmed = false;
+        }}>元情報だけを紐付ける</Button
+      >
+      <Button
+        type="button"
+        wrap
+        disabled={frozen}
+        aria-pressed={changeMode}
+        onclick={() => {
+          changeMode = true;
+          confirmed = false;
+        }}>契約の変更を確認</Button
+      >
+    </ActionGroup>{/if}
+  {#if selected && changeMode}
+    {#key `${selected.id}/${selected.version}/${result.id}/${index}/${JSON.stringify(additionalSources)}`}
+      <SubscriptionChangeReview
+        {onBackToResults}
+        subscription={selected}
+        source={{
+          source_result_id: result.id,
+          source_event_index: index,
+          ...(additionalSources.length
+            ? { additional_sources: additionalSources }
+            : {}),
+        }}
+        onSaved={(outcome) => onSaved(outcome.current ?? outcome.receipt.after)}
+        onBusyChange={(value) => {
+          changeFrozen = value;
+          onBusyChange(value);
+        }}
+        {onFrozen}
+      />
+    {/key}
+  {:else}<div class="attach-confirmation">
+      {#if conflict}<div class="notice" role="alert">
+          <p>
+            別の操作で契約または紐付けが更新されました。選択を残しています。最新の契約を確認してください。
+          </p>
+          {#if latest}<p>最新の名前: {subscriptionTitle(latest)}</p>
+            <Button
+              wrap
+              type="button"
+              disabled={saving}
+              onclick={() => {
+                selected = latest;
+                latest = null;
+                conflict = false;
+                confirmed = false;
+              }}>最新の契約を選択し直す</Button
+            >{/if}
+          <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
+            <Button
+              wrap
+              type="button"
+              disabled={saving}
+              onclick={onBackToResults}
+              >解析結果の一覧に戻って登録状況を更新</Button
+            >
+          </ActionGroup>
+        </div>{/if}
+      {#if selected}<p class="notice">
+          「{subscriptionTitle(selected)}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。
+        </p>{/if}
+      <label class="attach-confirm"
+        ><input
+          type="checkbox"
+          checked={confirmed}
+          disabled={!selected || frozen || conflict}
+          onchange={(e) => (confirmed = e.currentTarget.checked)}
+        /><span>紐付け先と元の抽出情報を確認しました</span></label
+      >
+      {#if error}<p class="notice error" role="alert">{error}</p>{/if}<Button
+        wrap
+        variant="primary"
+        class={['primary']}
+        type="button"
+        disabled={!selected || (!confirmed && !uncertain) || saving || conflict}
+        onclick={attach}
+        >{uncertain
+          ? '同じ要求で紐付けを確認'
+          : '確認したサブスクへ紐付ける'}</Button
+      >
+    </div>{/if}
 </section>
 
 <style>

@@ -31,6 +31,7 @@ var subscriptionLifecycleKeys = []string{"contract_kind", "effective_date", "acc
 
 func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, protect protectFunc) {
 	registerCandidates(mux, service, protect)
+	registerSubscriptionChanges(mux, service, protect)
 	register := func(pattern string, status int, query bool, callback func(http.ResponseWriter, *http.Request, string) (any, error)) {
 		mux.HandleFunc(pattern, protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
 			if !query && (r.URL.RawQuery != "" || r.URL.ForceQuery) {

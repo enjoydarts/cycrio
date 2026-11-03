@@ -69,7 +69,7 @@ func scanSubscription(row pgx.Row) (subscriptions.Subscription, error) {
 	return s, subscriptionError(e)
 }
 func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscriptions.Subscription) error {
-	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance,a.id,a.label,a.provider,i.received_at
+	rows, e := tx.Query(ctx, `SELECT s.result_id,s.event_index,i.events->s.event_index,s.provenance,a.id,a.label,a.provider,i.received_at,s.affects_billing_anchor
 	 FROM subscription_sources s
 	 JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id
 	 LEFT JOIN mail_processing_runs r ON r.owner_id=i.owner_id AND r.account_id=i.account_id AND r.id=i.run_id
@@ -82,7 +82,7 @@ func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscript
 	for rows.Next() {
 		var source subscriptions.Source
 		var raw []byte
-		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance, &source.AccountID, &source.AccountLabel, &source.Provider, &source.ReceivedAt); e != nil {
+		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance, &source.AccountID, &source.AccountLabel, &source.Provider, &source.ReceivedAt, &source.AffectsBillingAnchor); e != nil {
 			return subscriptionError(e)
 		}
 		if json.Unmarshal(raw, &source.OriginalEvent) != nil {
@@ -320,6 +320,9 @@ func (r *SubscriptionRepository) AttachSource(ctx context.Context, owner, id str
 	for _, ref := range missing {
 		if e = sourceSubscription(ctx, tx, owner, id, ref.ResultID, ref.EventIndex); e != nil {
 			return subscriptions.Subscription{}, e
+		}
+		if _, e = tx.Exec(ctx, `UPDATE subscription_sources SET affects_billing_anchor=false WHERE owner_id=$1 AND result_id=$2 AND event_index=$3`, owner, ref.ResultID, ref.EventIndex); e != nil {
+			return subscriptions.Subscription{}, subscriptionError(e)
 		}
 	}
 	if _, e = tx.Exec(ctx, `UPDATE subscriptions SET version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id); e != nil {

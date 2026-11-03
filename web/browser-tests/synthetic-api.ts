@@ -1,4 +1,5 @@
 import type { Subscription } from '../src/lib/subscriptions-api.ts';
+import { changeEvidence } from '../src/lib/subscription-changes-fixtures.ts';
 
 type Trace = {
   method: string;
@@ -11,6 +12,7 @@ declare global {
       requests: Trace[];
       errors: string[];
       saved: Subscription | null;
+      back?: boolean;
     };
   }
 }
@@ -34,6 +36,9 @@ const response = (body: unknown) =>
 export function installAPI(mode: string, initial: Subscription) {
   window.browserTest = { requests: [], errors: [], saved: null };
   let version = 1;
+  let attempts = 0,
+    applied: unknown = null,
+    firstChangeBody: unknown = null;
   const long = {
     ...initial,
     service: 'SyntheticServiceWithAVeryLongUnbrokenNameForLayoutVerification',
@@ -59,6 +64,139 @@ export function installAPI(mode: string, initial: Subscription) {
         !url.pathname.startsWith('/synthetic/v1/subscriptions')
       )
         fail('Unexpected API origin or path');
+      if (mode.startsWith('change')) {
+        const path = `/synthetic/v1/subscriptions/${initial.id}`;
+        const before = {
+          ...initial,
+          version,
+          amount: version === 1 ? '9' : '11',
+        };
+        const source = {
+          ...changeEvidence(),
+          result_id: resultID,
+          original_event: {
+            ...changeEvidence().original_event,
+            recurring_amount: '19',
+            recurring_currency: 'USD',
+            interval_unit: 'year',
+            interval_count: 1,
+            next_billing_at: '2027-12-01',
+          },
+        };
+        if (method === 'GET' && url.pathname === '/synthetic/v1/subscriptions')
+          return response({
+            subscriptions: [initial],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          });
+        if (method === 'GET' && url.pathname === path) return response(before);
+        if (method === 'POST' && url.pathname === path + '/change-preview') {
+          if (mode === 'change-source-conflict' && attempts > 0)
+            return new Response('{}', { status: 409 });
+          if (
+            !equal(body, {
+              expected_version: version,
+              source_result_id: resultID,
+              source_event_index: 0,
+            })
+          )
+            fail('Unexpected preview identity');
+          return response({
+            subscription: before,
+            source,
+            additional_evidence: [],
+            preview_token: (version === 1 ? 'a' : 'b').repeat(64),
+            as_of: '2026-11-03',
+            timezone: 'Asia/Tokyo',
+            algorithm_version: 'subscription-change-v1',
+            fields: [
+              {
+                key: 'amount',
+                current: before.amount,
+                proposed: '19',
+                selectable: true,
+                reason: '',
+              },
+              {
+                key: 'interval',
+                current: { unit: 'month', count: 1 },
+                proposed: { unit: 'year', count: 1 },
+                selectable: true,
+                reason: '',
+              },
+              {
+                key: 'next_billing_date',
+                current: '2027-11-01',
+                proposed: '2027-12-01',
+                selectable: true,
+                reason: '',
+              },
+            ],
+            warnings: [],
+            derived_next_billing_date: null,
+          });
+        }
+        if (method === 'POST' && url.pathname === path + '/changes') {
+          attempts++;
+          keys(body, [
+            'expected_version',
+            'source_result_id',
+            'source_event_index',
+            'request_id',
+            'preview_token',
+            'selected_fields',
+            'confirmed',
+          ]);
+          if (
+            body.expected_version !== version ||
+            body.source_result_id !== resultID ||
+            body.source_event_index !== 0 ||
+            body.preview_token !== (version === 1 ? 'a' : 'b').repeat(64) ||
+            !body.confirmed ||
+            !equal(body.selected_fields, ['amount'])
+          )
+            fail('Unexpected approved change payload');
+          if (
+            (mode === 'change-conflict' || mode === 'change-source-conflict') &&
+            attempts === 1
+          ) {
+            version = 2;
+            return new Response('{}', { status: 409 });
+          }
+          if (mode === 'change-uncertain' && attempts === 1) {
+            firstChangeBody = body;
+            return new Response('{}', { status: 503 });
+          }
+          if (firstChangeBody && !equal(firstChangeBody, body))
+            fail('Uncertain retry changed its frozen request');
+          const after = { ...before, amount: '19', version: version + 1 };
+          applied = {
+            request_id: body.request_id,
+            applied_version: after.version,
+            created_at: '2026-11-03T00:00:00Z',
+            selected_fields: ['amount'],
+            before,
+            after,
+            source,
+            additional_evidence: [],
+            algorithm_version: 'subscription-change-v1',
+          };
+          return response({ receipt: applied, current: after });
+        }
+        if (
+          method === 'GET' &&
+          url.pathname === path + '/changes' &&
+          url.search === '?limit=20&offset=0'
+        )
+          return response({
+            changes: applied ? [applied] : [],
+            total: applied ? 1 : 0,
+            limit: 20,
+            offset: 0,
+          });
+        fail('Unexpected change route');
+      }
       if (
         mode === 'attach' &&
         method === 'GET' &&

@@ -33,7 +33,7 @@
     <span>次回請求日（推定）</span>
     <p>{values.next_billing_date ?? '保存後に計算・条件不足の場合は不明'}</p>
     <small class="muted"
-      >最新の紐付け済みメール受信日（日本時間）と請求周期から計算します。{#if receivedAt}受信日時:
+      >登録時に基準としたメール受信日（日本時間）と請求周期から計算します。{#if receivedAt}受信日時:
         {receivedAt}{/if} 保存後の推定日を確認してください。</small
     >
   </div>

@@ -42,7 +42,7 @@ func TestBillingScheduleMigrationElevenPreservesTen(t *testing.T) {
  (SELECT jsonb_agg(x ORDER BY entry_id,version) FROM billing_event_revisions x),
  (SELECT jsonb_agg(x ORDER BY id) FROM billing_event_audit x),
  (SELECT jsonb_agg(to_jsonb(x)-'provenance' ORDER BY result_id,event_index) FROM billing_event_sources x),
- (SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis' ORDER BY result_id,event_index) FROM subscription_sources x))`
+ (SELECT jsonb_agg(to_jsonb(x)-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'affects_billing_anchor' ORDER BY result_id,event_index) FROM subscription_sources x))`
 	var before, after string
 	if e = f.runtime.pool.QueryRow(ctx, snapshot).Scan(&before); e != nil {
 		t.Fatal(e)

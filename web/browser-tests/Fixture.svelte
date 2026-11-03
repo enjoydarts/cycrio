@@ -2,6 +2,8 @@
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
   import SubscriptionNameModal from '../src/lib/SubscriptionNameModal.svelte';
   import AnalysisAttach from '../src/lib/AnalysisAttach.svelte';
+  import SubscriptionChangeHistory from '../src/lib/SubscriptionChangeHistory.svelte';
+  import type { Subscription } from '../src/lib/subscriptions-api.ts';
   import Modal from '../src/lib/Modal.svelte';
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
@@ -60,9 +62,17 @@
     token: async () => 'synthetic',
     onDenied: denied,
   } as AppSession);
-  installAPI(mode, initial);
-  const saved = (value: typeof initial) => {
+  const changeInitial: Subscription = {
+    ...initial,
+    interval_unit: 'month',
+    interval_count: 1,
+    next_billing_date: '2027-11-01',
+  };
+  let changeSaved = $state<Subscription | null>(null);
+  installAPI(mode, mode.startsWith('change') ? changeInitial : initial);
+  const saved = (value: Subscription) => {
     window.browserTest.saved = value;
+    if (mode.startsWith('change')) changeSaved = value;
   };
   // Relative timestamps keep waiting indicators valid on every CI date.
   const start = '2026-11-01T12:00:00.000Z';
@@ -128,14 +138,18 @@
       />
     </main>
   </AppShell>
-{:else if mode === 'attach'}
+{:else if mode === 'attach' || mode.startsWith('change')}
   <Modal open title="登録候補を確認" onclose={() => {}}>
-    <AnalysisAttach
-      result={{ id: resultID }}
-      index={0}
-      onSaved={saved}
-      onBackToResults={() => {}}
-    />
+    {#if changeSaved}<SubscriptionChangeHistory
+        id={changeSaved.id}
+      />{:else}<AnalysisAttach
+        result={{ id: resultID }}
+        index={0}
+        onSaved={saved}
+        onBackToResults={() => {
+          window.browserTest.back = true;
+        }}
+      />{/if}
   </Modal>
 {:else if mode === 'name'}
   <main class="daily">

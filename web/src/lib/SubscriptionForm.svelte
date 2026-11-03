@@ -17,6 +17,7 @@
     parseSubscriptionDraft,
     subscriptionFromEvent,
     createSubscriptionEditor,
+    subscriptionBillingAnchor,
     type EditorView,
     type SubscriptionDrafts,
   } from './subscriptions-controller.ts';
@@ -237,11 +238,7 @@
         values={view.values}
         disabled={frozen}
         onchange={edit}
-        receivedAt={initial?.sources
-          .map((s) => s.received_at)
-          .filter((v): v is string => !!v)
-          .sort()
-          .at(-1) ?? null}
+        receivedAt={initial ? subscriptionBillingAnchor(initial) : null}
       />
     {:else}<p class="muted wide">
         期間限定契約には通常継続料金・請求周期・次回請求日を設定しません。

@@ -105,11 +105,9 @@ func TestSubscriptionNameMigrationPreservesValuesAndGuardsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	down, err := p.DownTo(ctx, 30)
-	if err != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 31 {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 31)
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 31, 31)
+	assertMigrationRange(t, up, err, 31, latestMigrationVersion)
 	if err = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&after); err != nil || after != before {
 		t.Fatal(after, err)
 	}
@@ -120,6 +118,10 @@ func TestSubscriptionNameMigrationPreservesValuesAndGuardsDown(t *testing.T) {
 	if _, err = p.DownTo(ctx, 30); err == nil {
 		t.Fatal("saved names must block rollback")
 	}
+	// Independent newer migrations may have rolled back before v31 refused;
+	// restore them before exercising the current repository's source columns.
+	up, err = p.Up(ctx)
+	assertMigrationRange(t, up, err, 32, latestMigrationVersion)
 	got, err := r.Get(ctx, f.owner, s.ID)
 	if err != nil || got.DisplayName == nil || *got.DisplayName != alias {
 		t.Fatal(got, err)
