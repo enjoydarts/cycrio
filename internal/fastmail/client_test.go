@@ -11,10 +11,13 @@ import (
 	"net"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/mailcontent"
+	"github.com/enjoydarts/cycrio/internal/mailsync"
 )
 
 func protocolClient(t *testing.T, response string, rejectLogin bool) (*Client, <-chan struct{}) {
@@ -172,5 +175,59 @@ func TestCheckCertificateFailuresUseFixedSafeError(t *testing.T) {
 	_, err := c.Check(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"))
 	if adapterCode(err) != "tls_failed" || strings.Contains(err.Error(), "synthetic-private") {
 		t.Fatal("TLS error was exposed", err)
+	}
+}
+
+func TestHandshakeTransportFailuresRemainRetryableAcrossOperations(t *testing.T) {
+	for _, entry := range []struct {
+		name  string
+		cause error
+		want  string
+	}{
+		{"eof", io.EOF, "connection_failed"},
+		{"unexpected_eof", io.ErrUnexpectedEOF, "connection_failed"},
+		{"reset", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNRESET}, "connection_failed"},
+		{"aborted", &net.OpError{Op: "read", Net: "tcp", Err: syscall.ECONNABORTED}, "connection_failed"},
+		{"broken_pipe", &net.OpError{Op: "write", Net: "tcp", Err: syscall.EPIPE}, "connection_failed"},
+		{"closed", net.ErrClosed, "connection_failed"},
+		{"timeout", &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}, "timeout"},
+		{"cancelled", context.Canceled, "cancelled"},
+		{"hostname", &tls.CertificateVerificationError{Err: x509.HostnameError{Host: "synthetic-private-password"}}, "tls_failed"},
+		{"untrusted", &tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}, "tls_failed"},
+		{"record", tls.RecordHeaderError{Msg: "synthetic-private-password"}, "tls_failed"},
+		{"alert", tls.AlertError(40), "tls_failed"},
+		{"protocol", errors.New("synthetic-private-password"), "tls_failed"},
+		{"certificate_with_eof", errors.Join(&tls.CertificateVerificationError{Err: x509.UnknownAuthorityError{}}, io.EOF), "tls_failed"},
+		{"record_with_eof", errors.Join(tls.RecordHeaderError{Msg: "synthetic-private-password"}, io.EOF), "tls_failed"},
+	} {
+		for _, operation := range []string{"check", "discover", "read", "pooled_read"} {
+			t.Run(entry.name+"/"+operation, func(t *testing.T) {
+				c := NewClient()
+				c.dial = func(context.Context, string, *tls.Config) (net.Conn, error) {
+					return nil, &tlsHandshakeError{cause: entry.cause}
+				}
+				ctx := context.Background()
+				source := mailcontent.Source{Folder: "INBOX", UIDValidity: 77, UID: 1, MaxTextBytes: 100}
+				var err error
+				switch operation {
+				case "check":
+					_, err = c.Check(ctx, "synthetic@example.test", []byte("synthetic-private-password"))
+				case "discover":
+					_, err = c.Discover(ctx, "synthetic@example.test", []byte("synthetic-private-password"), mailsync.PageRequest{Folder: "INBOX", Mode: "incremental", UIDValidity: 77, Limit: 10})
+				case "read":
+					_, err = c.ReadText(ctx, "synthetic@example.test", []byte("synthetic-private-password"), source)
+				case "pooled_read":
+					pool := NewContentPool()
+					defer pool.Close()
+					_, err = pool.Reader(ContentScope{Provider: "fastmail"}, c).ReadText(ctx, "synthetic@example.test", []byte("synthetic-private-password"), source)
+				}
+				if adapterCode(err) != entry.want {
+					t.Fatalf("wanted %s, got %s", entry.want, adapterCode(err))
+				}
+				if strings.Contains(err.Error(), "synthetic-private") {
+					t.Fatal("handshake error exposed private details")
+				}
+			})
+		}
 	}
 }

@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { MailAutomationState } from './mail-automation-api.ts';
+  import MailAutomationActivity from './MailAutomationActivity.svelte';
   import { inclusiveEnd } from './mail-automation-api.ts';
   import { processingDate, processingReasons } from './mail-processing-text.ts';
   import {
@@ -59,6 +60,7 @@
         {#if s.retry_at}<p>
             次の接続確認：{processingDate(s.retry_at)}（日本時間）
           </p>{/if}
+        <MailAutomationActivity state={s} />
         {#if !compact}<dl>
             {#each [['発見', s.progress.discovered_count], ['解析待ち', s.progress.pending_count], ['解析済み', s.progress.completed_count], ['解析失敗', s.progress.failed_count], ['結果不明', s.progress.unknown_count]] as [name, count]}<div
               >
@@ -79,9 +81,11 @@
             <ul>
               {#each s.recent_sync_runs as run (run.id)}<li>
                   <p>
-                    {processingDate(run.created_at)}（日本時間） · {modeNames[
-                      run.mode
-                    ] ?? 'メール確認'} · {runNames[run.state] ?? '状態を確認'}
+                    {run.started_at ? '実行開始' : '受付'}：{processingDate(
+                      run.started_at ?? run.created_at,
+                    )}（日本時間） · {modeNames[run.mode] ?? 'メール確認'} · {runNames[
+                      run.state
+                    ] ?? '状態を確認'}
                   </p>
                   {#if run.mode !== 'bootstrap'}<p>
                       確認 {run.examined_count} 件 · 発見 {run.added_count} 件

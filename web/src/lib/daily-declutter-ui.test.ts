@@ -287,7 +287,7 @@ test('import progress advances from bootstrap to discovery, analysis and new mai
   for (const [historical, pending, expected] of [
     [false, 0, 'メール探索中'],
     [true, 2, '解析中'],
-    [true, 0, '新着メールを確認中'],
+    [true, 0, '次の確認待ち'],
   ] as const) {
     const body = visible(
       await html('ImportProgressPanel', {

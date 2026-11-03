@@ -21,35 +21,43 @@ export const blankSubscription = (): SubscriptionValues => ({
   interval_unit: null,
   interval_count: null,
   next_billing_date: null,
+  next_billing_mode: 'manual',
   status: 'active',
 });
+export function parseSubscriptionDraft(
+  values: SubscriptionValues,
+): SubscriptionValues {
+  return parseValues({
+    ...values,
+    interval_count:
+      values.interval_count === null && values.interval_unit !== null
+        ? 1
+        : values.interval_count,
+  });
+}
 export const subscriptionFromEvent = (
   event: ProcessingEvent,
 ): SubscriptionValues => ({
   ...blankSubscription(),
+  next_billing_mode: 'automatic',
   service: event.service ?? '',
   contract_kind: event.contract_kind ?? 'unknown',
   effective_date: event.effective_date ?? null,
   access_end_date: event.access_end_date ?? null,
   plan: event.plan,
   amount:
-    event.contract_kind !== 'fixed_term' &&
-    event.recurring_amount &&
-    event.recurring_currency
-      ? event.recurring_amount
-      : null,
+    event.contract_kind === 'fixed_term'
+      ? null
+      : (event.recurring_amount ?? null),
   currency:
-    event.contract_kind !== 'fixed_term' &&
-    event.recurring_amount &&
-    event.recurring_currency
-      ? event.recurring_currency
-      : null,
+    event.contract_kind === 'fixed_term'
+      ? null
+      : (event.recurring_currency ?? null),
   interval_unit:
     event.contract_kind === 'fixed_term' ? null : event.interval_unit,
   interval_count:
     event.contract_kind === 'fixed_term' ? null : event.interval_count,
-  next_billing_date:
-    event.contract_kind === 'fixed_term' ? null : event.next_billing_at,
+  next_billing_date: null,
   status: 'unknown',
 });
 export type EditorView = {
@@ -92,7 +100,12 @@ export function createSubscriptionEditor(
   draft?: { store: SubscriptionDrafts; key: string },
 ) {
   let view: EditorView = {
-    values: initial ? parseValues(initial) : blankSubscription(),
+    values: initial
+      ? parseValues(initial)
+      : {
+          ...blankSubscription(),
+          next_billing_mode: source ? 'automatic' : 'manual',
+        },
     baseline: initial,
     latest: null,
     saved: null,
@@ -104,7 +117,20 @@ export function createSubscriptionEditor(
     error: null,
   };
   const retained = draft?.store.get(draft.key);
-  if (retained) view = { ...retained.view };
+  if (retained)
+    view = {
+      ...retained.view,
+      values: {
+        ...retained.view.values,
+        next_billing_mode:
+          retained.view.values.next_billing_mode ??
+          (retained.view.values.next_billing_date
+            ? 'manual'
+            : source
+              ? 'automatic'
+              : 'manual'),
+      },
+    };
   let abort: AbortController | undefined,
     disposed = false,
     pending: SubscriptionCreate | null = retained?.pending ?? null;
@@ -224,6 +250,13 @@ export function createSubscriptionEditor(
           values: {
             ...view.values,
             ...patch,
+            ...(patch.interval_unit === null
+              ? { interval_count: null }
+              : patch.interval_unit !== undefined &&
+                  patch.interval_count === undefined &&
+                  view.values.interval_count === null
+                ? { interval_count: 1 }
+                : {}),
             ...(patch.contract_kind === 'fixed_term'
               ? {
                   amount: null,
@@ -259,7 +292,7 @@ export function createSubscriptionEditor(
         return;
       let values: SubscriptionValues;
       try {
-        values = parseValues(view.values);
+        values = parseSubscriptionDraft(view.values);
       } catch {
         publish({ error: 'invalid_request', status: 'error' });
         return;

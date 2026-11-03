@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { subscriptionTitle } from './subscription-title.ts';
   import BrandIcon from './BrandIcon.svelte';
   import ActionLink from './ActionLink.svelte';
   import Button from './Button.svelte';
@@ -93,7 +94,7 @@
         ><section class="overview-section" aria-labelledby="saved-dates">
           <div class="section-heading library-toolbar">
             <div>
-              <h2 id="saved-dates">保存済みの次回請求日</h2>
+              <h2 id="saved-dates">保存済みの次回請求日・自動推定</h2>
               <p class="muted">
                 {report.as_of}〜{inclusiveEnd(report.window_end)} · 日本時間
               </p>
@@ -121,9 +122,12 @@
                     ><td data-primary
                       ><strong class="service-heading"
                         ><BrandIcon name={item.service} size="small" />
-                        <a href={`/subscriptions/${item.id}`}>{item.service}</a
+                        <a href={`/subscriptions/${item.id}`}
+                          >{subscriptionTitle(item)}</a
                         ></strong
-                      ><span class="secondary"
+                      >{#if item.display_name}<span class="secondary"
+                          >{item.service}</span
+                        >{/if}<span class="secondary"
                         >{item.plan ??
                           'プラン不明'}{#if item.status === 'unknown'}
                           · 利用状態不明{/if}</span
@@ -133,7 +137,11 @@
                         class="secondary"
                         >{cycle(item.interval_unit, item.interval_count)}</span
                       ></td
-                    ><td data-label="次回請求日">{item.next_billing_date}</td
+                    ><td data-label="次回請求日"
+                      >{item.next_billing_date}{item.next_billing_mode ===
+                      'automatic'
+                        ? '（推定）'
+                        : ''}</td
                     ></tr
                   >{/each}</tbody
               >

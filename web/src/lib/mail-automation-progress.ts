@@ -48,10 +48,11 @@ export function automationProgressStatus(s: MailAutomationState): string {
   if (s.state === 'needs_confirmation') return '条件の再確認が必要';
   if (s.state === 'not_configured') return '取り込み開始前';
   if (s.retry_at) return '接続の再試行待ち';
+  if (s.running) return 'メール確認中';
   if (!s.progress.bootstrap_complete) return '初回同期の準備中';
   if (!s.progress.historical_complete) return 'メール探索中';
   if (s.progress.pending_count) return '解析中';
-  return '新着メールを確認中';
+  return '次の確認待ち';
 }
 
 export function automationProgressDescription(s: MailAutomationState): string {

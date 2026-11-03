@@ -27,6 +27,7 @@ type Values struct {
 	IntervalUnit    *string `json:"interval_unit"`
 	IntervalCount   *int    `json:"interval_count"`
 	NextBillingDate *string `json:"next_billing_date"`
+	NextBillingMode string  `json:"next_billing_mode,omitempty"`
 	Status          string  `json:"status"`
 }
 type Source struct {
@@ -40,9 +41,10 @@ type Source struct {
 	OriginalEvent ai.Event   `json:"original_event"`
 }
 type Subscription struct {
-	Provenance string `json:"provenance"`
-	ID         string `json:"id"`
-	Version    int64  `json:"version"`
+	DisplayName *string `json:"display_name"`
+	Provenance  string  `json:"provenance"`
+	ID          string  `json:"id"`
+	Version     int64   `json:"version"`
 	Values
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
@@ -67,6 +69,11 @@ type UpdateInput struct {
 type DeleteInput struct {
 	ExpectedVersion int64 `json:"expected_version"`
 	Confirmed       bool  `json:"confirmed"`
+}
+type NameInput struct {
+	DisplayName     *string `json:"display_name"`
+	ExpectedVersion int64   `json:"expected_version"`
+	Confirmed       bool    `json:"confirmed"`
 }
 type SourceInput struct {
 	ExpectedVersion   int64                `json:"expected_version"`

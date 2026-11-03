@@ -3,6 +3,12 @@ import type { MailAPI } from './mail-api.ts';
 import type { createOverviewAPI } from './overview-api.ts';
 import type { WorkspaceView } from './workspace-context.ts';
 
+type WorkspacePolling = {
+  isVisible(): boolean;
+  every(callback: () => void, milliseconds: number): () => void;
+  onWake(callback: () => void): () => void;
+};
+
 export function emptyWorkspace(): WorkspaceView {
   return {
     accounts: { value: null, status: 'idle', error: null },
@@ -21,22 +27,43 @@ export function createWorkspaceController(
   let disposed = false;
   let denied = false;
   let abort: AbortController | undefined;
+  let stopPolling = () => {};
   function publish(next: WorkspaceView) {
     view = next;
     changed(view);
   }
   return {
     state: () => view,
-    async refresh() {
+    startPolling(environment: WorkspacePolling) {
+      stopPolling();
+      if (disposed || denied) return;
+      let refreshing = false;
+      const refresh = () => {
+        if (disposed || denied || refreshing || !environment.isVisible())
+          return;
+        refreshing = true;
+        void this.refresh({ background: true }).finally(() => {
+          refreshing = false;
+        });
+      };
+      const stopInterval = environment.every(refresh, 15_000);
+      const stopWake = environment.onWake(refresh);
+      stopPolling = () => {
+        stopInterval();
+        stopWake();
+      };
+    },
+    async refresh(options: { background?: boolean } = {}) {
       if (disposed || denied) return;
       abort?.abort();
       abort = new AbortController();
       const signal = abort.signal;
       const seq = ++generation;
-      publish({
-        accounts: { value: null, status: 'loading', error: null },
-        overview: { value: null, status: 'loading', error: null },
-      });
+      if (!options.background)
+        publish({
+          accounts: { value: null, status: 'loading', error: null },
+          overview: { value: null, status: 'loading', error: null },
+        });
       const current = () => !disposed && !denied && generation === seq;
       function failure(key: keyof WorkspaceView, error: unknown) {
         if (!current()) return;
@@ -44,6 +71,7 @@ export function createWorkspaceController(
           error instanceof ApiError ? error.code : 'dependency_unavailable';
         if (code === 'authentication_required' || code === 'access_denied') {
           denied = true;
+          stopPolling();
           generation++;
           abort?.abort();
           publish({
@@ -83,6 +111,7 @@ export function createWorkspaceController(
     },
     dispose() {
       disposed = true;
+      stopPolling();
       generation++;
       abort?.abort();
       publish(emptyWorkspace());

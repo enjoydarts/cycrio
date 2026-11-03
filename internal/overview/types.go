@@ -30,19 +30,24 @@ type Counts struct {
 	Later    int `json:"later"`
 }
 type Upcoming struct {
-	ID         string `json:"id"`
-	Provenance string `json:"provenance"`
+	DisplayName *string `json:"display_name"`
+	ID          string  `json:"id"`
+	Provenance  string  `json:"provenance"`
 	subscriptions.Values
 }
 type Connection struct {
-	ID              string     `json:"id"`
-	Label           string     `json:"label"`
-	State           string     `json:"state"`
-	AutomationState string     `json:"automation_state"`
-	Ready           bool       `json:"ready"`
-	BlockedReasons  []string   `json:"blocked_reasons"`
-	LastSuccessAt   *time.Time `json:"last_success_at"`
-	NextCheckAt     *time.Time `json:"next_check_at"`
+	ID                string     `json:"id"`
+	Label             string     `json:"label"`
+	State             string     `json:"state"`
+	AutomationState   string     `json:"automation_state"`
+	AutomationReason  string     `json:"automation_reason"`
+	AutomationRunning bool       `json:"automation_running"`
+	Ready             bool       `json:"ready"`
+	BlockedReasons    []string   `json:"blocked_reasons"`
+	LastSuccessAt     *time.Time `json:"last_success_at"`
+	LastStartedAt     *time.Time `json:"last_started_at"`
+	RetryAt           *time.Time `json:"retry_at"`
+	NextCheckAt       *time.Time `json:"next_check_at"`
 }
 type Report struct {
 	Window

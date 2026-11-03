@@ -19,6 +19,9 @@ func validLabel(s string) bool {
 	return utf8.ValidString(s) && !strings.ContainsRune(s, 0) && utf8.RuneCountInString(s) >= 1 && utf8.RuneCountInString(s) <= 200
 }
 func Normalize(v Values) (Values, error) {
+	if !slices.Contains([]string{"", "automatic", "manual"}, v.NextBillingMode) {
+		return Values{}, ErrInvalid
+	}
 	if v.ContractKind == "" {
 		v.ContractKind = "unknown"
 	}
@@ -63,6 +66,15 @@ func NormalizeCreate(in CreateInput) (CreateInput, error) {
 	if !in.Confirmed || !ValidID(in.RequestID) || !ValidAdditionalSources(in.SourceResultID, in.SourceEventIndex, in.AdditionalSources) {
 		return CreateInput{}, ErrInvalid
 	}
+	if in.NextBillingMode == "" {
+		in.NextBillingMode = "manual"
+		if in.SourceResultID != nil && in.NextBillingDate == nil {
+			in.NextBillingMode = "automatic"
+		}
+	}
+	if in.NextBillingMode == "automatic" {
+		in.NextBillingDate = nil
+	}
 	v, e := Normalize(in.Values)
 	in.Values = v
 	return in, e
@@ -77,6 +89,25 @@ func NormalizeUpdate(in UpdateInput) (UpdateInput, error) {
 }
 func ValidSourceInput(in SourceInput) bool {
 	return in.Confirmed && in.ExpectedVersion > 0 && ValidAdditionalSources(&in.SourceResultID, &in.SourceEventIndex, in.AdditionalSources)
+}
+func NormalizeName(in NameInput) (NameInput, error) {
+	if !in.Confirmed || in.ExpectedVersion < 1 {
+		return NameInput{}, ErrInvalid
+	}
+	if in.DisplayName != nil {
+		if !utf8.ValidString(*in.DisplayName) || strings.ContainsFunc(*in.DisplayName, unicode.IsControl) {
+			return NameInput{}, ErrInvalid
+		}
+		name := strings.TrimSpace(*in.DisplayName)
+		if utf8.RuneCountInString(name) > 200 {
+			return NameInput{}, ErrInvalid
+		}
+		in.DisplayName = nil
+		if name != "" {
+			in.DisplayName = &name
+		}
+	}
+	return in, nil
 }
 func InvalidFilter(f Filter) bool {
 	if f.AccountID != "" && !ValidID(f.AccountID) {

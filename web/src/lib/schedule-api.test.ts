@@ -43,6 +43,17 @@ export const schedulePreview = () => ({
   algorithm_version: 'calendar-v1' as const,
   overdue: false,
 });
+test('schedule automatic date source is accepted with its effective subscription date', () => {
+  const view = parseScheduleView({
+    ...scheduleView(),
+    next_date_source: 'automatic',
+    subscription: {
+      ...scheduleView().subscription,
+      next_billing_mode: 'automatic',
+    },
+  });
+  assert.equal(view.next_date_source, 'automatic');
+});
 export const requestID = '22222222-2222-4222-8222-222222222222';
 export const saveBody = () => ({
   ...rule,

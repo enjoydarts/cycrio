@@ -43,15 +43,13 @@ func TestDirectTermsMigrationPreservesRouteProofAcrossRoundTrip(t *testing.T) {
 	}
 	p := directTermsMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 28)
-	if err != nil || len(down) != 1 || down[0].Source == nil || down[0].Source.Version != 29 || down[0].Direction != "down" || down[0].Error != nil {
-		t.Fatal("down migration 29", down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 29)
 	var nullable string
 	if err = r.pool.QueryRow(ctx, `SELECT is_nullable FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='mail_processing_standard_proofs' AND column_name='route_id'`).Scan(&nullable); err != nil || nullable != "NO" {
 		t.Fatal("down migration did not restore route requirement", nullable, err)
 	}
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 29, 29)
+	assertMigrationRange(t, up, err, 29, latestMigrationVersion)
 	var preserved string
 	if err = r.pool.QueryRow(ctx, `SELECT row_to_json(p)::text FROM mail_processing_standard_proofs p`).Scan(&preserved); err != nil || preserved != original {
 		t.Fatal("route confirmation changed across migration", err)

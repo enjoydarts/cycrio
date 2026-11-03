@@ -5,9 +5,11 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"io"
 	"net"
 	"net/netip"
 	"strings"
+	"syscall"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -149,6 +151,9 @@ func validName(name string) bool {
 func checkError(ctx context.Context, wire *boundedConn, err error, fallback string) error {
 	code := fallback
 	var netErr net.Error
+	var handshake *tlsHandshakeError
+	var certificate *tls.CertificateVerificationError
+	var record tls.RecordHeaderError
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded), errors.Is(err, context.DeadlineExceeded):
 		code = "timeout"
@@ -162,6 +167,14 @@ func checkError(ctx context.Context, wire *boundedConn, err error, fallback stri
 		code = "timeout"
 	case errors.As(err, &netErr) && netErr.Timeout():
 		code = "timeout"
+	case fallback == "tls_failed" && errors.As(err, &handshake) &&
+		!errors.As(err, &certificate) && !errors.As(err, &record) &&
+		(errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+			errors.Is(err, net.ErrClosed) || errors.Is(err, syscall.ECONNRESET) ||
+			errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.EPIPE)):
+		// A socket interrupted during a TLS handshake can be retried.
+		// Certificate, TLS record and protocol failures keep their TLS status.
+		code = "connection_failed"
 	case wire != nil && wire.disconnected.Load() && !wire.invalidFraming.Load() && fallback != "authentication_failed" && fallback != "tls_failed":
 		// The SDK formats some decoder/socket errors with %v, losing their
 		// identity. Use the transport evidence without inspecting protocol text.

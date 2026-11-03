@@ -25,7 +25,7 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 	}
 	// Search text is literal; '%' and '_' in service names are ordinary characters.
 	search := subscriptionSearch(f.Query)
-	const where = ` WHERE owner_id=$1 AND deleted_at IS NULL AND ($2 IN ('','all') OR status=$2) AND (service ILIKE $3 OR COALESCE(plan,'') ILIKE $3)
+	const where = ` WHERE owner_id=$1 AND deleted_at IS NULL AND ($2 IN ('','all') OR status=$2) AND (service ILIKE $3 OR COALESCE(plan,'') ILIKE $3 OR COALESCE(display_name,'') ILIKE $3)
 	 AND ($4='' OR EXISTS (
 	  SELECT 1 FROM subscription_sources src
 	  JOIN mail_processing_items item ON item.owner_id=src.owner_id AND item.id=src.result_id
@@ -36,14 +36,14 @@ func (r *SubscriptionRepository) List(ctx context.Context, owner string, f subsc
 	if e = tx.QueryRow(ctx, `SELECT count(*) FROM subscriptions`+where, owner, f.Status, search, f.AccountID).Scan(&out.Total); e != nil {
 		return out, subscriptionError(e)
 	}
-	order := `next_billing_date ASC NULLS LAST,service ASC,id ASC`
+	order := effectiveNextBilling + ` ASC NULLS LAST,service ASC,id ASC`
 	switch f.Sort {
 	case "next_billing_desc":
-		order = `next_billing_date DESC NULLS LAST,service ASC,id ASC`
+		order = effectiveNextBilling + ` DESC NULLS LAST,service ASC,id ASC`
 	case "service":
-		order = `service ASC,id ASC`
+		order = `COALESCE(display_name,service) ASC,id ASC`
 	case "service_desc":
-		order = `service DESC,id ASC`
+		order = `COALESCE(display_name,service) DESC,id ASC`
 	case "updated":
 		order = `updated_at DESC NULLS LAST,id DESC`
 	case "updated_asc":

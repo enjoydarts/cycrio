@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { subscriptionTitle } from './subscription-title.ts';
   import { untrack } from 'svelte';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
@@ -9,13 +10,19 @@
   import DataTable from './DataTable.svelte';
   import type { FeedView } from './daily-controller.ts';
   import type { Report } from './reports-api.ts';
+  import type { ExchangeRates } from './exchange-rates-api.ts';
+  import {
+    projectReport,
+    currencyCSV,
+    type CurrencyMode,
+  } from './report-currency.ts';
+  import ReportCurrencyControl from './ReportCurrencyControl.svelte';
   import {
     displayAmount,
     displayEstimate,
     upcomingWithin,
     savings,
     subtractAmounts,
-    reportsCSV,
     maxAmount,
     chartPercent,
     serviceBreakdown,
@@ -25,6 +32,9 @@
     month,
     currentMonth,
     initialTab = 'summary',
+    initialCurrencyMode = 'native',
+    ratesView = { page: null, status: 'idle', error: null },
+    onRatesReload = () => {},
     onMonthChange = () => {},
     onReload = () => {},
   }: {
@@ -32,6 +42,9 @@
     month: string;
     currentMonth: string;
     initialTab?: string;
+    initialCurrencyMode?: CurrencyMode;
+    ratesView?: FeedView<ExchangeRates>;
+    onRatesReload?: () => void;
     onMonthChange?: (month: string) => void;
     onReload?: () => void;
   } = $props();
@@ -44,8 +57,16 @@
   ] as const;
   let tab = $state<string>(untrack(() => initialTab)),
     days = $state(30),
-    selected = $state<string[]>([]);
-  const report = $derived(view.status === 'ready' ? view.page : null);
+    selected = $state<string[]>([]),
+    currencyMode = $state<CurrencyMode>(untrack(() => initialCurrencyMode));
+  const nativeReport = $derived(view.status === 'ready' ? view.page : null);
+  const rates = $derived(ratesView.status === 'ready' ? ratesView.page : null);
+  const projection = $derived(
+    nativeReport && rates ? projectReport(nativeReport, rates) : null,
+  );
+  const report = $derived(
+    currencyMode === 'native' ? nativeReport : (projection?.report ?? null),
+  );
   const normalized = $derived(
     report?.contracts.filter((x) => x.exclusion_reason === '') ?? [],
   );
@@ -93,7 +114,9 @@
   function download() {
     if (!report) return;
     const url = URL.createObjectURL(
-      new Blob([reportsCSV(report)], { type: 'text/csv;charset=utf-8' }),
+      new Blob([currencyCSV(nativeReport!, currencyMode, rates)], {
+        type: 'text/csv;charset=utf-8',
+      }),
     );
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -121,6 +144,15 @@
       >{/snippet}
   </LibraryHeader>
   <LibraryPanel>
+    <ReportCurrencyControl
+      mode={currencyMode}
+      {ratesView}
+      onchange={(value) => (currencyMode = value)}
+      onRetry={onRatesReload}
+      excluded={projection?.excluded_contracts ?? 0}
+      excludedActual={projection?.excluded_actual_rows ?? 0}
+      excludedUpcoming={projection?.excluded_upcoming ?? 0}
+    />
     <nav class="library-tabs" aria-label="レポートの種類">
       {#each tabs as [key, label]}<Button
           type="button"
@@ -189,7 +221,9 @@
               <summary>料金・周期を確認する（{unpriced.length} 件）</summary>
               <ul>
                 {#each unpriced as row}<li>
-                    <a href={`/subscriptions/${row.id}`}>{row.service}</a><span
+                    <a href={`/subscriptions/${row.id}`}
+                      >{subscriptionTitle(row)}</a
+                    ><span
                       >{reasonNames[
                         row.exclusion_reason as keyof typeof reasonNames
                       ]}</span
@@ -273,7 +307,7 @@
       {:else if tab === 'upcoming'}
         <div class="library-toolbar">
           <div>
-            <h2>保存済みの次回請求日</h2>
+            <h2>保存済みの次回請求日・自動推定</h2>
             <p class="muted">今日から{days}日間 · 日本時間</p>
           </div>
           <label
@@ -291,7 +325,9 @@
             <summary>日付を確認する（{missingDates.length} 件）</summary>
             <ul>
               {#each missingDates as row}<li>
-                  <a href={`/subscriptions/${row.id}`}>{row.service}</a><span
+                  <a href={`/subscriptions/${row.id}`}
+                    >{subscriptionTitle(row)}</a
+                  ><span
                     >{row.next_billing_date
                       ? `保存日超過 · ${row.next_billing_date}`
                       : '日付未設定'}</span
@@ -309,9 +345,11 @@
                     ><span class="service"
                       ><BrandIcon name={row.service} size="small" /><a
                         href={`/subscriptions/${row.subscription_id}`}
-                        >{row.service}</a
+                        >{subscriptionTitle(row)}</a
                       ></span
-                    ><span class="secondary"
+                    >{#if row.display_name}<span class="secondary"
+                        >{row.service}</span
+                      >{/if}<span class="secondary"
                       >{row.plan ?? 'プラン不明'}{row.status === 'unknown'
                         ? ' · 状態不明'
                         : ''}</span
@@ -323,14 +361,18 @@
                     )}{#if row.annual_renewal}<span class="secondary"
                         >年次更新</span
                       >{/if}</td
-                  ><td data-label="次回請求日">{row.date}</td></tr
+                  ><td data-label="次回請求日"
+                    >{row.date}{row.next_billing_mode === 'automatic'
+                      ? '（推定）'
+                      : ''}</td
+                  ></tr
                 >{/each}</tbody
             ></DataTable
           >{:else}<p class="library-content">
             この期間の保存済み請求予定はありません。
           </p>{/if}
         <p class="library-footer">
-          保存済みの日付のみ表示します。日付の繰り越しや、支払いの確定は行いません。
+          手動指定日または、最新のメール受信日と周期から計算した推定日を表示します。支払いの確定は行いません。
         </p>
       {:else if tab === 'savings'}
         <div class="library-content">
@@ -355,7 +397,9 @@
                       toggle(row.id, event.currentTarget.checked)}
                   /><BrandIcon name={row.service} size="small" /><span
                     class="choice-name"
-                    >{row.service}{#if row.plan}<small>{row.plan}</small
+                    >{subscriptionTitle(row)}{#if row.display_name}<small
+                        >{row.service}</small
+                      >{/if}{#if row.plan}<small>{row.plan}</small
                       >{/if}{#if row.status === 'unknown'}<small
                         >利用状態不明</small
                       >{/if}</span
@@ -499,9 +543,12 @@
                     ><span class="service"
                       ><BrandIcon name={row.service} size="small" /><a
                         href={`/subscriptions/${row.subscription_id}`}
-                        >{row.service}</a
+                        >{subscriptionTitle(row)}</a
                       ></span
-                    >{#if row.plan}<span class="secondary">{row.plan}</span
+                    >{#if row.display_name}<span class="secondary"
+                        >{row.service}</span
+                      >{/if}{#if row.plan}<span class="secondary"
+                        >{row.plan}</span
                       >{/if}</td
                   ><td data-label="支払"
                     >{row.payment_amount === null
@@ -533,7 +580,7 @@
     {/if}
   </LibraryPanel>
   {#if report}<p class="report-footnote">
-      現在換算は保存済み料金を年365日で換算した参考値です。実績は取り込まれた記録のみで、口座の引き落としを保証しません。通貨の合算・為替換算は行いません。
+      現在換算は保存済み料金を年365日で換算した参考値です。実績は取り込まれた記録のみで、口座の引き落としを保証しません。元通貨表示では通貨ごとに集計し、円換算表示では最新取得レートを使います。
     </p>{/if}
 </section>
 

@@ -1,5 +1,10 @@
 import type { TokenProvider } from './api.ts';
 import {
+  normalizeDisplayName,
+  parseDisplayName,
+  type SubscriptionName,
+} from './subscription-title.ts';
+import {
   parseAdditionalSources,
   type CandidateSource,
 } from './candidate-selection.ts';
@@ -33,25 +38,27 @@ export type SubscriptionValues = {
   interval_unit: 'day' | 'week' | 'month' | 'year' | null;
   interval_count: number | null;
   next_billing_date: string | null;
+  next_billing_mode?: 'automatic' | 'manual';
   status: 'active' | 'ended' | 'unknown';
 };
-export type Subscription = SubscriptionValues & {
-  provenance?: 'automatic' | 'owner_confirmed';
-  id: string;
-  version: number;
-  created_at: string;
-  updated_at: string;
-  sources: {
-    received_at?: string | null;
-    account_id?: string;
-    account_label?: string;
-    provider?: 'gmail' | 'outlook' | 'fastmail' | 'imap';
+export type Subscription = SubscriptionValues &
+  SubscriptionName & {
     provenance?: 'automatic' | 'owner_confirmed';
-    result_id: string;
-    event_index: number;
-    original_event: ProcessingEvent;
-  }[];
-};
+    id: string;
+    version: number;
+    created_at: string;
+    updated_at: string;
+    sources: {
+      received_at?: string | null;
+      account_id?: string;
+      account_label?: string;
+      provider?: 'gmail' | 'outlook' | 'fastmail' | 'imap';
+      provenance?: 'automatic' | 'owner_confirmed';
+      result_id: string;
+      event_index: number;
+      original_event: ProcessingEvent;
+    }[];
+  };
 export type SubscriptionFilter = {
   account_id?: string;
   q: string;
@@ -140,6 +147,14 @@ export function parseValues(value: unknown): SubscriptionValues {
     interval_unit,
     interval_count,
     next_billing_date,
+    ...(v.next_billing_mode === undefined
+      ? {}
+      : {
+          next_billing_mode: choice(v.next_billing_mode, [
+            'automatic',
+            'manual',
+          ] as const),
+        }),
     status: choice(v.status, ['active', 'ended', 'unknown']),
   };
 }
@@ -185,6 +200,7 @@ export function parseSubscription(value: unknown): Subscription {
     return invalid();
   return {
     ...parseValues(v),
+    ...parseDisplayName(v.display_name),
     provenance:
       v.provenance === undefined
         ? 'owner_confirmed'
@@ -204,6 +220,26 @@ export function createSubscriptionsAPI(
     path = (id: string) => `/v1/subscriptions/${input(() => uuid(id))}`;
   const confirm = (v: boolean) => (v === true ? true : invalid());
   return {
+    async rename(
+      id: string,
+      v: {
+        display_name: string | null;
+        expected_version: number;
+        confirmed: boolean;
+      },
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) {
+      const body = input(() => ({
+        display_name: normalizeDisplayName(v.display_name),
+        expected_version: integer(v.expected_version, 1),
+        confirmed: confirm(v.confirmed),
+      }));
+      const result = parseSubscription(
+        await request(`${path(id)}/name`, token, signal, 'PUT', body),
+      );
+      return result.id === id ? result : invalid();
+    },
     async delete(
       id: string,
       v: { expected_version: number; confirmed: boolean },

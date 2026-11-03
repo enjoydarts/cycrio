@@ -1,5 +1,6 @@
 <script lang="ts">
   import ActionLink from './ActionLink.svelte';
+  import MailAutomationActivity from './MailAutomationActivity.svelte';
   import Button from './Button.svelte';
   import { onMount } from 'svelte';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
@@ -248,11 +249,7 @@
         <p class="muted">
           {automationProgressDescription(s)}
         </p>
-        <p class="muted">
-          最終メール確認：{s.last_success_at
-            ? processingDate(s.last_success_at)
-            : 'まだありません'}（日本時間）
-        </p>
+        <MailAutomationActivity state={s} />
         {#if s.state === 'enabled' && !aiWaiting}<p class="muted">
             アプリを閉じても取り込み・解析は続きます。サブスクへの登録には承認が必要です。
           </p>{:else if s.state === 'stopped'}<p class="muted">

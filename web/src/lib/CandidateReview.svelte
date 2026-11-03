@@ -374,7 +374,10 @@
       onFrozen={(state) => frozen(state.status === 'saving' || state.uncertain)}
     />
   {:else if action === 'attach'}
-    <EventFields event={primaryEvent} />
+    <details>
+      <summary>元の抽出情報を確認</summary>
+      <EventFields event={primaryEvent} />
+    </details>
     <AnalysisAttach
       result={{ id: source?.result_id ?? candidate.result_id }}
       index={source?.event_index ?? candidate.event_index}

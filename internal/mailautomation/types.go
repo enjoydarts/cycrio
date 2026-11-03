@@ -54,6 +54,8 @@ type State struct {
 	Basis                     Basis          `json:"basis"`
 	Progress                  Progress       `json:"progress"`
 	LastSuccessAt             *time.Time     `json:"last_success_at"`
+	LastStartedAt             *time.Time     `json:"last_started_at"`
+	Running                   bool           `json:"running"`
 	NextCheckAt               *time.Time     `json:"next_check_at"`
 	RecentSyncRuns            []mailsync.Run `json:"recent_sync_runs"`
 	DiscoveryFailureCount     int            `json:"discovery_failure_count"`

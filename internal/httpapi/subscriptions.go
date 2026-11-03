@@ -22,7 +22,11 @@ func WithSubscriptions(service SubscriptionService) Option {
 	return func(o *handlerOptions) { o.subscriptions = service }
 }
 
-var subscriptionValueKeys = []string{"service", "plan", "amount", "currency", "interval_unit", "interval_count", "next_billing_date", "status", "contract_kind", "effective_date", "access_end_date"}
+type subscriptionRenamer interface {
+	Rename(context.Context, string, string, subscriptions.NameInput) (subscriptions.Subscription, error)
+}
+
+var subscriptionValueKeys = []string{"service", "plan", "amount", "currency", "interval_unit", "interval_count", "next_billing_date", "next_billing_mode", "status", "contract_kind", "effective_date", "access_end_date"}
 var subscriptionLifecycleKeys = []string{"contract_kind", "effective_date", "access_end_date"}
 
 func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, protect protectFunc) {
@@ -71,7 +75,7 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	register("POST /v1/subscriptions", 201, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.CreateInput
 		keys := append(append([]string{}, subscriptionValueKeys...), "request_id", "source_result_id", "source_event_index", "confirmed", "additional_sources")
-		optional := append(append([]string{}, subscriptionLifecycleKeys...), "additional_sources")
+		optional := append(append([]string{}, subscriptionLifecycleKeys...), "additional_sources", "next_billing_mode")
 		if e := readSubscriptionJSONOptional(w, r, &in, keys, optional, "service", "status", "request_id", "confirmed", "contract_kind", "additional_sources"); e != nil {
 			return nil, e
 		}
@@ -85,7 +89,7 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 	register("PUT /v1/subscriptions/{id}", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.UpdateInput
 		keys := append(append([]string{}, subscriptionValueKeys...), "expected_version", "confirmed")
-		if e := readSubscriptionJSONOptional(w, r, &in, keys, subscriptionLifecycleKeys, "service", "status", "expected_version", "confirmed", "contract_kind"); e != nil {
+		if e := readSubscriptionJSONOptional(w, r, &in, keys, append(append([]string{}, subscriptionLifecycleKeys...), "next_billing_mode"), "service", "status", "expected_version", "confirmed", "contract_kind"); e != nil {
 			return nil, e
 		}
 		if in.ContractKind == "" {
@@ -100,6 +104,23 @@ func registerSubscriptions(mux *http.ServeMux, service SubscriptionService, prot
 		s, e := service.Update(r.Context(), owner, r.PathValue("id"), in)
 		normalizeSubscription(&s)
 		return s, e
+	})
+	register("PUT /v1/subscriptions/{id}/name", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
+		var in subscriptions.NameInput
+		if err := readSubscriptionJSON(w, r, &in, []string{"display_name", "expected_version", "confirmed"}, "expected_version", "confirmed"); err != nil {
+			return nil, err
+		}
+		in, err := subscriptions.NormalizeName(in)
+		if err != nil {
+			return nil, err
+		}
+		renamer, ok := service.(subscriptionRenamer)
+		if !ok {
+			return nil, subscriptions.ErrUnavailable
+		}
+		s, err := renamer.Rename(r.Context(), owner, r.PathValue("id"), in)
+		normalizeSubscription(&s)
+		return s, err
 	})
 	register("POST /v1/subscriptions/{id}/sources", 200, false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in subscriptions.SourceInput

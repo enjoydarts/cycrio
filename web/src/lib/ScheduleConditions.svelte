@@ -4,6 +4,10 @@
   let { view }: { view: ScheduleView | null } = $props();
 </script>
 
+{#if view?.next_date_source === 'automatic'}<p class="muted">
+    次回請求日は、最新の紐付け済みメール受信日（日本時間）と現在の請求周期からの推定です。
+  </p>{/if}
+
 {#if view?.settings}{@const settings = view.settings}
   <details class="schedule-conditions">
     <summary>保存済みの計算条件 · 本人確認済み</summary>

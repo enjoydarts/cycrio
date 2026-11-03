@@ -70,6 +70,8 @@ export type MailAutomationState = {
     unknown_count: number;
   };
   last_success_at: string | null;
+  last_started_at?: string | null;
+  running?: boolean;
   next_check_at: string | null;
   discovery_failure_count: number;
   retry_at: string | null;
@@ -150,6 +152,12 @@ export function parseMailAutomationState(
       unknown_count: integer(p.unknown_count),
     },
     last_success_at: nullable(v.last_success_at, timestamp),
+    ...(v.last_started_at === undefined
+      ? {}
+      : { last_started_at: nullable(v.last_started_at, timestamp) }),
+    ...(v.running === undefined
+      ? {}
+      : { running: typeof v.running === 'boolean' ? v.running : invalid() }),
     next_check_at: nullable(v.next_check_at, timestamp),
     retry_at: nullable(v.retry_at, timestamp),
     discovery_failure_count: integer(v.discovery_failure_count, 0, 6),

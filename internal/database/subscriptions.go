@@ -59,11 +59,12 @@ func (r *SubscriptionRepository) begin(ctx context.Context, owner string) (pgx.T
 	return tx, nil
 }
 
-const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,created_at,updated_at,provenance,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD')`
+const effectiveNextBilling = `subscription_effective_next_billing(subscriptions,(CURRENT_TIMESTAMP AT TIME ZONE 'Asia/Tokyo')::date)`
+const subscriptionColumns = `id,version,service,plan,amount,currency,interval_unit,interval_count,to_char(` + effectiveNextBilling + `,'YYYY-MM-DD'),status,created_at,updated_at,provenance,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD'),next_billing_mode,display_name`
 
 func scanSubscription(row pgx.Row) (subscriptions.Subscription, error) {
 	var s subscriptions.Subscription
-	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.Provenance, &s.ContractKind, &s.EffectiveDate, &s.AccessEndDate)
+	e := row.Scan(&s.ID, &s.Version, &s.Service, &s.Plan, &s.Amount, &s.Currency, &s.IntervalUnit, &s.IntervalCount, &s.NextBillingDate, &s.Status, &s.CreatedAt, &s.UpdatedAt, &s.Provenance, &s.ContractKind, &s.EffectiveDate, &s.AccessEndDate, &s.NextBillingMode, &s.DisplayName)
 	s.Sources = []subscriptions.Source{}
 	return s, subscriptionError(e)
 }
@@ -192,7 +193,7 @@ func (r *SubscriptionRepository) Create(ctx context.Context, owner string, in su
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}
 	id := uuid.NewString()
-	_, e = tx.Exec(ctx, `INSERT INTO subscriptions(id,owner_id,request_id,request_doc,service,plan,amount,currency,interval_unit,interval_count,next_billing_date,status,contract_kind,effective_date,access_end_date) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::date,$12,$13,$14::text::date,$15::text::date)`, id, owner, in.RequestID, raw, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate)
+	_, e = tx.Exec(ctx, `INSERT INTO subscriptions(id,owner_id,request_id,request_doc,service,plan,amount,currency,interval_unit,interval_count,next_billing_date,status,contract_kind,effective_date,access_end_date,next_billing_mode) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::date,$12,$13,$14::text::date,$15::text::date,$16)`, id, owner, in.RequestID, raw, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}
@@ -235,6 +236,26 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return subscriptions.Subscription{}, e
 	}
+	// The API date is a projection in automatic mode. Never save a calculated
+	// response date over the independently retained manual value.
+	var priorMode string
+	var priorKind string
+	var manualDate *string
+	if e = tx.QueryRow(ctx, `SELECT next_billing_mode,to_char(next_billing_date,'YYYY-MM-DD'),contract_kind FROM subscriptions WHERE owner_id=$1 AND id=$2`, owner, id).Scan(&priorMode, &manualDate, &priorKind); e != nil {
+		return subscriptions.Subscription{}, subscriptionError(e)
+	}
+	if in.NextBillingMode == "" {
+		in.NextBillingMode = priorMode
+	}
+	if in.NextBillingMode == "automatic" {
+		in.NextBillingDate = manualDate
+	}
+	// Explicitly converting the contract to fixed-term removes recurring facts;
+	// a historical manual billing date cannot remain attached to that lifecycle.
+	if !in.PreserveLifecycle && in.ContractKind == "fixed_term" && priorKind != "fixed_term" {
+		in.NextBillingDate = nil
+		in.NextBillingMode = "manual"
+	}
 	if in.PreserveLifecycle {
 		prior, err := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
 		if err != nil {
@@ -250,7 +271,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, owner, id string, i
 	if e != nil {
 		return subscriptions.Subscription{}, e
 	}
-	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,contract_kind=$11,effective_date=$12::text::date,access_end_date=$13::text::date,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate)
+	_, e = tx.Exec(ctx, `UPDATE subscriptions SET provenance='owner_confirmed',version=version+1,service=$3,plan=$4,amount=$5,currency=$6,interval_unit=$7,interval_count=$8,next_billing_date=$9::text::date,status=$10,contract_kind=$11,effective_date=$12::text::date,access_end_date=$13::text::date,next_billing_mode=$14,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id, in.Service, in.Plan, in.Amount, in.Currency, in.IntervalUnit, in.IntervalCount, in.NextBillingDate, in.Status, in.ContractKind, in.EffectiveDate, in.AccessEndDate, in.NextBillingMode)
 	if e != nil {
 		return subscriptions.Subscription{}, subscriptionError(e)
 	}

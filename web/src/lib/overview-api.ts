@@ -1,5 +1,9 @@
 import type { TokenProvider } from './api.ts';
 import {
+  parseDisplayName,
+  type SubscriptionName,
+} from './subscription-title.ts';
+import {
   array,
   choice,
   createDailyRequest,
@@ -25,10 +29,11 @@ export type OverviewCounts = {
   undated: number;
   later: number;
 };
-export type UpcomingSubscription = SubscriptionValues & {
-  id: string;
-  provenance: 'automatic' | 'owner_confirmed';
-};
+export type UpcomingSubscription = SubscriptionValues &
+  SubscriptionName & {
+    id: string;
+    provenance: 'automatic' | 'owner_confirmed';
+  };
 export type OverviewConnection = {
   id: string;
   label: string;
@@ -39,6 +44,10 @@ export type OverviewConnection = {
   blocked_reasons: string[];
   last_success_at: string | null;
   next_check_at: string | null;
+  last_started_at?: string | null;
+  automation_reason?: string;
+  automation_running?: boolean;
+  retry_at?: string | null;
 };
 export type OverviewReport = {
   as_of: string;
@@ -92,6 +101,7 @@ export function parseOverview(value: unknown): OverviewReport {
         return invalid();
       return {
         ...values,
+        ...parseDisplayName(row.display_name),
         id: uuid(row.id),
         provenance: choice(row.provenance, ['automatic', 'owner_confirmed']),
       };
@@ -131,6 +141,23 @@ export function parseOverview(value: unknown): OverviewReport {
         blocked_reasons: array(row.blocked_reasons, (x) => text(x, 200)),
         last_success_at: nullable(row.last_success_at, timestamp),
         next_check_at: nullable(row.next_check_at, timestamp),
+        ...(row.last_started_at === undefined
+          ? {}
+          : { last_started_at: nullable(row.last_started_at, timestamp) }),
+        ...(row.automation_reason === undefined
+          ? {}
+          : { automation_reason: text(row.automation_reason, 200, true) }),
+        ...(row.automation_running === undefined
+          ? {}
+          : {
+              automation_running:
+                typeof row.automation_running === 'boolean'
+                  ? row.automation_running
+                  : invalid(),
+            }),
+        ...(row.retry_at === undefined
+          ? {}
+          : { retry_at: nullable(row.retry_at, timestamp) }),
       };
     },
     10,

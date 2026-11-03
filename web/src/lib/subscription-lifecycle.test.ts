@@ -43,7 +43,7 @@ test('old events default lifecycle facts without turning transaction price into 
   assert.equal(draft.currency, null);
   assert.equal(draft.contract_kind, 'unknown');
 });
-test('explicit regular price survives prorated transaction while incomplete pair stays unknown', () => {
+test('explicit regular price survives proration and missing currency without allowing incomplete saving', () => {
   const event = parseProcessingEvent({
     ...legacy,
     recurring_amount: '1500',
@@ -51,10 +51,20 @@ test('explicit regular price survives prorated transaction while incomplete pair
     contract_kind: 'recurring',
   });
   assert.equal(subscriptionFromEvent(event).amount, '1500');
-  assert.equal(
-    subscriptionFromEvent({ ...event, recurring_currency: null }).amount,
-    null,
-  );
+  const missingCurrency = subscriptionFromEvent({
+    ...event,
+    recurring_currency: null,
+  });
+  assert.equal(missingCurrency.amount, '1500');
+  assert.equal(missingCurrency.currency, null);
+  assert.throws(() => parseValues(missingCurrency));
+  const missingAmount = subscriptionFromEvent({
+    ...event,
+    recurring_amount: null,
+  });
+  assert.equal(missingAmount.amount, null);
+  assert.equal(missingAmount.currency, 'JPY');
+  assert.throws(() => parseValues(missingAmount));
 });
 test('nameless cancellation retains independent dates and unknown state', () => {
   const event = parseProcessingEvent({

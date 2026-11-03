@@ -46,6 +46,12 @@ func readSubscriptionJSONOptional(w http.ResponseWriter, r *http.Request, target
 			return subscriptions.ErrInvalid
 		}
 		values[key] = raw
+		if key == "next_billing_mode" {
+			var mode string
+			if json.Unmarshal(raw, &mode) != nil || mode != "automatic" && mode != "manual" {
+				return subscriptions.ErrInvalid
+			}
+		}
 	}
 	token, e = d.Token()
 	if e != nil || token != json.Delim('}') || d.Decode(new(any)) != io.EOF {

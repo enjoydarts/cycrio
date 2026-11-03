@@ -1,3 +1,27 @@
+import type { ReportContract } from './reports-api.ts';
+export function reportContractFixture(
+  currency = 'USD',
+  monthly = '10',
+  annual = '120',
+  id = '11111111-1111-4111-8111-111111111111',
+): ReportContract {
+  return {
+    id,
+    service: 'Service',
+    plan: null,
+    status: 'active',
+    contract_kind: 'recurring',
+    amount: monthly,
+    currency,
+    interval_unit: 'month',
+    interval_count: 1,
+    next_billing_date: null,
+    monthly_amount: monthly,
+    annual_amount: annual,
+    exclusion_reason: '',
+  };
+}
+
 export function reportFixture(month = '2026-11') {
   const end = new Date(`${month}-01T00:00:00Z`);
   end.setUTCMonth(end.getUTCMonth() + 1);

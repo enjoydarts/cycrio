@@ -1,6 +1,7 @@
 <script lang="ts">
   import BrandIcon from './BrandIcon.svelte';
   import { mailServiceForAccount } from './mail-service-presets.ts';
+  import { mailConnectionIndicator } from './mail-connection-indicator.ts';
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
@@ -179,6 +180,21 @@
         onDenied,
       );
       void controller.refresh();
+      controller.startPolling({
+        isVisible: () => document.visibilityState === 'visible',
+        every: (callback, milliseconds) => {
+          const timer = window.setInterval(callback, milliseconds);
+          return () => window.clearInterval(timer);
+        },
+        onWake: (callback) => {
+          window.addEventListener('focus', callback);
+          document.addEventListener('visibilitychange', callback);
+          return () => {
+            window.removeEventListener('focus', callback);
+            document.removeEventListener('visibilitychange', callback);
+          };
+        },
+      });
     }
     return () => {
       media.removeEventListener('change', resize);
@@ -270,6 +286,10 @@
         <p class="rail-label">接続したメール</p>
         {#if workspaceView.accounts.status === 'ready' && workspaceView.accounts.value}
           {#each workspaceView.accounts.value as account (account.id)}
+            {@const indicator = mailConnectionIndicator(
+              account,
+              overview?.connections.find((item) => item.id === account.id),
+            )}
             <ActionLink
               wrap
               variant="nav"
@@ -297,14 +317,12 @@
               <span
                 class="source-state"
                 role="img"
-                class:ready={account.state === 'ready'}
-                aria-label={account.state === 'ready'
-                  ? '接続済み'
-                  : account.state === 'needs_reauth'
-                    ? '再認証が必要'
-                    : account.state === 'disconnected'
-                      ? '切断済み'
-                      : '接続未確認'}
+                class:ready={indicator.tone === 'ready'}
+                class:running={indicator.tone === 'running'}
+                class:warning={indicator.tone === 'warning'}
+                class:error={indicator.tone === 'error'}
+                aria-label={indicator.label}
+                title={indicator.label}
               ></span>
             </ActionLink>
           {:else}<p class="rail-note">メールはまだ接続されていません</p>{/each}
@@ -518,11 +536,20 @@
     height: 6px;
     flex-shrink: 0;
     border-radius: 50%;
-    background: #efc17c;
+    background: #9caab6;
     margin-left: auto;
   }
   .source-state.ready {
     background: #6cd1a4;
+  }
+  .source-state.running {
+    background: #83bfff;
+  }
+  .source-state.warning {
+    background: #efc17c;
+  }
+  .source-state.error {
+    background: #ff929b;
   }
   .add-source {
     margin-top: 7px;

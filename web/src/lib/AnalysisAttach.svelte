@@ -1,5 +1,8 @@
 <script lang="ts">
+  import { subscriptionTitle } from './subscription-title.ts';
   import BrandIcon from './BrandIcon.svelte';
+  import LibraryPanel from './LibraryPanel.svelte';
+  import DataTable from './DataTable.svelte';
   import Pagination from './Pagination.svelte';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -159,108 +162,187 @@
   }
 </script>
 
-<div class="daily">
+<section class="daily attach" aria-label="既存のサブスクへ紐付ける">
   <h3>既存のサブスクへ紐付ける</h3>
   <p class="muted">
     契約内容は変更しません。サービス名による自動統合は行いません。
   </p>
-  <form
-    class="toolbar"
-    onsubmit={(e) => {
-      e.preventDefault();
-      searched = query;
-      selected = null;
-      confirmed = false;
-      conflict = false;
-      load();
-    }}
-  >
-    <label class="search"
-      >サブスクを検索<input disabled={frozen} bind:value={query} /></label
-    ><Button wrap type="submit" disabled={frozen}>検索</Button>
-  </form>
-  {#if view.status === 'loading'}<p role="status">
-      検索中…
-    </p>{:else if view.error}<p role="alert">{processingErrors[view.error]}</p>
-    <Button wrap onclick={() => load(offset)}>再読み込み</Button
-    >{:else if view.page}<ul class="compact-list">
-      {#each view.page.subscriptions as s}<li>
-          <label class="check"
-            ><input
-              type="radio"
-              name="attach-subscription"
-              checked={selected?.id === s.id}
-              disabled={frozen}
-              onchange={() => {
-                selected = s;
-                confirmed = false;
-                conflict = false;
-                latest = null;
-                error = null;
-              }}
-            /><BrandIcon name={s.service} size="small" /><span
-              ><strong>{s.service}</strong><span class="secondary"
-                >{s.plan ?? 'プラン不明'} · {money(s.amount, s.currency)} · {s.status ===
-                'active'
-                  ? '利用中'
-                  : '終了済み'}</span
-              ></span
-            ></label
-          >
-        </li>{:else}<li>一致するサブスクがありません。</li>{/each}
-    </ul>
-    <ActionGroup class={['pager', 'part-AnalysisAttach-pager']}>
-      <span>全 {view.page.total} 件</span>
-      <Pagination
-        total={view.page.total}
-        offset={view.page.offset}
-        limit={view.page.limit}
-        disabled={frozen}
-        label="紐付け先サブスクのページ"
-        onchange={load}
-      />
-    </ActionGroup>{/if}
-  {#if conflict}<div class="notice" role="alert">
-      <p>
-        別の操作で契約または紐付けが更新されました。選択を残しています。最新の契約を確認してください。
-      </p>
-      {#if latest}<p>最新のサービス名: {latest.service}</p>
-        <Button
-          wrap
-          disabled={saving}
-          onclick={() => {
-            selected = latest;
-            latest = null;
-            conflict = false;
-            confirmed = false;
-          }}>最新の契約を選択し直す</Button
-        >{/if}
-      <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
-        <Button wrap type="button" disabled={saving} onclick={onBackToResults}
-          >解析結果の一覧に戻って登録状況を更新</Button
+  <LibraryPanel>
+    <form
+      class="library-toolbar attach-search"
+      onsubmit={(e) => {
+        e.preventDefault();
+        searched = query;
+        selected = null;
+        confirmed = false;
+        conflict = false;
+        load();
+      }}
+    >
+      <label class="attach-query"
+        >サブスクを検索<input
+          type="search"
+          disabled={frozen}
+          bind:value={query}
+        /></label
+      ><Button wrap type="submit" disabled={frozen}>検索</Button>
+    </form>
+    {#if view.status === 'loading'}<p class="library-content" role="status">
+        検索中…
+      </p>{:else if view.error}<div class="library-content">
+        <p role="alert">{processingErrors[view.error]}</p>
+        <Button type="button" wrap onclick={() => load(offset)}
+          >再読み込み</Button
         >
-      </ActionGroup>
-    </div>{/if}
-  {#if selected}<p class="notice">
-      「{selected.service}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。
-    </p>{/if}
-  <label class="check"
-    ><input
-      type="checkbox"
-      checked={confirmed}
-      disabled={!selected || frozen || conflict}
-      onchange={(e) => (confirmed = e.currentTarget.checked)}
-    />紐付け先と元の抽出情報を確認しました</label
-  >
-  {#if error}<p class="notice error" role="alert">{error}</p>{/if}<Button
-    wrap
-    variant="primary"
-    class={['primary']}
-    type="button"
-    disabled={!selected || (!confirmed && !uncertain) || saving || conflict}
-    onclick={attach}
-    >{uncertain
-      ? '同じ要求で紐付けを確認'
-      : '確認したサブスクへ紐付ける'}</Button
-  >
-</div>
+      </div>{:else if view.page}<DataTable responsive="cards" density="list">
+        <thead><tr><th>紐付け先のサブスク</th><th>金額・状態</th></tr></thead>
+        <tbody>
+          {#each view.page.subscriptions as s}<tr>
+              <td data-primary
+                ><label class="attach-choice"
+                  ><input
+                    type="radio"
+                    name="attach-subscription"
+                    checked={selected?.id === s.id}
+                    disabled={frozen}
+                    onchange={() => {
+                      selected = s;
+                      confirmed = false;
+                      conflict = false;
+                      latest = null;
+                      error = null;
+                    }}
+                  /><BrandIcon name={s.service} size="small" /><span
+                    class="attach-name"
+                    ><strong>{subscriptionTitle(s)}</strong
+                    >{#if s.display_name}<span class="secondary"
+                        >{s.service}</span
+                      >{/if}<span class="secondary"
+                      >{s.plan ?? 'プラン不明'}</span
+                    ></span
+                  ></label
+                ></td
+              ><td data-label="金額・状態"
+                ><span class="money">{money(s.amount, s.currency)}</span><span
+                  class="secondary"
+                  >{s.status === 'active' ? '利用中' : '終了済み'}</span
+                ></td
+              >
+            </tr>{:else}<tr
+              ><td colspan="2">一致するサブスクがありません。</td></tr
+            >{/each}
+        </tbody>
+      </DataTable>
+      <ActionGroup align="between" class="library-footer">
+        <span>全 {view.page.total} 件</span>
+        <Pagination
+          total={view.page.total}
+          offset={view.page.offset}
+          limit={view.page.limit}
+          disabled={frozen}
+          label="紐付け先サブスクのページ"
+          onchange={load}
+        />
+      </ActionGroup>{/if}
+  </LibraryPanel>
+  <div class="attach-confirmation">
+    {#if conflict}<div class="notice" role="alert">
+        <p>
+          別の操作で契約または紐付けが更新されました。選択を残しています。最新の契約を確認してください。
+        </p>
+        {#if latest}<p>最新の名前: {subscriptionTitle(latest)}</p>
+          <Button
+            wrap
+            type="button"
+            disabled={saving}
+            onclick={() => {
+              selected = latest;
+              latest = null;
+              conflict = false;
+              confirmed = false;
+            }}>最新の契約を選択し直す</Button
+          >{/if}
+        <ActionGroup class={['actions', 'part-AnalysisAttach-actions']}>
+          <Button wrap type="button" disabled={saving} onclick={onBackToResults}
+            >解析結果の一覧に戻って登録状況を更新</Button
+          >
+        </ActionGroup>
+      </div>{/if}
+    {#if selected}<p class="notice">
+        「{subscriptionTitle(selected)}」へ AI イベント {index + 1} を紐付けます。契約の金額・日付・状態は変更しません。
+      </p>{/if}
+    <label class="attach-confirm"
+      ><input
+        type="checkbox"
+        checked={confirmed}
+        disabled={!selected || frozen || conflict}
+        onchange={(e) => (confirmed = e.currentTarget.checked)}
+      /><span>紐付け先と元の抽出情報を確認しました</span></label
+    >
+    {#if error}<p class="notice error" role="alert">{error}</p>{/if}<Button
+      wrap
+      variant="primary"
+      class={['primary']}
+      type="button"
+      disabled={!selected || (!confirmed && !uncertain) || saving || conflict}
+      onclick={attach}
+      >{uncertain
+        ? '同じ要求で紐付けを確認'
+        : '確認したサブスクへ紐付ける'}</Button
+    >
+  </div>
+</section>
+
+<style>
+  .attach {
+    min-width: 0;
+    margin-top: 24px;
+  }
+  .attach h3 {
+    margin: 0 0 8px;
+    font-size: 16px;
+  }
+  .attach > .muted {
+    margin-bottom: 16px;
+  }
+  .attach .attach-query {
+    flex: 1 1 180px;
+    max-width: 440px;
+  }
+  .attach .attach-choice,
+  .attach .attach-confirm {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 10px;
+    min-width: 0;
+    padding-block: 8px;
+    cursor: pointer;
+  }
+  .attach .attach-choice input[type='radio'],
+  .attach .attach-confirm input[type='checkbox'] {
+    flex: 0 0 20px;
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    margin: 3px 0 0;
+    padding: 0;
+    accent-color: var(--color-action);
+  }
+  .attach-name {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .attach-confirmation {
+    min-width: 0;
+    margin-top: 20px;
+  }
+  .attach .attach-confirmation .notice {
+    margin: 0 0 12px;
+    padding: 12px 16px;
+  }
+  .attach .attach-confirm {
+    margin-bottom: 12px;
+    line-height: 1.7;
+  }
+</style>

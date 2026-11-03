@@ -123,7 +123,7 @@ func Build(now time.Time, month string, contracts []Contract, records []Record) 
 				if due.Before(date) {
 					report.Coverage.OverdueContracts++
 				} else if due.Before(date.AddDate(0, 0, 365)) {
-					report.Upcoming = append(report.Upcoming, Due{SubscriptionID: c.ID, Service: c.Service, Plan: c.Plan, Date: *c.NextBillingDate, Amount: c.Amount, Currency: c.Currency, AnnualRenewal: c.IntervalUnit != nil && *c.IntervalUnit == "year", Status: c.Status})
+					report.Upcoming = append(report.Upcoming, Due{DisplayName: c.DisplayName, NextBillingMode: c.NextBillingMode, SubscriptionID: c.ID, Service: c.Service, Plan: c.Plan, Date: *c.NextBillingDate, Amount: c.Amount, Currency: c.Currency, AnnualRenewal: c.IntervalUnit != nil && *c.IntervalUnit == "year", Status: c.Status})
 					if c.Currency != nil && due.Before(date.AddDate(0, 0, 30)) {
 						summary := ensureCurrency(*c.Currency)
 						summary.Next30DaysCount++
@@ -158,7 +158,7 @@ func Build(now time.Time, month string, contracts []Contract, records []Record) 
 		if record.Month == report.Month {
 			key := record.SubscriptionID + "\x00" + record.Currency
 			if services[key] == nil {
-				services[key] = &MonthlyService{SubscriptionID: record.SubscriptionID, Service: record.Service, Plan: record.Plan, ActualCurrency: ActualCurrency{Currency: record.Currency}}
+				services[key] = &MonthlyService{DisplayName: record.DisplayName, SubscriptionID: record.SubscriptionID, Service: record.Service, Plan: record.Plan, ActualCurrency: ActualCurrency{Currency: record.Currency}}
 			}
 			aggregate(&services[key].ActualCurrency, record)
 		}

@@ -58,6 +58,14 @@ const settings = {
   confirmed_at: '2026-10-26T00:00:00Z',
   updated_at: '2026-10-26T00:00:00Z',
 };
+test('automatic schedule conditions explain received-date estimate even without saved rules', async () => {
+  const Component = await component('ScheduleConditions');
+  const html = render(Component, {
+    props: { view: { ...baseline, next_date_source: 'automatic' } },
+  }).body;
+  assert.match(html, /推定/);
+  assert.match(html, /受信日/);
+});
 test('schedule components compile without accessibility warnings and expose compact detail entry', async () => {
   for (const name of [
     'ScheduleCalculator',

@@ -111,6 +111,9 @@ func automationState(ctx context.Context, tx pgx.Tx, owner, account string) (mai
 	out.PreparationReady = len(out.BlockedReasons) == 0
 	out.PreparationBlockedReasons = append([]string{}, out.BlockedReasons...)
 	if out.ID != "" {
+		if e = tx.QueryRow(ctx, `SELECT max(started_at),coalesce(bool_or(state='running' AND started_at IS NOT NULL AND lease_until>clock_timestamp()),false) FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 AND automation_id=$3 AND automation_generation=$4`, owner, account, out.ID, out.Generation).Scan(&out.LastStartedAt, &out.Running); e != nil {
+			return out, processingError(e)
+		}
 		if out.Basis.AccountVersion != saved.AccountVersion {
 			out.BlockedReasons = append(out.BlockedReasons, "account_changed")
 		}

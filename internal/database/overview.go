@@ -48,21 +48,22 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 	if err != nil {
 		return out, overview.ErrUnavailable
 	}
-	if err = tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE status='active'),count(*) FILTER(WHERE status='ended'),count(*) FILTER(WHERE status='unknown'),
- count(*) FILTER(WHERE status<>'ended' AND next_billing_date>=$2::date AND next_billing_date<$3::date),
- count(*) FILTER(WHERE status<>'ended' AND next_billing_date<$2::date),
- count(*) FILTER(WHERE status<>'ended' AND next_billing_date IS NULL),
- count(*) FILTER(WHERE status<>'ended' AND next_billing_date>=$3::date)
- FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later); err != nil {
+	if err = tx.QueryRow(ctx, `WITH dated AS MATERIALIZED (SELECT status,subscription_effective_next_billing(subscriptions,$2::date) AS due FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL)
+ SELECT count(*),count(*) FILTER(WHERE status='active'),count(*) FILTER(WHERE status='ended'),count(*) FILTER(WHERE status='unknown'),
+ count(*) FILTER(WHERE status<>'ended' AND due>=$2::date AND due<$3::date),
+ count(*) FILTER(WHERE status<>'ended' AND due<$2::date),
+ count(*) FILTER(WHERE status<>'ended' AND due IS NULL),
+ count(*) FILTER(WHERE status<>'ended' AND due>=$3::date)
+ FROM dated`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later); err != nil {
 		return out, overview.ErrUnavailable
 	}
-	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(next_billing_date,'YYYY-MM-DD'),status,provenance FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND next_billing_date>=$2::date AND next_billing_date<$3::date ORDER BY next_billing_date,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
+	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(due,'YYYY-MM-DD'),status,provenance,next_billing_mode,display_name FROM subscriptions CROSS JOIN LATERAL (SELECT subscription_effective_next_billing(subscriptions,$2::date) AS due) d WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND due>=$2::date AND due<$3::date ORDER BY due,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
 	if err != nil {
 		return out, overview.ErrUnavailable
 	}
 	for rows.Next() {
 		var item overview.Upcoming
-		if rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance) != nil {
+		if rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance, &item.NextBillingMode, &item.DisplayName) != nil {
 			rows.Close()
 			return out, overview.ErrUnavailable
 		}
@@ -98,9 +99,13 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 			return out, overview.ErrUnavailable
 		}
 		item.AutomationState = automation.State
+		item.AutomationReason = automation.Reason
+		item.AutomationRunning = automation.Running
 		item.Ready = automation.Ready
 		item.BlockedReasons = automation.BlockedReasons
 		item.LastSuccessAt = automation.LastSuccessAt
+		item.LastStartedAt = automation.LastStartedAt
+		item.RetryAt = automation.RetryAt
 		item.NextCheckAt = automation.NextCheckAt
 	}
 	if tx.Commit(ctx) != nil {

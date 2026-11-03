@@ -20,6 +20,7 @@ type CredentialService interface {
 }
 
 type handlerOptions struct {
+	exchangeRates   ExchangeRatesService
 	reports         ReportsService
 	overview        OverviewService
 	integrations    IntegrationService

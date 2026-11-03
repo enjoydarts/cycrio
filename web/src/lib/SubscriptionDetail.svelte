@@ -36,6 +36,8 @@
     EditorView,
   } from './subscriptions-controller.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
+  import SubscriptionNameModal from './SubscriptionNameModal.svelte';
+  import { subscriptionTitle } from './subscription-title.ts';
   import LibraryHeader from './LibraryHeader.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
   import './daily.css';
@@ -78,6 +80,7 @@
     childFrozen = $state(false);
   let leaveTo = $state('');
   let deleting = $state(false);
+  let renaming = $state(false);
   let deleted = $state(false);
   let deleteView = $state<DeleteView>({
     busy: false,
@@ -223,11 +226,17 @@
     {#if embedded}<header class="titlebar">
         <div>
           {#if embedded}<ServiceAvatar name={s.service} />{/if}
-          <h1>{s.service}</h1>
+          <h1>{subscriptionTitle(s)}</h1>
+          {#if s.display_name}<p class="muted">{s.service}</p>{/if}
           <p>{s.plan ?? 'プラン不明'}</p>
         </div>
         <ActionGroup
-          ><Button
+          >{#if s.display_name !== undefined}<Button
+              wrap
+              type="button"
+              disabled={frozen || childFrozen || deleteView.locked}
+              onclick={() => (renaming = true)}>名前を変更</Button
+            >{/if}<Button
             wrap
             variant="primary"
             type="button"
@@ -338,7 +347,10 @@
         <div>
           <dt>次回請求日</dt>
           <dd>
-            {s.next_billing_date ?? '不明'}
+            {s.next_billing_date ?? '不明'}{s.next_billing_date &&
+            s.next_billing_mode === 'automatic'
+              ? '（推定）'
+              : ''}
             {#if s.contract_kind === 'fixed_term'}期間限定契約には請求予定を設定しません。{:else}{#key s.id}<ScheduleCalculator
                   subscription={s}
                   drafts={scheduleDrafts}
@@ -421,10 +433,15 @@
   {:else}
     <LibraryHeader
       title={view.status === 'ready' && view.page
-        ? view.page.service
+        ? subscriptionTitle(view.page)
         : 'サブスクの詳細'}
       description={view.status === 'ready' && view.page
-        ? (view.page.plan ?? 'プラン不明')
+        ? [
+            view.page.display_name ? view.page.service : '',
+            view.page.plan ?? 'プラン不明',
+          ]
+            .filter(Boolean)
+            .join(' · ')
         : undefined}
       eyebrow="MY LIBRARY"
     >
@@ -444,7 +461,12 @@
               editing = true;
               localTab = 'edit';
             }}>契約を編集</Button
-          ><Button
+          >{#if view.page.display_name !== undefined}<Button
+              wrap
+              type="button"
+              disabled={frozen || childFrozen || deleteView.locked}
+              onclick={() => (renaming = true)}>名前を変更</Button
+            >{/if}<Button
             wrap
             type="button"
             disabled={frozen || childFrozen || deleteView.locked}
@@ -457,6 +479,33 @@
     >
   {/if}
 </section>
+{#if renaming && view.page}<SubscriptionNameModal
+    subscription={view.page}
+    base={PUBLIC_API_BASE_URL}
+    {token}
+    onclose={() => (renaming = false)}
+    onFrozen={childState}
+    onSaved={(saved) => {
+      view = { page: saved, status: 'ready', error: null };
+      renaming = false;
+      childState(false);
+      onSaved();
+      void workspace?.refresh();
+    }}
+    onDenied={() => {
+      renaming = false;
+      drafts.clear();
+      scheduleDrafts.clear();
+      billingDrafts.clear();
+      childState(false);
+      session.onDenied();
+    }}
+    onReload={() => {
+      renaming = false;
+      childState(false);
+      void controller?.load(id);
+    }}
+  />{/if}
 <Modal
   open={deleting}
   title="Cycrioから削除"
@@ -467,7 +516,8 @@
 >
   <p>
     「{view.page
-      ?.service}」をCycrioから削除します。サービス自体の解約は行いません。
+      ? subscriptionTitle(view.page)
+      : ''}」をCycrioから削除します。サービス自体の解約は行いません。
   </p>
   <p>
     過去の支払い・返金履歴は残ります。サブスク一覧と今後の請求予定からは表示されなくなります。

@@ -43,7 +43,8 @@ export type ScheduleView = {
   settings: ScheduleSettings | null;
   as_of: string;
   timezone: 'Asia/Tokyo';
-  next_date_source: 'unknown' | 'manual' | 'confirmed_calculation';
+  next_date_source:
+    'unknown' | 'manual' | 'confirmed_calculation' | 'automatic';
   overdue: boolean;
 };
 export type SchedulePreview = {
@@ -139,6 +140,7 @@ export function parseScheduleView(value: unknown): ScheduleView {
     'unknown',
     'manual',
     'confirmed_calculation',
+    'automatic',
   ] as const);
   if (
     settings &&

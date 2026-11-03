@@ -1,5 +1,9 @@
 import type { TokenProvider } from './api.ts';
 import {
+  parseDisplayName,
+  type SubscriptionName,
+} from './subscription-title.ts';
+import {
   array,
   choice,
   createDailyRequest,
@@ -15,7 +19,7 @@ import {
 } from './daily-api.ts';
 import { createFeed, type FeedView } from './daily-controller.ts';
 
-export type ReportContract = {
+export type ReportContract = SubscriptionName & {
   id: string;
   service: string;
   plan: string | null;
@@ -26,6 +30,7 @@ export type ReportContract = {
   interval_unit: 'day' | 'week' | 'month' | 'year' | null;
   interval_count: number | null;
   next_billing_date: string | null;
+  next_billing_mode?: 'automatic' | 'manual';
   monthly_amount: string | null;
   annual_amount: string | null;
   exclusion_reason:
@@ -54,12 +59,14 @@ export type ActualCurrency = {
   refund_count: number;
   invoice_count: number;
 };
-export type MonthlyService = ActualCurrency & {
-  subscription_id: string;
-  service: string;
-  plan: string | null;
-};
-export type ReportDue = {
+export type MonthlyService = ActualCurrency &
+  SubscriptionName & {
+    subscription_id: string;
+    service: string;
+    plan: string | null;
+  };
+export type ReportDue = SubscriptionName & {
+  next_billing_mode?: 'automatic' | 'manual';
   subscription_id: string;
   service: string;
   plan: string | null;
@@ -114,6 +121,7 @@ const currency = (v: unknown): string =>
   typeof v === 'string' && /^[A-Z]{3}$/.test(v) ? v : invalid();
 const label = (v: unknown) => text(v, 200);
 const names = (v: Record<string, unknown>) => ({
+  ...parseDisplayName(v.display_name),
   service: label(v.service),
   plan: nullable(v.plan, label),
 });
@@ -170,6 +178,14 @@ export function parseReport(value: unknown): Report {
             integer(x, 1, 10000),
           ),
           next_billing_date: nullable(row.next_billing_date, date),
+          ...(row.next_billing_mode === undefined
+            ? {}
+            : {
+                next_billing_mode: choice(row.next_billing_mode, [
+                  'automatic',
+                  'manual',
+                ] as const),
+              }),
           monthly_amount: nullable(row.monthly_amount, unsigned),
           annual_amount: nullable(row.annual_amount, unsigned),
           exclusion_reason: choice(row.exclusion_reason, [
@@ -272,6 +288,14 @@ export function parseReport(value: unknown): Report {
           subscription_id: uuid(row.subscription_id),
           ...names(row),
           date: due,
+          ...(row.next_billing_mode === undefined
+            ? {}
+            : {
+                next_billing_mode: choice(row.next_billing_mode, [
+                  'automatic',
+                  'manual',
+                ] as const),
+              }),
           amount: nullable(row.amount, unsigned),
           currency: nullable(row.currency, currency),
           annual_renewal: row.annual_renewal,

@@ -22,6 +22,86 @@ const api = (patch: Partial<SubscriptionsAPI> = {}) =>
     attach: async () => subscription(),
     ...patch,
   }) as SubscriptionsAPI;
+test('selecting a billing unit on an existing unconfigured cycle saves one interval after confirmation', async () => {
+  for (const unit of ['day', 'week', 'month', 'year'] as const) {
+    const initial = {
+      ...subscription(),
+      service: 'Example Mail',
+      contract_kind: 'recurring' as const,
+      amount: '9',
+      currency: 'USD',
+      next_billing_mode: 'manual' as const,
+    };
+    const saved: Parameters<SubscriptionsAPI['update']>[1][] = [];
+    const editor = createSubscriptionEditor(
+      api({
+        update: async (_id, body) => {
+          saved.push(body);
+          return { ...initial, ...body, version: 2 };
+        },
+      }),
+      async () => 't',
+      () => {},
+      () => {},
+      () => id,
+      initial,
+    );
+    editor.edit({ interval_unit: unit });
+    editor.confirm(true);
+    await editor.save();
+    assert.equal(saved.length, 1, `${unit} selection must allow saving`);
+    assert.equal(saved[0].interval_count, 1);
+    assert.equal(saved[0].interval_unit, unit);
+    assert.equal(saved[0].next_billing_date, initial.next_billing_date);
+    assert.equal(saved[0].next_billing_mode, 'manual');
+  }
+});
+test('changing cycle units preserves explicit counts, clearing to unknown clears the paired count', () => {
+  const editor = createSubscriptionEditor(
+    api(),
+    async () => 't',
+    () => {},
+    () => {},
+    () => id,
+    subscription(),
+  );
+  editor.edit({ interval_count: 2 });
+  editor.edit({ interval_unit: 'year' });
+  assert.equal(editor.state().values.interval_count, 2);
+  editor.edit({ interval_unit: null });
+  assert.equal(editor.state().values.interval_count, null);
+  editor.edit({ interval_unit: 'month', interval_count: 0 });
+  editor.edit({ interval_unit: 'year' });
+  assert.equal(
+    editor.state().values.interval_count,
+    0,
+    'invalid input must not be silently replaced',
+  );
+});
+test('an optional empty cycle count means one when a unit is selected, including after clearing the input', async () => {
+  const saved: Parameters<SubscriptionsAPI['update']>[1][] = [];
+  const initial = subscription();
+  const editor = createSubscriptionEditor(
+    api({
+      update: async (_id, body) => {
+        saved.push(body);
+        return { ...initial, ...body, version: 2 };
+      },
+    }),
+    async () => 't',
+    () => {},
+    () => {},
+    () => id,
+    initial,
+  );
+  editor.edit({ interval_unit: 'year' });
+  editor.edit({ interval_count: null });
+  editor.confirm(true);
+  await editor.save();
+  assert.equal(saved.length, 1);
+  assert.equal(saved[0].interval_count, 1);
+  assert.equal(saved[0].interval_unit, 'year');
+});
 test('candidate creation snapshots all explicit sources for an uncertain replay', async () => {
   const bodies: any[] = [];
   const source = {

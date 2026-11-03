@@ -1,17 +1,20 @@
 <script lang="ts">
   import ActionGroup from './ActionGroup.svelte';
   import Button from './Button.svelte';
+  import CurrencySelect from './CurrencySelect.svelte';
+  import BillingDateFields from './BillingDateFields.svelte';
+  import ExtractedChargeHint from './ExtractedChargeHint.svelte';
   import { onMount } from 'svelte';
   import { getAppSession } from './app-context.ts';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import {
     createSubscriptionsAPI,
-    parseValues,
     type Subscription,
     type SubscriptionValues,
   } from './subscriptions-api.ts';
   import {
     blankSubscription,
+    parseSubscriptionDraft,
     subscriptionFromEvent,
     createSubscriptionEditor,
     type EditorView,
@@ -65,7 +68,7 @@
     frozen = $derived(busy || view.uncertain);
   const valid = $derived.by(() => {
     try {
-      parseValues(view.values);
+      parseSubscriptionDraft(view.values);
       return true;
     } catch {
       return false;
@@ -120,8 +123,14 @@
 >
   {#if event}<p class="notice">
       AI
-      抽出値を確認して登録してください。不明な日付・周期は補完していません。通常継続料金が明示された場合だけ契約料金の初期値に使います。取引金額は契約料金へ転用しません。解約の検出で既存のサブスクを自動変更しません。
+      抽出値を確認して登録してください。不明な日付・周期は補完していません。通常継続料金が明示された場合だけ契約料金の初期値に使います。取引金額は契約料金へ自動転用しません。解約の検出で既存のサブスクを自動変更しません。
     </p>{/if}
+  {#if event}<ExtractedChargeHint
+      {event}
+      values={view.values}
+      disabled={frozen}
+      onchange={edit}
+    />{/if}
   <div class="form-grid">
     <label class="wide"
       >契約種別<select
@@ -184,14 +193,10 @@
         ></label
       >
       <label
-        >通貨（料金と一緒に入力）<input
-          aria-label="通貨"
-          maxlength="3"
-          placeholder="例: JPY"
+        >通貨（料金と一緒に入力）<CurrencySelect
           value={view.values.currency ?? ''}
           disabled={frozen}
-          oninput={(e) =>
-            edit({ currency: e.currentTarget.value.toUpperCase() || null })}
+          onchange={(currency) => edit({ currency })}
         /></label
       >
       <label
@@ -209,7 +214,9 @@
                     ? Number(e.currentTarget.value)
                     : NaN,
             })}
-        /><small class="muted">周期の単位と一緒に 1〜10000 を入力</small></label
+        /><small class="muted"
+          >単位を選ぶと、空欄は1回として扱います（1〜10000）。</small
+        ></label
       >
       <label
         >周期の単位<select
@@ -226,15 +233,16 @@
           ></select
         ></label
       >
-      <label
-        >次回請求日（任意）<input
-          type="date"
-          value={view.values.next_billing_date ?? ''}
-          disabled={frozen}
-          oninput={(e) =>
-            edit({ next_billing_date: e.currentTarget.value || null })}
-        /></label
-      >
+      <BillingDateFields
+        values={view.values}
+        disabled={frozen}
+        onchange={edit}
+        receivedAt={initial?.sources
+          .map((s) => s.received_at)
+          .filter((v): v is string => !!v)
+          .sort()
+          .at(-1) ?? null}
+      />
     {:else}<p class="muted wide">
         期間限定契約には通常継続料金・請求周期・次回請求日を設定しません。
       </p>{/if}
@@ -254,7 +262,7 @@
     >
   </div>
   {#if !valid}<p class="muted">
-      サービス名を入力し、料金と通貨・周期の回数と単位をそれぞれ揃えてください。日付と数値の形式も確認してください。
+      サービス名、料金と通貨、日付・数値の形式を確認してください。周期の回数は空欄なら1回として扱います。
     </p>{/if}
   {#if view.conflict}<div class="notice" role="alert">
       {#if view.baseline}<p>
@@ -298,7 +306,13 @@
             </div>
             <div>
               <dt>最新の次回請求日</dt>
-              <dd>{view.latest.next_billing_date ?? '不明'}</dd>
+              <dd>
+                {view.latest.next_billing_date ?? '不明'}{view.latest
+                  .next_billing_date &&
+                view.latest.next_billing_mode === 'automatic'
+                  ? '（推定）'
+                  : ''}
+              </dd>
             </div>
             <div>
               <dt>最新の状態</dt>

@@ -9,6 +9,11 @@
   } from './reports-api.ts';
   import type { FeedView } from './daily-controller.ts';
   import ReportsPanel from './ReportsPanel.svelte';
+  import {
+    createExchangeRatesAPI,
+    createExchangeRatesController,
+    type ExchangeRates,
+  } from './exchange-rates-api.ts';
   import './daily.css';
   const session = getAppSession(),
     api = createReportsAPI(PUBLIC_API_BASE_URL);
@@ -24,19 +29,44 @@
       error: null,
     });
   let controller: ReturnType<typeof createReportsController> | undefined;
+  let ratesView = $state<FeedView<ExchangeRates>>({
+    page: null,
+    status: 'idle',
+    error: null,
+  });
+  let ratesController:
+    ReturnType<typeof createExchangeRatesController> | undefined;
+  function denied() {
+    controller?.dispose();
+    ratesController?.dispose();
+    session.onDenied();
+  }
+  function reload() {
+    void controller?.load(month);
+    void ratesController?.load();
+  }
   function selectMonth(value: string) {
     month = value;
-    void controller?.load(value);
+    reload();
   }
   onMount(() => {
     controller = createReportsController(
       api,
       session.token,
       (next) => (view = next),
-      session.onDenied,
+      denied,
     );
-    void controller.load(month);
-    return () => controller?.dispose();
+    ratesController = createExchangeRatesController(
+      createExchangeRatesAPI(PUBLIC_API_BASE_URL),
+      session.token,
+      (next) => (ratesView = next),
+      denied,
+    );
+    reload();
+    return () => {
+      controller?.dispose();
+      ratesController?.dispose();
+    };
   });
 </script>
 
@@ -45,5 +75,7 @@
   {month}
   {currentMonth}
   onMonthChange={selectMonth}
-  onReload={() => void controller?.load(month)}
+  {ratesView}
+  onReload={reload}
+  onRatesReload={() => void ratesController?.load()}
 />

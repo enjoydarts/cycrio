@@ -122,7 +122,14 @@
               ? '支払・請求履歴から内容を確認して記録できます。'
               : 'サブスクを登録した後、支払・請求履歴で内容を確認して記録できます。'}
           </p>{/if}
-        <EventFields {event} />
+        {#if action?.index === index && action.kind === 'attach'}
+          <details>
+            <summary>元の抽出情報を確認</summary>
+            <EventFields {event} />
+          </details>
+        {:else}
+          <EventFields {event} />
+        {/if}
         {#if registration}<ActionLink
             wrap
             class={['button']}

@@ -34,7 +34,7 @@ func TestSubscriptionLifecycleMigrationPreservesLegacyAndRefusesLoss(t *testing.
 	if e != nil {
 		t.Fatal(e)
 	}
-	const snapshot = `SELECT to_jsonb(s)-'contract_kind'-'effective_date'-'access_end_date' FROM subscriptions s WHERE id=$1`
+	const snapshot = `SELECT to_jsonb(s)-'display_name'-'next_billing_mode'-'contract_kind'-'effective_date'-'access_end_date' FROM subscriptions s WHERE id=$1`
 	var before, after string
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&before); e != nil {
 		t.Fatal(e)

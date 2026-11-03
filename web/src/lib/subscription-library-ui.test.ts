@@ -18,6 +18,24 @@ async function componentURL(name: string): Promise<string> {
     nested[`./${m[1]}.svelte`] = await componentURL(m[1]);
   return `data:text/javascript;base64,${Buffer.from(js.code.replace(/^import\s+['"][^'"]+\.css['"];?\n/gm, '').replace(/(from\s+|import\s+)(['"])([^'"]+)\2/g, (_m, prefix, q, path) => `${prefix}${q}${nested[path] ?? (path.startsWith('.') ? new URL(path, import.meta.url).href : import.meta.resolve(path))}${q}`)).toString('base64')}`;
 }
+test('subscription aliases identify both list layouts while canonical service supplies brand context', async () => {
+  const Component = (await import(await componentURL('SubscriptionListPanel')))
+    .default;
+  for (const layout of ['list', 'cards']) {
+    const html = render(Component, {
+      props: {
+        items: [
+          { ...subscription(), service: 'Netflix', display_name: '家族用' },
+        ],
+        layout,
+        onSelect: () => {},
+      },
+    }).body;
+    assert.match(html, /家族用/);
+    assert.match(html, /Netflix/);
+    assert.match(html, /aria-label="家族用の詳細/);
+  }
+});
 test('library list and cards expose real amounts, unknown sources and accessible detail actions', async () => {
   const Component = (await import(await componentURL('SubscriptionListPanel')))
     .default;

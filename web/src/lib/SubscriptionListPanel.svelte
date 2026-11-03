@@ -5,6 +5,7 @@
   import type { Subscription } from './subscriptions-api.ts';
   import { money, cycle } from './daily-text.ts';
   import ServiceAvatar from './ServiceAvatar.svelte';
+  import { subscriptionTitle } from './subscription-title.ts';
   let {
     items,
     layout = 'list',
@@ -30,8 +31,9 @@
 
 {#snippet brand(item: Subscription)}<ServiceAvatar name={item.service} /><span
     class="brand-text"
-    ><strong>{item.service}</strong><small>{item.plan ?? 'プラン不明'}</small
-    ></span
+    ><strong>{subscriptionTitle(item)}</strong>{#if item.display_name}<small
+        >{item.service}</small
+      >{/if}<small>{item.plan ?? 'プラン不明'}</small></span
   >{/snippet}
 {#if layout === 'cards'}
   <div class="cards">
@@ -40,7 +42,7 @@
         variant="card"
         class={['card', 'part-SubscriptionListPanel-card']}
         {disabled}
-        aria-label={`${item.service}の詳細`}
+        aria-label={`${subscriptionTitle(item)}の詳細`}
         onclick={() => onSelect(item.id)}
         ><span class="brand">{@render brand(item)}</span><span class="card-line"
           ><strong class="price"
@@ -52,7 +54,10 @@
           ></span
         ><span class="card-line meta"
           ><span>{source(item)}</span><span
-            >{item.next_billing_date ?? '請求日不明'}</span
+            >{item.next_billing_date ?? '請求日不明'}{item.next_billing_date &&
+            item.next_billing_mode === 'automatic'
+              ? '（推定）'
+              : ''}</span
           ></span
         ></Button
       >{/each}
@@ -77,16 +82,19 @@
               variant="plain"
               class={['brand', 'part-SubscriptionListPanel-brand']}
               {disabled}
-              aria-label={`${item.service}の詳細`}
+              aria-label={`${subscriptionTitle(item)}の詳細`}
               onclick={() => onSelect(item.id)}>{@render brand(item)}</Button
             ></td
           ><td class="price"
             >{money(item.amount, item.currency)}<small
               >{cycle(item.interval_unit, item.interval_count)}</small
             ></td
-          ><td class="date">{item.next_billing_date ?? '請求日不明'}</td><td
-            class="source meta">{source(item)}</td
-          ><td class="state"
+          ><td class="date"
+            >{item.next_billing_date ?? '請求日不明'}{item.next_billing_date &&
+            item.next_billing_mode === 'automatic'
+              ? '（推定）'
+              : ''}</td
+          ><td class="source meta">{source(item)}</td><td class="state"
             ><span class="status" class:active={item.status === 'active'}
               >{status(item)}</span
             ></td
@@ -96,7 +104,7 @@
                 wrap
                 variant="icon"
                 {disabled}
-                aria-label={`${item.service}の詳細を開く`}
+                aria-label={`${subscriptionTitle(item)}の詳細を開く`}
                 onclick={() => onSelect(item.id)}>›</Button
               ></ActionGroup
             ></td

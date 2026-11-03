@@ -13,6 +13,8 @@ var (
 )
 
 type Contract struct {
+	DisplayName     *string `json:"display_name"`
+	NextBillingMode string  `json:"next_billing_mode"`
 	ID              string  `json:"id"`
 	Service         string  `json:"service"`
 	Plan            *string `json:"plan"`
@@ -29,6 +31,7 @@ type Contract struct {
 }
 
 type Record struct {
+	DisplayName    *string
 	SubscriptionID string
 	Service        string
 	Plan           *string
@@ -65,6 +68,7 @@ type HistoryBucket struct {
 }
 
 type MonthlyService struct {
+	DisplayName    *string `json:"display_name"`
 	SubscriptionID string  `json:"subscription_id"`
 	Service        string  `json:"service"`
 	Plan           *string `json:"plan"`
@@ -72,14 +76,16 @@ type MonthlyService struct {
 }
 
 type Due struct {
-	SubscriptionID string  `json:"subscription_id"`
-	Service        string  `json:"service"`
-	Plan           *string `json:"plan"`
-	Date           string  `json:"date"`
-	Amount         *string `json:"amount"`
-	Currency       *string `json:"currency"`
-	AnnualRenewal  bool    `json:"annual_renewal"`
-	Status         string  `json:"status"`
+	DisplayName     *string `json:"display_name"`
+	NextBillingMode string  `json:"next_billing_mode"`
+	SubscriptionID  string  `json:"subscription_id"`
+	Service         string  `json:"service"`
+	Plan            *string `json:"plan"`
+	Date            string  `json:"date"`
+	Amount          *string `json:"amount"`
+	Currency        *string `json:"currency"`
+	AnnualRenewal   bool    `json:"annual_renewal"`
+	Status          string  `json:"status"`
 }
 
 type Coverage struct {
