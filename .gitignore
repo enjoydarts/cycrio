@@ -21,6 +21,7 @@ build/
 dist/
 bin/
 coverage/
+artifacts/browser/
 web/static/service-logos/
 web/src/lib/generated/service-logo-index.ts
 *.test

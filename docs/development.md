@@ -42,11 +42,17 @@ Webはソース変更をHMRで反映します。Goの変更は`make restart`で�
 make check
 make test-integration
 make smoke
+make test-web-browser
 ```
 
 - `make check`：Goテスト・vet、Webテスト・型検査・整形検査・静的ビルド。
 - `make test-integration`：一時schemaを使ったDB/API統合テスト。migration、所有者分離、資格情報、メール処理、契約、原価などを確認。
 - `make smoke`：起動中のAPI・Web、Hatchet経由の実ジョブ、WorkerのDB接続を確認。
+- `make test-web-browser`：実際のSvelte部品と合成APIで登録・編集・表示名変更・既存契約の検索と紐付け・取り込み日時と状態表示をChromiumで確認。幅1280・390・320pxで、料金の部分情報、任意の周期、取引金額の明示選択、モーダルの操作と横はみ出しも検証します。
+
+ブラウザーテストは専用のComposeプロジェクトと内部ネットワークで動き、ポートをホストに公開しません。実メール、Clerk、AI、アプリDBや起動中の開発サービスは使いません。既存Web Dockerfileの固定Node・npmとlockfileを再利用し、開発用のnode_modulesやViteキャッシュを共有しません。Seleniumは[公式安定版](https://github.com/SeleniumHQ/docker-selenium/releases/tag/4.51.0-20261010)のタグとdigestを`compose.browser.yaml`に固定しています。終了時は成功・失敗にかかわらず専用コンテナとネットワークを削除します。
+
+CIでも同じmakeコマンドを実行します。失敗時の画面・API要求・ブラウザーログ・Compose診断は`artifacts/browser/`へ出力し、CIでは7日間保存します。これらは合成データだけを含み、Gitの対象外です。テストfixtureは`web/browser-tests/`に置き、本番のルートへ追加しません。
 
 機能追加・不具合修正は、期待する振る舞いを先にテストで再現してから実装します。文書だけの変更は、リンク・構文・記載コマンドとの整合性を確認します。詳細は[AGENTS.md](../AGENTS.md)を参照してください。
 

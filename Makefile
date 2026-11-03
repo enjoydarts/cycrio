@@ -26,6 +26,10 @@ check:
 	$(COMPOSE) run --rm --no-deps web npm run lint
 	$(COMPOSE) run --rm --no-deps web npm run build
 
+.PHONY: test-web-browser
+test-web-browser:
+	sh deploy/local/test-web-browser.sh
+
 fmt:
 	$(COMPOSE) run --rm --no-deps api go fmt ./...
 	$(COMPOSE) run --rm --no-deps web npm run format
