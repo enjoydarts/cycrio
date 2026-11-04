@@ -9,6 +9,7 @@ import (
 
 type workerTasks struct {
 	check, catalog, priceResearch, aiTest, mailProbe, mailDiscovery, mailProcessing hatchet.WorkflowBase
+	notification                                                                    hatchet.WorkflowBase
 }
 
 type workerGroup struct {
@@ -24,6 +25,7 @@ func workerGroups(name string, tasks workerTasks) []workerGroup {
 		{name: name + "-control", slots: 2, workflows: []hatchet.WorkflowBase{tasks.check, tasks.aiTest, tasks.mailProbe, tasks.mailDiscovery}},
 		{name: name + "-processing", slots: 2, workflows: []hatchet.WorkflowBase{tasks.mailProcessing}},
 		{name: name + "-maintenance", slots: 1, workflows: []hatchet.WorkflowBase{tasks.catalog, tasks.priceResearch}},
+		{name: name + "-notifications", slots: 1, workflows: []hatchet.WorkflowBase{tasks.notification}},
 	}
 }
 

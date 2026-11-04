@@ -14,7 +14,7 @@ make configure-auth
 
 対話入力するのはClerkの**Publishable Key**とフロントのoriginです。標準のoriginは`http://localhost:3100`です。ClerkのSecret API Keyは不要です。
 
-設定はGit対象外の`.local/bootstrap.json`に保存され、APIが再起動します。APIは設定したClerkインスタンスの公開JWKSでセッションを検証します。
+設定はGit対象外の`.local/bootstrap.json`に保存され、APIとWorkerが再起動します。APIは設定したClerkインスタンスの公開JWKSでセッションを検証します。
 
 WebでGoogleログインすると、初回は利用許可待ちになります。表示される本人のClerkユーザーIDを使い、最初の管理者を許可します。
 
@@ -114,6 +114,6 @@ IMAPの接続先は993の暗黙TLS、または143の必須STARTTLSです。証�
 
 ## 任意設定：ResendとWebhook
 
-メール取り込みの開始にResendは不要です。「メール送信・外部イベント」では、管理者本人への固定テストメールと配信結果を確認できます。任意宛先への配信や定期通知は実装していません。
+メール取り込みの開始にResendは不要です。「メール送信・外部イベント」では、管理者本人への固定テストメールと配信結果を確認できます。メール通知を利用する場合は、Resend資格情報・送信元・ClerkインスタンスIDを登録し、署名付きClerk Webhookで本人の検証済みメール情報を同期します。その後、本人の通知設定でメール通知への同意と種類ごとのメール通知を有効にします。時刻は日本時間です。宛先を任意入力することはできません。
 
 Clerk / ResendのWebhookや宛先同期、暗号化鍵の保管は[運用ガイド](operations.md)を参照してください。

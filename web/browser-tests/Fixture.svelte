@@ -14,6 +14,10 @@
   import Modal from '../src/lib/Modal.svelte';
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
+  import AnalysisInbox from '../src/lib/AnalysisInbox.svelte';
+  import { createNotificationsAPI } from '../src/lib/notifications-api.ts';
+  import { account as mailAccount } from '../src/lib/mail-test-fixtures.ts';
+  import { page as fixturePage, goto as fixtureGoto } from './router.svelte.ts';
   import ImportProgressPanel from '../src/lib/ImportProgressPanel.svelte';
   import {
     provideAppSession,
@@ -43,6 +47,7 @@
     trial_end_date: null,
     auto_renew: null,
   };
+  let notificationUser = $state({ id: initial.id, role: 'user' as const });
   let current = $state({ ...initial, display_name: null as string | null });
   let nameOpen = $state(true);
   const event = {
@@ -71,6 +76,11 @@
     scope: 1,
     token: async () => 'synthetic',
     onDenied: denied,
+    mailAPI: {
+      list: async () => [
+        mailAccount({ id: initial.id, label: '合成接続', state: 'ready' }),
+      ],
+    },
   } as AppSession);
   const changeInitial: Subscription = {
     ...initial,
@@ -114,6 +124,13 @@
         ? lifecycleInitial
         : initial,
   );
+  window.browserTest.switchNotificationOwner = () => {
+    window.browserTest.ownerGeneration = 2;
+    notificationUser = {
+      id: '22222222-2222-4222-8222-222222222222',
+      role: 'user',
+    };
+  };
   const saved = (value: Subscription) => {
     window.browserTest.saved = value;
     if (mode.startsWith('change')) changeSaved = value;
@@ -166,7 +183,42 @@
   };
 </script>
 
-{#if mode === 'status'}
+<svelte:window
+  onclick={(event) => {
+    if (!mode.startsWith('notifications') || event.defaultPrevented) return;
+    const anchor = (event.target as HTMLElement)?.closest?.('a');
+    if (!anchor) return;
+    const target = new URL(anchor.href, location.href);
+    if (
+      target.origin === location.origin &&
+      ['/analysis', '/subscriptions', '/import'].includes(target.pathname)
+    ) {
+      event.preventDefault();
+      void fixtureGoto(target.pathname + target.search);
+    }
+  }}
+/>
+
+{#if mode.startsWith('notifications')}
+  <AppShell
+    user={notificationUser}
+    pathname={fixturePage.url.pathname}
+    search={fixturePage.url.search}
+    signOut={() => {}}
+    token={async () => 'synthetic'}
+    notificationsAPI={createNotificationsAPI('/synthetic')}
+    mailAPI={{
+      list: async () => [
+        mailAccount({ id: initial.id, label: '合成接続', state: 'ready' }),
+      ],
+    }}
+    overviewAPI={{ read: async () => overview } as never}
+  >
+    {#if fixturePage.url.pathname === '/analysis'}<AnalysisInbox />{:else}<p>
+        合成通知の確認画面
+      </p>{/if}
+  </AppShell>
+{:else if mode === 'status'}
   <AppShell
     user={{ id: initial.id, role: 'user' }}
     pathname="/analysis"

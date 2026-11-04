@@ -37,6 +37,27 @@ func candidateFilter(raw string) (subscriptions.AnalysisFilter, error) {
 
 func registerCandidates(mux *http.ServeMux, base SubscriptionService, protect protectFunc) {
 	service, _ := base.(candidateService)
+	mux.HandleFunc("GET /v1/subscription-candidates/{result_id}/{event_index}", protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {
+		result := r.PathValue("result_id")
+		index, e := strconv.Atoi(r.PathValue("event_index"))
+		if e != nil || strconv.Itoa(index) != r.PathValue("event_index") || !subscriptions.ValidSource(&result, &index) || r.URL.RawQuery != "" || r.URL.ForceQuery {
+			writeSubscriptionError(w, subscriptions.ErrInvalid)
+			return
+		}
+		lookup, ok := base.(interface {
+			Candidate(context.Context, string, string, int) (subscriptions.Candidate, error)
+		})
+		if !ok {
+			writeSubscriptionError(w, subscriptions.ErrUnavailable)
+			return
+		}
+		value, e := lookup.Candidate(r.Context(), p.ID, result, index)
+		if e != nil {
+			writeSubscriptionError(w, e)
+			return
+		}
+		writeJSON(w, 200, value)
+	}))
 	related, _ := base.(interface {
 		RelatedCandidates(context.Context, string, string, int, int, int) (subscriptions.CandidatePage, error)
 	})

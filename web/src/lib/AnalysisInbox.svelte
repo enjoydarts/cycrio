@@ -33,6 +33,12 @@
   import CandidateDetail from './CandidateDetail.svelte';
   import CandidateBulkDismiss from './CandidateBulkDismiss.svelte';
   import { loadCandidateListSelection } from './candidate-list-selection.ts';
+  import {
+    parseCandidateSourceURL,
+    clearCandidateSourceURL,
+    createCandidateSourceLink,
+    type CandidateSourceView,
+  } from './candidate-source-link.ts';
   import AnalysisHistory from './AnalysisHistory.svelte';
   import Modal from './Modal.svelte';
   import './daily.css';
@@ -61,6 +67,20 @@
     $state<ReturnType<typeof createFeed<CandidatePage, CandidateFilter>>>();
   let abort: AbortController | undefined,
     disposed = false;
+  let sourceController = $state<ReturnType<typeof createCandidateSourceLink>>();
+  let sourceView = $state<CandidateSourceView>({
+    status: 'idle',
+    candidate: null,
+    error: null,
+  });
+  let linkedSelection = false;
+  const sourceTarget = $derived.by(() => {
+    try {
+      return { source: parseCandidateSourceURL(page.url), invalid: false };
+    } catch {
+      return { source: null, invalid: true };
+    }
+  });
   const history = $derived(
     page.url.searchParams.get('tab') === 'history' ||
       !!page.url.searchParams.get('setup_account'),
@@ -81,7 +101,23 @@
     bulkCandidates = [];
     selectAllAbort?.abort();
     drafts.clear();
+    sourceController?.dispose();
     session.onDenied();
+  }
+  function consumeSource() {
+    if (busy) return;
+    linkedSelection = false;
+    if (sourceTarget.source || sourceTarget.invalid)
+      void goto(clearCandidateSourceURL(page.url), {
+        replace: true,
+        reset: false,
+      });
+  }
+  function closeCandidate() {
+    if (busy) return;
+    selected = null;
+    initialAction = null;
+    consumeSource();
   }
   async function loadAccounts() {
     abort?.abort();
@@ -109,6 +145,7 @@
     bulkCandidates = [];
     notice = '';
     busy = false;
+    consumeSource();
     void controller?.load(filter);
     void workspace?.refresh();
   }
@@ -148,6 +185,24 @@
     }
   }
   onMount(() => {
+    sourceController = createCandidateSourceLink(
+      api,
+      session.token,
+      (next) => {
+        sourceView = next;
+        if (next.status === 'ready' && next.candidate) {
+          if (!busy) {
+            linkedSelection = true;
+            initialAction = null;
+            selected = next.candidate;
+          }
+        } else if (next.status === 'idle' && linkedSelection && !busy) {
+          linkedSelection = false;
+          selected = null;
+        }
+      },
+      denied,
+    );
     controller = createFeed(
       api.candidates,
       session.token,
@@ -158,10 +213,21 @@
     return () => {
       disposed = true;
       controller?.dispose();
+      sourceController?.dispose();
       abort?.abort();
       selectAllAbort?.abort();
       drafts.clear();
     };
+  });
+  $effect(() => {
+    const link = sourceController,
+      target = sourceTarget,
+      showHistory = history;
+    if (link)
+      untrack(
+        () =>
+          void link.load(showHistory || target.invalid ? null : target.source),
+      );
   });
   $effect(() => {
     const next = JSON.stringify(filter);
@@ -240,6 +306,31 @@
         >{/if}{/snippet}
   </LibraryHeader>
   {#if notice}<p class="notice" role="status">{notice}</p>{/if}
+  {#if !history && sourceTarget.invalid}<p class="notice" role="alert">
+      候補リンクの形式を確認してください。
+    </p>
+    <Button type="button" wrap disabled={busy} onclick={consumeSource}
+      >確認一覧に戻る</Button
+    >
+  {:else if sourceView.status === 'loading'}<p class="notice" role="status">
+      通知の確認候補を読み込んでいます…
+    </p>
+  {:else if sourceView.status === 'missing'}<p class="notice" role="status">
+      候補は処理済みか更新されています。最新の確認一覧をご覧ください。
+    </p>
+    <Button type="button" wrap disabled={busy} onclick={consumeSource}
+      >確認一覧に戻る</Button
+    >
+  {:else if sourceView.status === 'error'}<p class="notice" role="alert">
+      {processingErrors[sourceView.error ?? 'dependency_unavailable']}
+    </p>
+    <Button
+      type="button"
+      wrap
+      disabled={busy}
+      onclick={() => sourceController?.load(sourceTarget.source)}
+      >候補を再取得</Button
+    >{/if}
   {#if accountError}<p class="notice" role="alert">
       メール接続を読み込めませんでした。<Button wrap onclick={loadAccounts}
         >再読み込み</Button
@@ -313,7 +404,9 @@
           page={view.page}
           filtered={!!filter.q}
           selectedCandidates={listSelection}
-          selectionBusy={busy || selectingAll}
+          selectionBusy={busy ||
+            selectingAll ||
+            sourceView.status === 'loading'}
           onSelectionChange={(rows) => {
             if (!busy && !selectingAll) listSelection = rows;
           }}
@@ -360,7 +453,7 @@
     ? (selected.event.service ?? 'サービス名未確認')
     : '契約候補を確認'}
   {busy}
-  onclose={() => (selected = null)}
+  onclose={closeCandidate}
 >
   {#if selected}{#key `${selected.result_id}/${selected.event_index}`}<CandidateDetail
         candidate={selected}

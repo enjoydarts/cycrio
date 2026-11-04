@@ -1,4 +1,5 @@
 import type { Subscription } from '../src/lib/subscriptions-api.ts';
+import { notificationFixture } from './notification-fixture.ts';
 import { changeEvidence } from '../src/lib/subscription-changes-fixtures.ts';
 
 type Trace = {
@@ -13,6 +14,9 @@ declare global {
       errors: string[];
       saved: Subscription | null;
       back?: boolean;
+      ownerGeneration?: number;
+      switchNotificationOwner?: () => void;
+      releaseOldNotification?: () => void;
     };
   }
 }
@@ -35,6 +39,9 @@ const response = (body: unknown) =>
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
   window.browserTest = { requests: [], errors: [], saved: null };
+  const notifications = mode.startsWith('notifications')
+    ? notificationFixture(mode)
+    : null;
   let version = 1;
   let attempts = 0,
     applied: unknown = null,
@@ -61,9 +68,18 @@ export function installAPI(mode: string, initial: Subscription) {
         fail('Unexpected authorization');
       if (
         url.origin !== location.origin ||
-        !url.pathname.startsWith('/synthetic/v1/subscriptions')
+        !(
+          url.pathname.startsWith('/synthetic/v1/subscriptions') ||
+          (notifications &&
+            (url.pathname.startsWith('/synthetic/v1/notifications') ||
+              url.pathname === '/synthetic/v1/notification-settings' ||
+              url.pathname.startsWith(
+                '/synthetic/v1/subscription-candidates/',
+              )))
+        )
       )
         fail('Unexpected API origin or path');
+      if (notifications) return notifications(url, method, body);
       if (mode.startsWith('change')) {
         const path = `/synthetic/v1/subscriptions/${initial.id}`;
         const before = {

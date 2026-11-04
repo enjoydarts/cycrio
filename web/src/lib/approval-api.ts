@@ -10,6 +10,7 @@ import {
   createDailyRequest,
   input,
   integer,
+  invalid,
   nullable,
   pagination,
   record,
@@ -54,28 +55,44 @@ export type ImportSummary = {
   candidate_count: number;
   subscription_count: number;
 };
+export function parseCandidate(value: unknown): Candidate {
+  const c = record(value);
+  return {
+    received_at: nullable(c.received_at ?? null, timestamp),
+    result_id: uuid(c.result_id),
+    event_index: integer(c.event_index, 0, 31),
+    account_id: uuid(c.account_id),
+    account_label: text(c.account_label, 200),
+    event: parseProcessingEvent(c.event),
+    mail_count: integer(c.mail_count, 1),
+    related_count: integer(c.related_count ?? 1, 1),
+  };
+}
 export function createApprovalAPI(base: string, fetcher: typeof fetch = fetch) {
   const request = createDailyRequest(base, fetcher);
   const parsePage = (value: unknown): CandidatePage => {
     const v = record(value);
     return {
       ...pagination(v),
-      candidates: array(v.candidates, (x) => {
-        const c = record(x);
-        return {
-          received_at: nullable(c.received_at ?? null, timestamp),
-          result_id: uuid(c.result_id),
-          event_index: integer(c.event_index, 0, 31),
-          account_id: uuid(c.account_id),
-          account_label: text(c.account_label, 200),
-          event: parseProcessingEvent(c.event),
-          mail_count: integer(c.mail_count, 1),
-          related_count: integer(c.related_count ?? 1, 1),
-        };
-      }),
+      candidates: array(v.candidates, parseCandidate),
     };
   };
   return {
+    async getCandidate(
+      source: CandidateSource,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<Candidate> {
+      const path = input(
+        () =>
+          `/v1/subscription-candidates/${uuid(source.result_id)}/${integer(source.event_index, 0, 31)}`,
+      );
+      const result = parseCandidate(await request(path, token, signal));
+      return result.result_id === source.result_id &&
+        result.event_index === source.event_index
+        ? result
+        : invalid();
+    },
     async related(
       anchor: CandidateSource,
       limit: number,

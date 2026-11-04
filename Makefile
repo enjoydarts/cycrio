@@ -56,7 +56,7 @@ hatchet-token:
 
 configure-auth:
 	$(COMPOSE) run --rm --no-deps -T manage configure-auth
-	$(COMPOSE) restart api
+	$(COMPOSE) restart api worker
 
 init-keyring:
 	$(COMPOSE) run --rm --no-deps -T manage init-keyring

@@ -38,6 +38,7 @@ type handlerOptions struct {
 	analysisFeed    AnalysisFeedService
 	billing         BillingService
 	billingSchedule BillingScheduleService
+	notifications   NotificationService
 }
 type Option func(*handlerOptions)
 

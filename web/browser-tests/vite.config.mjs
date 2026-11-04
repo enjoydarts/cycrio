@@ -7,7 +7,11 @@ export default defineConfig({
   plugins: [svelte()],
   optimizeDeps: { entries: ['browser-tests/index.html'] },
   resolve: {
-    alias: { '$app/env/public': '/app/browser-tests/env.ts' },
+    alias: {
+      '$app/env/public': '/app/browser-tests/env.ts',
+      '$app/state': '/app/browser-tests/router.svelte.ts',
+      '$app/navigation': '/app/browser-tests/router.svelte.ts',
+    },
   },
   server: {
     port: 5199,

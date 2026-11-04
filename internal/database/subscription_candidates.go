@@ -75,6 +75,29 @@ func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f
 	return out, subscriptionError(rows.Err())
 }
 
+// Candidate resolves an exact pending canonical reference without replacing it
+// with a different representative from its related group or a newer analysis.
+func (r *SubscriptionRepository) Candidate(ctx context.Context, owner, result string, index int) (subscriptions.Candidate, error) {
+	var out subscriptions.Candidate
+	if !subscriptions.ValidSource(&result, &index) {
+		return out, subscriptions.ErrInvalid
+	}
+	tx, e := r.begin(ctx, owner)
+	if e != nil {
+		return out, e
+	}
+	defer tx.Rollback(ctx)
+	var raw []byte
+	e = tx.QueryRow(ctx, candidateCTE+`SELECT c.result_id,c.event_index,c.account_id,a.label,c.event,c.received_at,n.mail_count,n.related_count FROM candidates c JOIN candidate_counts n USING(group_key) JOIN mail_accounts a ON a.owner_id=$1 AND a.id=c.account_id WHERE c.result_id=$3 AND c.event_index=$4`, owner, "", result, index).Scan(&out.ResultID, &out.EventIndex, &out.AccountID, &out.AccountLabel, &raw, &out.ReceivedAt, &out.MailCount, &out.RelatedCount)
+	if e != nil {
+		return out, subscriptionError(e)
+	}
+	if json.Unmarshal(raw, &out.Event) != nil {
+		return out, subscriptions.ErrUnavailable
+	}
+	return out, nil
+}
+
 func (r *SubscriptionRepository) DismissCandidate(ctx context.Context, owner string, in subscriptions.DismissInput) error {
 	if !subscriptions.ValidDismissInput(in) {
 		return subscriptions.ErrInvalid

@@ -228,3 +228,34 @@ test('an in-flight mutation cannot reset its source and unknown field reasons st
   resolve({ receipt: receipt(), current: null });
   await pending;
 });
+test('change review snapshots reactive additional source references without retaining mutable proxies', async () => {
+  const calls: unknown[] = [];
+  const additional = new Proxy([{ result_id: id, event_index: 1 }], {});
+  const c = createSubscriptionChange(
+    {
+      preview: async (_id, input) => {
+        calls.push(input);
+        return preview();
+      },
+      apply: async () => ({ receipt: receipt(), current: null }),
+      get: async () => subscription(),
+    },
+    async () => 't',
+    subscription(),
+    {
+      source_result_id: id,
+      source_event_index: 0,
+      additional_sources: additional,
+    },
+    () => {},
+    () => {},
+    () => {},
+    () => id,
+  );
+  additional[0].event_index = 2;
+  await c.preview();
+  assert.deepEqual(
+    (calls[0] as { additional_sources: unknown }).additional_sources,
+    [{ result_id: id, event_index: 1 }],
+  );
+});

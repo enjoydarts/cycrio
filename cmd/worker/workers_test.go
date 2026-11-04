@@ -21,14 +21,15 @@ func TestWorkerGroupsReserveControlCapacity(t *testing.T) {
 	groups := workerGroups("process", workerTasks{
 		check: workflow("check"), catalog: workflow("catalog"), priceResearch: workflow("research"), aiTest: workflow("ai-test"),
 		mailProbe: workflow("probe"), mailDiscovery: workflow("discover"), mailProcessing: workflow("processing"),
+		notification: workflow("notification"),
 	})
-	if len(groups) != 3 {
+	if len(groups) != 4 {
 		t.Fatalf("worker groups = %d, want separate control, processing and maintenance workers", len(groups))
 	}
 	got := make(map[string][]string)
 	for _, group := range groups {
 		wantSlots := 2
-		if strings.HasSuffix(group.name, "-maintenance") {
+		if strings.HasSuffix(group.name, "-maintenance") || strings.HasSuffix(group.name, "-notifications") {
 			wantSlots = 1
 		}
 		if group.slots != wantSlots {
@@ -39,9 +40,10 @@ func TestWorkerGroupsReserveControlCapacity(t *testing.T) {
 		}
 	}
 	want := map[string][]string{
-		"process-control":     {"check", "ai-test", "probe", "discover"},
-		"process-processing":  {"processing"},
-		"process-maintenance": {"catalog", "research"},
+		"process-control":       {"check", "ai-test", "probe", "discover"},
+		"process-processing":    {"processing"},
+		"process-maintenance":   {"catalog", "research"},
+		"process-notifications": {"notification"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("workflow routing = %v, want %v", got, want)

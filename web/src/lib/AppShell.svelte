@@ -3,6 +3,9 @@
   import { mailServiceForAccount } from './mail-service-presets.ts';
   import { mailConnectionIndicator } from './mail-connection-indicator.ts';
   import Button from './Button.svelte';
+  import ActionGroup from './ActionGroup.svelte';
+  import NotificationCenter from './NotificationCenter.svelte';
+  import type { NotificationsAPI } from './notifications-api.ts';
   import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
   import type { CurrentUser, TokenProvider } from './api.ts';
@@ -23,6 +26,7 @@
     token,
     mailAPI,
     overviewAPI,
+    notificationsAPI,
     onDenied = () => {},
     theme = 'system',
     setTheme = () => {},
@@ -35,6 +39,7 @@
     token?: TokenProvider;
     mailAPI?: Pick<MailAPI, 'list'>;
     overviewAPI?: Pick<ReturnType<typeof createOverviewAPI>, 'read'>;
+    notificationsAPI?: NotificationsAPI;
     onDenied?: () => void;
     theme?: ThemePreference;
     setTheme?: (value: ThemePreference) => void;
@@ -390,24 +395,31 @@
           >ライブラリ<span aria-hidden="true"> / </span></span
         ><strong>{current}</strong>
       </div>
-      <Button
-        wrap
-        variant="icon"
-        class={['theme-button', 'part-AppShell-theme-button']}
-        aria-label="表示テーマを切り替える"
-        title="表示テーマを切り替える"
-        onclick={toggleTheme}
-        ><svg
-          width="19"
-          height="19"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="1.6"
-          aria-hidden="true"
-          ><path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z" /></svg
-        ></Button
-      >
+      <ActionGroup>
+        {#key user.id}<NotificationCenter
+            api={notificationsAPI}
+            {token}
+            {onDenied}
+          />{/key}
+        <Button
+          wrap
+          variant="icon"
+          class={['theme-button', 'part-AppShell-theme-button']}
+          aria-label="表示テーマを切り替える"
+          title="表示テーマを切り替える"
+          onclick={toggleTheme}
+          ><svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.6"
+            aria-hidden="true"
+            ><path d="M21 13A9 9 0 0 1 11 3a9 9 0 1 0 10 10Z" /></svg
+          ></Button
+        >
+      </ActionGroup>
     </header>
     <main id="app-main" tabindex="-1">{@render children()}</main>
   </div>

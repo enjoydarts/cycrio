@@ -41,10 +41,11 @@ services:
 
   worker:
     <<: *runtime
-    command: [worker, -keyring-file, /run/secrets/keyring]
+    command: [worker, -bootstrap-file, /run/secrets/bootstrap, -keyring-file, /run/secrets/keyring]
     secrets:
       - database_url
       - hatchet_token
+      - bootstrap
       - keyring
 
   migrate:

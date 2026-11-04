@@ -18,6 +18,7 @@
   import { createMailSyncAPI } from '#lib/mail-sync-api.ts';
   import { createMailProcessingAPI } from '#lib/mail-processing-api.ts';
   import { createOverviewAPI } from '#lib/overview-api.ts';
+  import { createNotificationsAPI } from '#lib/notifications-api.ts';
 
   let { children } = $props();
   let controller: ReturnType<typeof createAuthController> | undefined;
@@ -31,6 +32,7 @@
   const api = createAPI(PUBLIC_API_BASE_URL);
   const mailAPI = createMailAPI(PUBLIC_API_BASE_URL);
   const overviewAPI = createOverviewAPI(PUBLIC_API_BASE_URL);
+  const notificationsAPI = createNotificationsAPI(PUBLIC_API_BASE_URL);
   function setTheme(preference: ThemePreference) {
     themeController?.set(preference);
     theme = preference;
@@ -102,6 +104,7 @@
       token={sessionState.token}
       {mailAPI}
       {overviewAPI}
+      {notificationsAPI}
       {onDenied}
       {theme}
       {setTheme}

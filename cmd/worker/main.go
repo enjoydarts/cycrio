@@ -13,6 +13,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/airuntimeconfig"
+	"github.com/enjoydarts/cycrio/internal/bootstrap"
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/health"
@@ -23,6 +24,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailruntime"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/mailsyncruntime"
+	"github.com/enjoydarts/cycrio/internal/notificationruntime"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
@@ -39,8 +41,13 @@ func main() {
 }
 
 func run() (result error) {
+	bootstrapPath := flag.String("bootstrap-file", ".local/bootstrap.json", "public sign-in bootstrap configuration")
 	keyringPath := flag.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	flag.Parse()
+	config, err := bootstrap.Load(*bootstrapPath)
+	if err != nil {
+		return err
+	}
 	keyring, err := secretstore.Load(*keyringPath)
 	if err != nil {
 		return errors.New("encryption keyring unavailable")
@@ -107,7 +114,12 @@ func run() (result error) {
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
 		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
-	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, priceResearch: researchTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask})
+	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
+	notificationService := notificationruntime.NewService(notificationRepository, notificationruntime.NewResendSender(nil))
+	notificationTask := client.NewStandaloneTask(notificationTaskName, func(ctx hatchet.Context, input notificationruntime.Task) (notificationruntime.Result, error) {
+		return notificationService.Execute(ctx, input)
+	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(30*time.Second))
+	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, priceResearch: researchTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask, notification: notificationTask})
 	cleanup, err := startWorkerGroups(groups, func(group workerGroup) (workerStarter, error) {
 		return client.NewWorker(group.name, hatchet.WithWorkflows(group.workflows...), hatchet.WithSlots(group.slots))
 	})
@@ -125,6 +137,11 @@ func run() (result error) {
 		return err
 	}, 10*time.Second)
 	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
+	go dispatchSubscriptionAutomation(ctx, notificationRepository.GenerateDue, 10*time.Second)
+	go dispatchNotifications(ctx, notificationRepository.ClaimNotifications, func(ctx context.Context, task notificationruntime.Task) error {
+		_, err := notificationTask.RunNoWait(ctx, task)
+		return err
+	}, 10*time.Second)
 	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
 	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)

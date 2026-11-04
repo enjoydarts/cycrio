@@ -19,6 +19,12 @@ let scenario = 'startup';
 const results = [];
 const js = (script) =>
   api('POST', session + '/execute/sync', { script, args: [] });
+async function screenshot(name) {
+  await writeFile(
+    out + '/' + name + '.png',
+    Buffer.from(await api('GET', session + '/screenshot'), 'base64'),
+  );
+}
 async function wait(expression) {
   for (let i = 0; i < 150; i++) {
     if (await js('return ' + expression)) return;
@@ -560,6 +566,196 @@ try {
       await js('return document.body.textContent.includes("利用終了 1")'),
     );
     await layout();
+    for (const mode of [
+      'notifications',
+      'notifications-uncertain',
+      'notifications-stale',
+    ]) {
+      await visit(mode, width);
+      const bell =
+        'Array.from(document.querySelectorAll("button")).find(e=>e.getAttribute("aria-label")?.startsWith("通知を開く"))';
+      await wait(bell + '.getAttribute("aria-label").includes("未読2件")');
+      await click(bell);
+      await wait(
+        'document.querySelector("dialog[open]")?.textContent.includes("値上げ候補")',
+      );
+      assert.equal(
+        await js(
+          'return document.querySelector("section[aria-label=本人の通知一覧] select").value',
+        ),
+        'unread',
+      );
+      await input(
+        'document.querySelector("section[aria-label=本人の通知一覧] select")',
+        'all',
+        'change',
+      );
+      await wait(
+        'document.querySelector("dialog[open]")?.textContent.includes("全 24 件")',
+      );
+      assert.ok(
+        await js(
+          'return document.querySelector("dialog[open]").textContent.includes("契約の一致は未確定")',
+        ),
+      );
+      await layout();
+      if (mode === 'notifications') {
+        if (width < 700) {
+          const geometry = await js(
+            'const row=document.querySelector("dialog[open] tbody tr"),body=row.querySelector(".notification-body"),width=row.getBoundingClientRect().width;const fixed=body.getBoundingClientRect().width/width;let legacy;try{body.removeAttribute("data-primary");legacy=body.getBoundingClientRect().width/width;}finally{body.setAttribute("data-primary","");}return {fixed,legacy};',
+          );
+          assert.throws(
+            () => assert.ok(geometry.legacy >= 0.75),
+            { name: 'AssertionError' },
+            'The regression must detect the old half-width fixture',
+          );
+          assert.ok(
+            geometry.fixed >= 0.75,
+            'Mobile notification text must use the full card width',
+          );
+        }
+        await screenshot(`notifications-${width}`);
+        await click(button('既読にする'));
+        await wait(
+          'document.querySelector("dialog[open]").textContent.includes("未読 1 件")',
+        );
+        await click(button('次へ'));
+        await wait(
+          'window.browserTest.requests.some(r=>r.url.includes("notifications?")&&r.url.includes("offset=20"))',
+        );
+        await click(button('前へ'));
+        await wait(
+          'document.querySelector("dialog[open]").textContent.includes("値上げ候補")',
+        );
+        await click(button('通知状態を確認'));
+        await wait(
+          'document.querySelector("dialog[open]").textContent.includes("アプリ内に表示済み")',
+        );
+      }
+      if (mode !== 'notifications-stale') {
+        await click(button('通知設定'));
+        await wait(
+          'document.querySelector("section[aria-label=本人の通知設定] input[type=number]")!==null',
+        );
+        assert.equal(
+          await js(
+            'return Array.from(document.querySelectorAll("input[aria-label$=をメールで通知]")).every(e=>e.disabled)',
+          ),
+          mode !== 'notifications',
+        );
+        assert.equal(
+          await js(
+            'return document.querySelector("section[aria-label=本人の通知設定]").textContent.includes("メール通知は準備中")',
+          ),
+          mode !== 'notifications',
+        );
+        if (mode === 'notifications') {
+          await click(
+            'document.querySelector("input[aria-label=本人の検証済みメールへ通知を送る]")',
+          );
+          await click(
+            'document.querySelector("input[aria-label=更新日をメールで通知]")',
+          );
+        }
+        if (mode === 'notifications')
+          await screenshot(`notification-settings-${width}`);
+        await click(
+          'document.querySelector("input[aria-label=更新日をアプリ内で通知]")',
+        );
+        await input(
+          'document.querySelector("section[aria-label=本人の通知設定] input[type=number]")',
+          '3',
+        );
+        await input(
+          'document.querySelector("section[aria-label=本人の通知設定] select")',
+          '21',
+          'change',
+        );
+        await click(field('通知の種類とタイミングを確認しました'));
+        await click(button('通知設定を保存'));
+        if (mode === 'notifications-uncertain') {
+          await wait(button('保存状況を再確認') + '!==undefined');
+          assert.equal(
+            await js(
+              'return document.querySelector("dialog[open] button[aria-label=閉じる]").disabled',
+            ),
+            true,
+          );
+          await click(button('保存状況を再確認'));
+          assert.equal(
+            await js(
+              'return window.browserTest.requests.filter(r=>r.method==="PUT").length',
+            ),
+            1,
+          );
+        }
+        await wait(
+          'document.querySelector("dialog[open]").textContent.includes("通知設定を保存しました")',
+        );
+        await click(button('通知一覧'));
+        await wait(
+          'document.querySelector("dialog[open]").textContent.includes("値上げ候補")',
+        );
+      }
+      await click(
+        'Array.from(document.querySelectorAll("dialog[open] a")).find(e=>e.textContent.trim()==="変更候補を確認")',
+      );
+      if (mode === 'notifications-stale') {
+        await wait(
+          'document.body.textContent.includes("候補は処理済みか更新されています")',
+        );
+        await click(button('確認一覧に戻る'));
+      } else {
+        await wait(
+          'Array.from(document.querySelectorAll("dialog[open] button")).some(e=>e.textContent.trim()==="既存のサブスクに紐付ける")',
+        );
+        assert.equal(
+          await js(
+            'return window.browserTest.requests.filter(r=>r.url.includes("/subscription-candidates/")).length',
+          ),
+          1,
+        );
+        assert.equal(
+          await js(
+            'return window.browserTest.requests.some(r=>r.method==="POST"&&r.url.includes("/subscriptions"))',
+          ),
+          false,
+        );
+        await click(
+          'document.querySelector("dialog[open] button[aria-label=閉じる]")',
+        );
+      }
+      await wait(
+        '!new URL(location.href).searchParams.has("result_id")&&!new URL(location.href).searchParams.has("event_index")',
+      );
+      await layout();
+    }
+    await visit('notifications-owner-change', width);
+    await wait('typeof window.browserTest.releaseOldNotification==="function"');
+    await js('window.browserTest.switchNotificationOwner()');
+    const currentBell =
+      'Array.from(document.querySelectorAll("button")).find(e=>e.getAttribute("aria-label")?.startsWith("通知を開く"))';
+    await wait(currentBell + '.getAttribute("aria-label").includes("未読0件")');
+    await js('window.browserTest.releaseOldNotification()');
+    await click(currentBell);
+    await wait(
+      'document.querySelector("dialog[open]")?.textContent.includes("通知はありません")',
+    );
+    assert.equal(
+      await js(
+        'return document.body.textContent.includes("Old owner synthetic")',
+      ),
+      false,
+    );
+    assert.equal(
+      await js(
+        'return ' +
+          currentBell +
+          '.getAttribute("aria-label").includes("未読0件")',
+      ),
+      true,
+    );
+    await layout();
     const logs = await api('POST', session + '/log', { type: 'browser' });
     assert.deepEqual(
       logs.filter((entry) => ['SEVERE', 'WARNING'].includes(entry.level)),
@@ -585,6 +781,10 @@ try {
         'change-lifecycle',
         'lifecycle-labels',
         'lifecycle-report',
+        'notifications',
+        'notifications-uncertain',
+        'notifications-stale',
+        'notifications-owner-change',
       ],
       status: 'pass',
     });

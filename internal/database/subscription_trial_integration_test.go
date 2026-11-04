@@ -268,14 +268,12 @@ func TestSubscriptionTrialRenewalMigrationPreservesAndRefusesLoss(t *testing.T) 
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 32)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 33 || down[0].Direction != "down" || down[0].Error != nil {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 33)
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&after); e != nil || before != after {
 		t.Fatal("downgrade changed core", e)
 	}
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 33, 33)
+	assertMigrationRange(t, up, e, 33, latestMigrationVersion)
 	if e = f.runtime.pool.QueryRow(ctx, snapshot, s.ID).Scan(&after); e != nil || before != after {
 		t.Fatal("upgrade changed core", e)
 	}

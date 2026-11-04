@@ -2,7 +2,11 @@
 
 ## プロジェクト構成
 
-Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・運用/疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、SQL migration は `internal/database/migrations/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。現在は起動・Clerk認証・利用許可・管理者権限・APIキー管理・モデルカタログと価格履歴・AI設定の下書きを実装済みです。メール処理・推論接続テスト・AI設定の有効化・実利用原価集計は未実装です。
+Cycrio はメール連携型のサブスクリプション管理サービスです。Go の API・Worker・運用/疎通確認 CLI は `cmd/`、共通処理と Go テストは `internal/`、SQL migration は `internal/database/migrations/`、Svelte 5 / SvelteKit / TypeScript の画面は `web/` に配置します。コンテナ定義・初期化処理は `deploy/`、開発構成は `compose.yaml`、本番用の構成は `compose.production.yaml` です。
+
+Clerk認証・利用許可・管理者権限・暗号化APIキー管理・モデルカタログと価格履歴・AI接続テスト・AI設定の有効化・実利用原価集計を実装済みです。Gmail API / Microsoft Graph（個人アカウント）/ IMAPのメール連携、過去メール・新着の取り込みと解析、停止・再試行・再解析、候補の確認・承認・契約への紐付け、契約の追加・編集・削除と変更履歴にも対応します。契約の無料期間・自動更新・利用終了日、次回請求日の推定、請求履歴・予定、分析・レポート・CSV、参考為替による円換算、アプリ内通知と本人同意に基づくメール通知も実装済みです。
+
+AI費用の予算上限による停止、退会後のユーザーデータ削除、将来の効力日に合わせた契約変更の予約反映は未実装です。実アカウントでのメール接続・OAuth継続利用・外部メール送信とWebhook到達、本番環境の監視・バックアップ・復旧は、合成テストやローカル起動とは別に受入確認してください。機能の詳細は `README.md`、初期設定・開発検証・運用・集計仕様は `docs/` の各ガイドを参照してください。
 
 アプリ認証は Clerk の Google ログイン限定、アプリからのメール送信は Resend を使います。アプリログインと、Gmail 等のメール取得用認可は分けて設計してください。
 
@@ -10,7 +14,7 @@ Cycrio はメール連携型のサブスクリプション管理サービスで�
 
 ## ビルド・テスト・ローカル開発
 
-`make up` で全コンポーネントとmigrationを起動、`make check` で Go テスト・vet と Web のテスト・型検査・整形検査・静的ビルド、`make test-integration` で一時schemaのDB統合テスト、`make smoke` で実際の Hatchet ジョブ実行、`make fmt` で整形します。Go 変更後は `make restart` で再ビルド・再起動します。各コマンドはリポジトリ直下から実行してください。
+`make up` で全コンポーネントとmigrationを起動、`make check` で Go テスト・vet と Web のテスト・型検査・整形検査・静的ビルド、`make test-integration` で一時schemaのDB統合テスト、`make test-web-browser` で合成APIとChromiumによるPC・モバイルの画面操作検証、`make smoke` で実際の Hatchet ジョブ実行、`make fmt` で整形します。Go 変更後は `make restart` で再ビルド・再起動します。各コマンドはリポジトリ直下から実行してください。
 
 実行・整形・検証は `docker compose` / `make` 経由で行い、ホストの Go・Node・npm に依存しないでください。開発用 Hatchet も Compose でローカル起動します。既存の別プロジェクトのコンテナ・volume は操作しないでください。
 

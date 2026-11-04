@@ -54,6 +54,18 @@ export function createSubscriptionChange(
   denied: () => void,
   requestID: () => string,
 ) {
+  const copySource = (value: ChangeSource): ChangeSource => ({
+    source_result_id: value.source_result_id,
+    source_event_index: value.source_event_index,
+    ...(value.additional_sources
+      ? {
+          additional_sources: value.additional_sources.map((ref) => ({
+            result_id: ref.result_id,
+            event_index: ref.event_index,
+          })),
+        }
+      : {}),
+  });
   const empty = (): ChangeView => ({
     preview: null,
     selected: [],
@@ -66,7 +78,7 @@ export function createSubscriptionChange(
   });
   let view = empty(),
     target = initial,
-    source = structuredClone(originalSource),
+    source = copySource(originalSource),
     disposed = false,
     sequence = 0,
     abort: AbortController | undefined,
@@ -183,7 +195,7 @@ export function createSubscriptionChange(
       )
         return;
       pending = {
-        ...structuredClone(source),
+        ...copySource(source),
         expected_version: view.preview.subscription.version,
         request_id: requestID(),
         preview_token: view.preview.preview_token,
@@ -201,7 +213,7 @@ export function createSubscriptionChange(
       abort?.abort();
       pending = null;
       target = next;
-      source = structuredClone(nextSource);
+      source = copySource(nextSource);
       view = empty();
       changed(view);
     },
