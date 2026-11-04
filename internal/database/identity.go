@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -19,9 +20,18 @@ type Principal struct {
 	Role string `json:"role"`
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool *pgxpool.Pool
+	keys *secretstore.Keyring
+}
 
-func NewStore(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
+func NewStore(pool *pgxpool.Pool, keys ...*secretstore.Keyring) *Store {
+	s := &Store{pool: pool}
+	if len(keys) > 0 {
+		s.keys = keys[0]
+	}
+	return s
+}
 
 func (s *Store) FindPrincipal(ctx context.Context, issuer, subject string) (Principal, error) {
 	var p Principal
@@ -54,6 +64,13 @@ func (s *Store) AllowIdentity(ctx context.Context, issuer, subject string, admin
 		return Principal{}, ErrUnavailable
 	}
 	var externallyBlocked bool
+	blocked, e := erasureIdentityBlocked(ctx, tx, s.keys, issuer, subject)
+	if e != nil {
+		return Principal{}, ErrUnavailable
+	}
+	if blocked {
+		return Principal{}, ErrForbidden
+	}
 	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM integration_profiles WHERE issuer=$1 AND subject=$2 AND (blocked OR deleted))`, issuer, subject).Scan(&externallyBlocked); err != nil {
 		return Principal{}, ErrUnavailable
 	}
@@ -101,15 +118,36 @@ func (s *Store) SetAdmin(ctx context.Context, id string, enabled bool) error {
 }
 
 func (s *Store) SetUserState(ctx context.Context, id, state string) error {
-	if state != "active" && state != "disabled" && state != "deleting" {
+	if state != "active" && state != "disabled" && state != "deleting" || id == "00000000-0000-4000-8000-000000000036" {
 		return ErrForbidden
 	}
-	result, err := s.pool.Exec(ctx, `UPDATE users SET state=$2 WHERE id=$1`, id, state)
+	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return ErrUnavailable
 	}
-	if result.RowsAffected() != 1 {
+	defer tx.Rollback(ctx)
+	var owner string
+	err = tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, id).Scan(&owner)
+	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrForbidden
+	}
+	if err != nil {
+		return ErrUnavailable
+	}
+	// Check after acquiring the same owner lock used by withdrawal acceptance.
+	// A state change that waited for Request must observe its committed queue.
+	var pending bool
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_erasure_requests WHERE owner_id=$1 AND state='pending')`, owner).Scan(&pending) != nil {
+		return ErrUnavailable
+	}
+	if pending {
+		return ErrForbidden
+	}
+	if _, err = tx.Exec(ctx, `UPDATE users SET state=$2 WHERE id=$1`, owner, state); err != nil {
+		return ErrUnavailable
+	}
+	if tx.Commit(ctx) != nil {
+		return ErrUnavailable
 	}
 	return nil
 }

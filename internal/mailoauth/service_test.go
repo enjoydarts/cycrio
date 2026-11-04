@@ -19,6 +19,20 @@ type pendingRepository struct {
 	state                  Pending
 	stateHash, browserHash string
 	saved                  bool
+	inactive               bool
+	guarded                bool
+	guardOwner             string
+	savedOutsideFence      bool
+}
+
+func (r *pendingRepository) WithUserOperation(ctx context.Context, owner string, execute func(context.Context) error) error {
+	r.guardOwner = owner
+	if r.inactive {
+		return mailaccounts.ErrNotFound
+	}
+	r.guarded = true
+	defer func() { r.guarded = false }()
+	return execute(ctx)
 }
 
 func (r *pendingRepository) ActiveClient(context.Context, string) (string, error) {
@@ -39,6 +53,7 @@ func (r *pendingRepository) ConsumePending(_ context.Context, provider, state, b
 }
 func (r *pendingRepository) SaveConnection(context.Context, Pending, Token) error {
 	r.saved = true
+	r.savedOutsideFence = !r.guarded
 	return nil
 }
 
@@ -121,5 +136,44 @@ func TestOAuthCallbackExchangesOnceAndConsumesDenialAndExpiredState(t *testing.T
 	r.state.ExpiresAt = time.Now().Add(-time.Minute)
 	if e := s.Callback(context.Background(), "gmail", b.State, "user-code", b.BrowserToken); !errors.Is(e, mailaccounts.ErrNotFound) || calls != 1 {
 		t.Fatal("expired state reached provider", e)
+	}
+}
+
+func TestOAuthCallbackFencesConfigurationExchangeAndSaveAfterConsumingState(t *testing.T) {
+	for _, inactive := range []bool{false, true} {
+		t.Run(map[bool]string{false: "active", true: "withdrawn_after_consuming"}[inactive], func(t *testing.T) {
+			r := &pendingRepository{}
+			encoded, _ := json.Marshal(oauthConfig("gmail"))
+			callback, resolves, exchanges := false, 0, 0
+			client := NewClient(&http.Client{Transport: oauthTransport(func(req *http.Request) (*http.Response, error) {
+				exchanges++
+				if !r.guarded {
+					t.Error("token exchange outside erasure fence")
+				}
+				return oauthResponse(200, `{"access_token":"synthetic-access","refresh_token":"synthetic-refresh","token_type":"Bearer","scope":"https://www.googleapis.com/auth/gmail.readonly","expires_in":3600}`), nil
+			})})
+			s := NewService(r, func(context.Context, string) ([]byte, error) {
+				if callback {
+					resolves++
+					if !r.guarded {
+						t.Error("configuration resolved outside erasure fence")
+					}
+				}
+				return append([]byte(nil), encoded...), nil
+			}, client)
+			b, err := s.Begin(context.Background(), uuid.NewString(), uuid.NewString(), BeginInput{Provider: "gmail", Label: "Mail"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			callback, r.inactive = true, inactive
+			err = s.Callback(context.Background(), "gmail", b.State, "user-code", b.BrowserToken)
+			if inactive {
+				if !errors.Is(err, mailaccounts.ErrNotFound) || resolves != 0 || exchanges != 0 || r.saved {
+					t.Fatal("inactive callback reached credentials or provider", err, resolves, exchanges, r.saved)
+				}
+			} else if err != nil || resolves != 1 || exchanges != 1 || !r.saved || r.savedOutsideFence || r.guardOwner != r.state.OwnerID {
+				t.Fatal("active callback lost owner fence", err, resolves, exchanges, r.saved, r.guardOwner)
+			}
+		})
 	}
 }

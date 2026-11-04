@@ -20,6 +20,7 @@ type CredentialService interface {
 }
 
 type handlerOptions struct {
+	erasure         UserErasureService
 	exchangeRates   ExchangeRatesService
 	reports         ReportsService
 	overview        OverviewService

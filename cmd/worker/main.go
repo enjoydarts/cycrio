@@ -96,7 +96,7 @@ func run() (result error) {
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	mail := mailruntime.New(pool, keyring)
 	mailTask := client.NewStandaloneTask(mailProbeTaskName, func(ctx hatchet.Context, input mailaccounts.Lease) (MailProbeOutput, error) {
-		if err := mail.Run(ctx, input); err != nil {
+		if err := database.WithMailOperation(ctx, pool, "probe", input.ProbeID, func(ctx context.Context) error { return mail.Run(ctx, input) }); err != nil {
 			return MailProbeOutput{Status: "failed"}, errors.New("mail connection check unavailable")
 		}
 		return MailProbeOutput{Status: "handled"}, nil
@@ -106,13 +106,23 @@ func run() (result error) {
 	discoveryWake := make(chan struct{}, 1)
 	automationWake := make(chan struct{}, 1)
 	discoverTask := client.NewStandaloneTask(mailDiscoverTaskName, func(ctx hatchet.Context, input mailsync.Lease) (MailDiscoverOutput, error) {
-		return executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
+		out := MailDiscoverOutput{Status: "ignored"}
+		err := database.WithMailOperation(ctx, pool, "sync", input.RunID, func(ctx context.Context) (err error) {
+			out, err = executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
+			return err
+		})
+		return out, err
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	processing := mailprocessingruntime.New(pool, keyring)
 	defer func() { _ = processing.Close() }()
 	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
-		return executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
+		out := MailProcessingOutput{Status: "ignored"}
+		err := database.WithMailOperation(ctx, pool, "processing", input.RunID, func(ctx context.Context) (err error) {
+			out, err = executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
+			return err
+		})
+		return out, err
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
 	notificationService := notificationruntime.NewService(notificationRepository, notificationruntime.NewResendSender(nil))
@@ -138,6 +148,7 @@ func run() (result error) {
 	}, 10*time.Second)
 	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
 	go dispatchSubscriptionAutomation(ctx, notificationRepository.GenerateDue, 10*time.Second)
+	go dispatchSubscriptionAutomation(ctx, database.NewErasureRepository(pool, keyring).PurgeDue, 10*time.Second)
 	go dispatchNotifications(ctx, notificationRepository.ClaimNotifications, func(ctx context.Context, task notificationruntime.Task) error {
 		_, err := notificationTask.RunNoWait(ctx, task)
 		return err

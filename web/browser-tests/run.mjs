@@ -173,6 +173,53 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    for (const mode of ['erasure', 'erasure-uncertain']) {
+      await visit(mode, width);
+      await click(button('退会の確認へ'));
+      await wait('document.querySelector("dialog[open]")!==null');
+      await input(field('確認のため'), '退会する ');
+      await click('document.querySelector("dialog input[type=checkbox]")');
+      assert.equal(
+        await js(`return ${button('退会してデータを削除')}.disabled`),
+        true,
+        'Wrong confirmation must block withdrawal',
+      );
+      assert.equal(await js('return window.browserTest.requests.length'), 0);
+      await input(field('確認のため'), '退会する');
+      await layout();
+      await screenshot(`${mode}-confirmation-${width}`);
+      await click(button('退会してデータを削除'));
+      if (mode === 'erasure-uncertain') {
+        await wait('document.body.innerText.includes("再送せず")');
+        await click(button('退会の受付状況を確認'));
+        await wait(`!${button('退会の受付状況を確認')}.disabled`);
+        assert.equal(await js('return !!window.browserTest.signedOut'), false);
+        await click(button('退会の受付状況を確認'));
+      }
+      await wait('window.browserTest.signedOut===true');
+      assert.equal(
+        await js('return document.querySelector("dialog")===null'),
+        true,
+        'Private account state must unmount',
+      );
+      assert.deepEqual(
+        await js('return window.browserTest.requests.map(r=>r.method)'),
+        mode === 'erasure-uncertain' ? ['POST', 'GET', 'GET'] : ['POST'],
+      );
+      await layout();
+      await screenshot(`${mode}-${width}`);
+    }
+    await visit('anonymous-costs', width);
+    await wait(
+      'document.body.innerText.includes("匿名化した退会済み利用者の原価")',
+    );
+    assert.ok(
+      await js(
+        'return document.body.innerText.includes("利用者別・メール接続別・呼出し履歴には含めません")',
+      ),
+    );
+    await layout();
+    await screenshot(`anonymous-costs-${width}`);
     for (const mode of ['budget', 'budget-conflict', 'budget-uncertain']) {
       await visit(mode, width);
       await wait(

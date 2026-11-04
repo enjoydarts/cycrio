@@ -120,6 +120,7 @@ compose.production.yaml      本番向けAPI・Worker構成
 | [運用・復元](docs/operations.md)                          | 永続データ、暗号化鍵、復元訓練、本番向け構成、Webhook  |
 | [通知](docs/notifications.md)                            | 通知設定、配信管理、再送防止、Webhookによる配信確認    |
 | [AI費用の上限](docs/ai-budgets.md)                       | 管理者向け月額上限、原価不明時の停止、適用範囲        |
+| [退会とデータ削除](docs/user-erasure.md)                 | 受付、個人データ削除、匿名原価・監査の保持            |
 | [サービスロゴの出典](web/static/brand/services/README.md) | 公式画像・Simple Icons・ローカル配信の方針             |
 | [作業規約](AGENTS.md)                                     | コーディング・テスト・変更時のルール                   |
 

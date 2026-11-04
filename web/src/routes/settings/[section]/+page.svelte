@@ -4,6 +4,8 @@
   import { settingsAccess, settingsSections } from '#lib/settings.ts';
   import MailAccounts from '#lib/MailAccounts.svelte';
   import Appearance from '#lib/Appearance.svelte';
+  import AccountSettings from '#lib/AccountSettings.svelte';
+  import { createErasureAPI } from '#lib/erasure-api.ts';
   import AdminCredentials from '#lib/AdminCredentials.svelte';
   import ModelCatalog from '#lib/ModelCatalog.svelte';
   import AIUsage from '#lib/AIUsage.svelte';
@@ -12,6 +14,7 @@
   import { createIntegrationAPI } from '#lib/integrations-api.ts';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   const integrationAPI = createIntegrationAPI(PUBLIC_API_BASE_URL);
+  const erasureAPI = createErasureAPI(PUBLIC_API_BASE_URL);
   const session = getAppSession();
   const section = $derived(page.params.section ?? '');
   const access = $derived(
@@ -56,6 +59,12 @@
         />
       {:else if section === 'appearance'}
         <Appearance />
+      {:else if section === 'account'}
+        <AccountSettings
+          api={erasureAPI}
+          token={session.token}
+          signOut={session.signOut}
+        />
       {:else if section === 'credentials'}
         <AdminCredentials
           apiBase={PUBLIC_API_BASE_URL}

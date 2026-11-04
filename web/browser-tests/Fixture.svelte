@@ -1,6 +1,10 @@
 <script lang="ts">
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
   import AIUsage from '../src/lib/AIUsage.svelte';
+  import AccountSettings from '../src/lib/AccountSettings.svelte';
+  import UsageOverview from '../src/lib/UsageOverview.svelte';
+  import { report as costReport } from '../src/lib/airuntime-test-fixtures.ts';
+  import { createErasureAPI } from '../src/lib/erasure-api.ts';
   import { createAIRuntimeAPI } from '../src/lib/airuntime-api.ts';
   import SubscriptionNameModal from '../src/lib/SubscriptionNameModal.svelte';
   import AnalysisAttach from '../src/lib/AnalysisAttach.svelte';
@@ -52,6 +56,7 @@
   let notificationUser = $state({ id: initial.id, role: 'user' as const });
   let current = $state({ ...initial, display_name: null as string | null });
   let nameOpen = $state(true);
+  let withdrawn = $state(false);
   const event = {
     service: 'Example Mail',
     plan: null,
@@ -201,7 +206,24 @@
   }}
 />
 
-{#if mode.startsWith('budget')}
+{#if mode.startsWith('erasure')}
+  <main>
+    {#if withdrawn}<p role="status">サインアウトしました</p>{:else}
+      <AccountSettings
+        api={createErasureAPI('/synthetic')}
+        token={async () => 'synthetic'}
+        signOut={() => {
+          window.browserTest.signedOut = true;
+          withdrawn = true;
+        }}
+      />
+    {/if}
+  </main>
+{:else if mode === 'anonymous-costs'}
+  <main>
+    <UsageOverview report={{ ...costReport(), anonymized: [] } as never} />
+  </main>
+{:else if mode.startsWith('budget')}
   <main>
     <AIUsage
       api={createAIRuntimeAPI('/synthetic')}

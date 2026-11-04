@@ -193,11 +193,9 @@ func TestAIBudgetMigrationRoundtripAndProtectsData(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 34)
-	if e != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 35 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 35)
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 35, 35)
+	assertMigrationRange(t, up, e, 35, latestMigrationVersion)
 	if _, e = NewAIBudgetRepository(r.pool).Save(ctx, admin, admin, aibudget.Input{Confirmed: true}); e != nil {
 		t.Fatal(e)
 	}

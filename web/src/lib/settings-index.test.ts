@@ -38,6 +38,7 @@ test('settings is a single purpose index without duplicated readiness panels or 
   for (const id of [
     'mail',
     'appearance',
+    'account',
     'ai',
     'credentials',
     'integrations',
@@ -64,6 +65,7 @@ test('personal settings index never offers administrator destinations', async ()
   const html = await settingsHTML('user');
   assert.match(html, /href="\/settings\/mail"/);
   assert.match(html, /href="\/settings\/appearance"/);
+  assert.match(html, /href="\/settings\/account"/);
   assert.doesNotMatch(
     html,
     /href="\/settings\/(ai|credentials|integrations|catalog|usage)"/,

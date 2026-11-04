@@ -157,6 +157,7 @@ func TestIntegrationLifecycleAndNoDuplicateSend(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	store = NewStore(pool, k)
 	cs := credentials.NewService(NewCredentialRepository(pool), k)
 	for _, provider := range []string{"resend", "clerk_webhook", "resend_webhook"} {
 		secret := "synthetic-" + provider + "-key"
@@ -362,6 +363,10 @@ func TestIntegrationLifecycleAndNoDuplicateSend(t *testing.T) {
 	if _, e = provider.DownTo(ctx, 17); e == nil {
 		t.Fatal("downgrade destroyed webhook keys")
 	}
+	// Earlier empty migrations may have rolled back before the protected version.
+	if _, e = provider.Up(ctx); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = repo.Configure(ctx, actor.ID, integrations.ConfigInput{ExpectedVersion: 1, Sender: "sender@example.com", ClerkInstanceID: "ins_other"}); e != nil {
 		t.Fatal(e)
 	}
@@ -388,6 +393,19 @@ func TestIntegrationLifecycleAndNoDuplicateSend(t *testing.T) {
 	// Unknown identities receive tombstones, never an application allowance.
 	if e = repo.ApplyClerk(ctx, key, "msg_unknown_deleted", event(4000, "user.deleted", "user_unknown", false, false)); e != nil {
 		t.Fatal(e)
+	}
+	if e = repo.ApplyClerk(ctx, key, "msg_unknown_deleted_again", event(4100, "user.deleted", "user_unknown", false, false)); e != nil {
+		t.Fatal("duplicate deletion", e)
+	}
+	if e = repo.ApplyClerk(ctx, key, "msg_unknown_recreated", event(5000, "user.created", "user_unknown", true, false)); e != nil {
+		t.Fatal("late creation", e)
+	}
+	var profiles, requests int
+	if e = pool.QueryRow(ctx, `SELECT count(*) FROM integration_profiles WHERE subject IN ('user_unknown','user_admin')`).Scan(&profiles); e != nil || profiles != 0 {
+		t.Fatal("plaintext identity/profile retained", profiles, e)
+	}
+	if e = pool.QueryRow(ctx, `SELECT count(*) FROM user_erasure_requests WHERE owner_id=$1 AND source='clerk'`, actor.ID).Scan(&requests); e != nil || requests != 1 {
+		t.Fatal("deletion was not queued once", requests, e)
 	}
 	if _, e = store.AllowIdentity(ctx, issuer, "user_unknown", true); !errors.Is(e, ErrForbidden) {
 		t.Fatal("tombstone ignored", e)

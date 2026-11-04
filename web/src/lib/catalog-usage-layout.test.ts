@@ -46,6 +46,31 @@ function override(path: string, name: string, value: unknown) {
     `export * from ${JSON.stringify(new URL(path, import.meta.url).href)}; export const ${name}=()=>(${JSON.stringify(value)});`,
   );
 }
+test('account settings explain local deletion and keep destructive confirmation in the common modal', async () => {
+  const Component = (await import(await component('AccountSettings'))).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => null, signOut: () => {} },
+  }).body;
+  assert.match(html, /class="library-header/);
+  assert.match(html, /class="library-panel/);
+  assert.match(html, /Google・Microsoft・Clerkのアカウント自体は削除しません/);
+  assert.match(html, /サブスクリプションの解約/);
+  assert.match(html, /OAuth許可は取り消されません/);
+  assert.match(html, /共有のサービス用APIキー/);
+  assert.match(html, /<dialog/);
+  assert.match(html, /type="checkbox"/);
+  assert.match(html, /aria-label="退会の確認文言"/);
+  assert.match(
+    html,
+    /<button(?=[^>]*type="button")(?=[^>]*disabled)[^>]*>(?:<!--[\s\S]*?-->|<!---->)*退会してデータを削除/,
+  );
+});
+test('monthly usage explains anonymous archive totals and separate individual histories', async () => {
+  const Component = (await import(await component('UsageOverview'))).default;
+  const html = render(Component, { props: { report: report() } }).body;
+  assert.match(html, /匿名化した退会済み利用者の原価/);
+  assert.match(html, /利用者別・メール接続別・呼出し履歴には含めません/);
+});
 test('catalog starts with model browsing and separates provider sync and manual registration', async () => {
   const state = {
     ...emptyCatalogState(),

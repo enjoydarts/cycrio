@@ -22,6 +22,9 @@
       ? '暫定月（後から更新される可能性があります）'
       : '月次集計'} · 更新 {datetime(report.updated_at)} JST
   </p>
+  <p class="muted">
+    全体合計には、匿名化した退会済み利用者の原価も含みます。匿名原価は利用者別・メール接続別・呼出し履歴には含めません。利用者や接続を絞り込んだ集計には含みません。
+  </p>
   <div class="usage-metrics">
     <article class="metric cost">
       <h3>コスト</h3>

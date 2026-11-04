@@ -5,7 +5,10 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/hkdf"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +16,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 )
 
 var (
@@ -25,8 +29,9 @@ type Envelope struct {
 	Ciphertext []byte `json:"-"`
 }
 type Keyring struct {
-	active string
-	keys   map[string]cipher.AEAD
+	active          string
+	keys            map[string]cipher.AEAD
+	fingerprintKeys map[string][]byte
 }
 type keyFile struct {
 	ActiveKeyID string            `json:"active_key_id"`
@@ -63,7 +68,7 @@ func Load(path string) (*Keyring, error) {
 	if d.Decode(&doc) != nil || d.Decode(new(any)) != io.EOF || doc.ActiveKeyID == "" || len(doc.Keys) == 0 {
 		return nil, ErrUnavailable
 	}
-	k := &Keyring{active: doc.ActiveKeyID, keys: make(map[string]cipher.AEAD, len(doc.Keys))}
+	k := &Keyring{active: doc.ActiveKeyID, keys: make(map[string]cipher.AEAD, len(doc.Keys)), fingerprintKeys: make(map[string][]byte)}
 	for id, encoded := range doc.Keys {
 		key, err := base64.StdEncoding.Strict().DecodeString(encoded)
 		if err != nil || len(key) != 32 || id == "" {
@@ -78,11 +83,46 @@ func Load(path string) (*Keyring, error) {
 			return nil, ErrUnavailable
 		}
 		k.keys[id] = aead
+		derived, err := hkdf.Key(sha256.New, key, nil, "cycrio/fingerprints/v1", 32)
+		if err != nil {
+			return nil, ErrUnavailable
+		}
+		k.fingerprintKeys[id] = derived
 	}
 	if k.keys[k.active] == nil {
 		return nil, ErrUnavailable
 	}
 	return k, nil
+}
+
+type Fingerprint struct {
+	KeyID  string
+	Digest string
+}
+
+func (k *Keyring) HasKey(id string) bool { return k != nil && k.keys[id] != nil }
+
+// Fingerprints preserves every retained key and separates each purpose from encryption.
+func (k *Keyring) Fingerprints(purpose string, payload []byte) ([]Fingerprint, error) {
+	if k == nil || len(k.fingerprintKeys) == 0 || purpose == "" {
+		return nil, ErrUnavailable
+	}
+	ids := make([]string, 0, len(k.fingerprintKeys))
+	for id := range k.fingerprintKeys {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	out := make([]Fingerprint, 0, len(ids))
+	for _, id := range ids {
+		key, err := hkdf.Key(sha256.New, k.fingerprintKeys[id], nil, purpose, 32)
+		if err != nil {
+			return nil, ErrUnavailable
+		}
+		mac := hmac.New(sha256.New, key)
+		mac.Write(payload)
+		out = append(out, Fingerprint{KeyID: id, Digest: hex.EncodeToString(mac.Sum(nil))})
+	}
+	return out, nil
 }
 
 func validKeyFileMode(mode os.FileMode) bool {

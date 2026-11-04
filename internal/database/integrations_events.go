@@ -55,7 +55,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 		return integrations.ErrUnavailable
 	}
 	// Serialize with requests and worker checks on this user's state.
-	if _, e = tx.Exec(ctx, `SELECT u.id FROM users u JOIN auth_identities i ON i.user_id=u.id WHERE i.issuer=$1 AND i.subject=$2 FOR UPDATE OF u`, r.issuer, in.Data.ID); e != nil {
+	if _, e = tx.Exec(ctx, `SELECT u.id FROM users u JOIN auth_identities i ON i.user_id=u.id WHERE i.issuer=$1 AND i.subject=$2 FOR NO KEY UPDATE OF u`, r.issuer, in.Data.ID); e != nil {
 		return integrations.ErrUnavailable
 	}
 	// Match Configure/Send: user first, then settings, then credentials/profile.
@@ -74,6 +74,32 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 		return integrations.ErrUnavailable
 	}
 	if tag.RowsAffected() == 0 {
+		return nil
+	}
+	// Verified deletion is terminal, including when no local identity exists yet.
+	if in.Type == "user.deleted" {
+		if _, e = queueErasure(ctx, tx, r.keyring, r.issuer, in.Data.ID, uuid.NewString(), "clerk"); e != nil {
+			return integrations.ErrUnavailable
+		}
+		if _, e = tx.Exec(ctx, `DELETE FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, in.Data.ID); e != nil {
+			return integrations.ErrUnavailable
+		}
+		if tx.Commit(ctx) != nil {
+			return integrations.ErrUnavailable
+		}
+		return nil
+	}
+	blockedIdentity, err := erasureIdentityBlocked(ctx, tx, r.keyring, r.issuer, in.Data.ID)
+	if err != nil {
+		return integrations.ErrUnavailable
+	}
+	if blockedIdentity {
+		if _, e = tx.Exec(ctx, `DELETE FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, in.Data.ID); e != nil {
+			return integrations.ErrUnavailable
+		}
+		if tx.Commit(ctx) != nil {
+			return integrations.ErrUnavailable
+		}
 		return nil
 	}
 	var oldAt, oldUpdatedAt int64
@@ -155,8 +181,21 @@ func (r *IntegrationRepository) ApplyResend(ctx context.Context, credential, eve
 		return integrations.ErrUnavailable
 	}
 	defer tx.Rollback(ctx)
+	// Match purge's lock order before locking shared credentials. Unknown IDs
+	// still retain early events until the send acknowledgement arrives.
+	hash := erasedResendEmailHash(id)
+	if e = lockErasedResendEmail(ctx, tx, hash); e != nil {
+		return integrations.ErrUnavailable
+	}
 	if e = integrationCredential(ctx, tx, credential, "resend_webhook"); e != nil {
 		return e
+	}
+	var erased bool
+	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM erased_resend_email_receipts WHERE email_hash=$1)`, hash).Scan(&erased); e != nil {
+		return integrations.ErrUnavailable
+	}
+	if erased {
+		return nil
 	}
 	// Keep minimal facts even if the send ACK has not arrived yet.
 	if _, e = tx.Exec(ctx, `INSERT INTO integration_webhook_events(provider,event_id,event_type,event_at,email_id)VALUES('resend',$1,$2,$3,$4) ON CONFLICT DO NOTHING`, eventID, in.Type, in.CreatedAt, id); e != nil {

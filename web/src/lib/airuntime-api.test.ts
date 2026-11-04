@@ -21,6 +21,19 @@ import {
   report,
 } from './airuntime-test-fixtures.ts';
 
+test('cost reports retain anonymized totals and support older fixtures without the field', () => {
+  assert.deepEqual(parseCostReport(report()).anonymized, []);
+  const totals = report().totals;
+  assert.deepEqual(
+    parseCostReport({ ...report(), anonymized: totals }).anonymized,
+    totals,
+  );
+  assert.throws(
+    () => parseCostReport({ ...report(), anonymized: null }),
+    ApiError,
+  );
+});
+
 test('system price research calls have no email profile and a Japanese stage label', () => {
   const parsed = parseCall({
     ...call(),

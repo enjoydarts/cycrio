@@ -16,6 +16,7 @@ export type AppSession = {
   readonly theme: ThemePreference;
   setTheme: (preference: ThemePreference) => void;
   onDenied: () => void;
+  signOut?: () => Promise<void> | void;
   api: ReturnType<typeof createAPI>;
   catalogAPI: ReturnType<typeof createCatalogAPI>;
   runtimeAPI: ReturnType<typeof createAIRuntimeAPI>;

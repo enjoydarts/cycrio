@@ -241,6 +241,13 @@ func (r *AIRuntimeRepository) FinishCall(ctx context.Context, id string, in airu
 	}
 	defer tx.Rollback(ctx)
 	c, err := scanRuntimeCall(tx.QueryRow(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls WHERE id=$1 FOR UPDATE`, id))
+	if errors.Is(err, airuntime.ErrNotFound) {
+		c, err = finishErasedCall(ctx, tx, id, cost)
+		if err != nil {
+			return c, err
+		}
+		return c, runtimeCommit(ctx, tx)
+	}
 	if err != nil {
 		return c, err
 	}

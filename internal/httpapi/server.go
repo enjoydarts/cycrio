@@ -73,6 +73,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		}{p.Role})
 	}))
 	registerCredentials(mux, settings.credentials, protect)
+	registerUserErasure(mux, settings.erasure, config, verifier)
 	registerOverview(mux, settings.overview, protect)
 	registerReports(mux, settings.reports, protect)
 	registerNotifications(mux, settings.notifications, protect)

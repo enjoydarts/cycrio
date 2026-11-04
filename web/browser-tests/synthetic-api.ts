@@ -1,6 +1,7 @@
 import type { Subscription } from '../src/lib/subscriptions-api.ts';
 import { budgetFixture } from './budget-fixture.ts';
 import { notificationFixture } from './notification-fixture.ts';
+import { erasureFixture } from './erasure-fixture.ts';
 import { changeEvidence } from '../src/lib/subscription-changes-fixtures.ts';
 
 type Trace = {
@@ -15,6 +16,7 @@ declare global {
       errors: string[];
       saved: Subscription | null;
       back?: boolean;
+      signedOut?: boolean;
       ownerGeneration?: number;
       switchNotificationOwner?: () => void;
       releaseOldNotification?: () => void;
@@ -39,6 +41,7 @@ const response = (body: unknown) =>
 // This fake checks transport contracts and returns fixed synthetic records.
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
+  const erasure = mode.startsWith('erasure') ? erasureFixture(mode) : null;
   const budgets = mode.startsWith('budget') ? budgetFixture(mode) : null;
   window.browserTest = { requests: [], errors: [], saved: null };
   const notifications = mode.startsWith('notifications')
@@ -68,6 +71,8 @@ export function installAPI(mode: string, initial: Subscription) {
         'Bearer synthetic'
       )
         fail('Unexpected authorization');
+      if (erasure && url.origin === location.origin)
+        return erasure(url, method, body);
       if (
         budgets &&
         url.origin === location.origin &&

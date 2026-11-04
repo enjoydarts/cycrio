@@ -16,13 +16,13 @@ func TestAIBudgetTablesAreOutsideLegacyMigrationSnapshots(t *testing.T) {
 		"mail_automation_v15":    allAutomationLegacyRecords(t, f.runtime.pool),
 		"billing_automation_v16": billingLegacyRecords(t, f.runtime.pool),
 	} {
-		for _, table := range []string{"ai_user_budgets", "ai_user_budget_audit"} {
+		for _, table := range []string{"ai_user_budgets", "ai_user_budget_audit", "user_erasure_requests", "erased_identities", "anonymous_ai_costs", "erased_ai_call_receipts", "anonymous_ai_cost_revisions", "anonymous_audit_counts"} {
 			var count int
 			if err := f.runtime.pool.QueryRow(ctx, `SELECT count(*) FROM `+table).Scan(&count); err != nil || count != 0 {
-				t.Fatal("new budget tables must start empty", table, count, err)
+				t.Fatal("new private management tables must start empty", table, count, err)
 			}
 			if data, included := snapshot[table]; included {
-				t.Errorf("%s includes migration35-only table %s=%s", name, table, data)
+				t.Errorf("%s includes a later migration table %s=%s", name, table, data)
 			}
 		}
 		for _, legacy := range []string{"users", "ai_calls", "model_catalog", "mail_processing_items"} {

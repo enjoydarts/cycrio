@@ -35,6 +35,10 @@ func runtimeAccountFilter(ctx context.Context, tx pgx.Tx, f airuntime.CostFilter
 
 const runtimeAggregate = `currency,COALESCE(sum(adopted_amount),0)::text,COALESCE(sum(adopted_amount) FILTER(WHERE cost_kind='estimated'),0)::text,COALESCE(sum(adopted_amount) FILTER(WHERE cost_kind='provider_reported'),0)::text,count(*),count(*) FILTER(WHERE cost_kind='unknown'),count(*) FILTER(WHERE status IN ('failed','unknown'))`
 
+// Personal filters cannot recover erased costs. The retained month is the
+// original call's JST month; no owner, account or source identifiers survive.
+const anonymousRuntimeWhere = ` WHERE month>=($1 AT TIME ZONE 'Asia/Tokyo')::date AND month<($2 AT TIME ZONE 'Asia/Tokyo')::date AND $3='' AND ($4='' OR scope=$4) AND ($5='' OR provider=$5) AND ($6='' OR model_id=NULLIF($6,'')::uuid) AND ($7='' OR stage=$7) AND $8=''`
+
 func normalizeRuntimeTotals(t *airuntime.Totals) error {
 	for _, s := range []*string{&t.Amount, &t.EstimatedAmount, &t.ReportedAmount} {
 		v, err := ai.NormalizeAmount(*s)
@@ -51,7 +55,7 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 		return airuntime.CostReport{}, err
 	}
 	from, to, _ := airuntime.MonthRange(f.Month)
-	report := airuntime.CostReport{Month: f.Month, Timezone: "Asia/Tokyo", From: from, To: to, Provisional: time.Now().In(time.FixedZone("Asia/Tokyo", 9*3600)).Format("2006-01") == f.Month, Totals: []airuntime.Totals{}, Users: []airuntime.ConsumerCost{}, Administration: []airuntime.ScopeCost{{Scope: "admin_test", Totals: []airuntime.Totals{}}, {Scope: "system", Totals: []airuntime.Totals{}}}, Breakdown: []airuntime.Breakdown{}}
+	report := airuntime.CostReport{Month: f.Month, Timezone: "Asia/Tokyo", From: from, To: to, Provisional: time.Now().In(time.FixedZone("Asia/Tokyo", 9*3600)).Format("2006-01") == f.Month, Totals: []airuntime.Totals{}, Anonymized: []airuntime.Totals{}, Users: []airuntime.ConsumerCost{}, Administration: []airuntime.ScopeCost{{Scope: "admin_test", Totals: []airuntime.Totals{}}, {Scope: "system", Totals: []airuntime.Totals{}}}, Breakdown: []airuntime.Breakdown{}}
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if err != nil {
 		return report, runtimeError(err)
@@ -61,14 +65,14 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 		return report, err
 	}
 	args := runtimeFilterArgs(f)
-	if err := tx.QueryRow(ctx, `SELECT max(updated_at) FROM ai_calls`+runtimeWhere, args...).Scan(&report.UpdatedAt); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT max(updated_at) FROM (SELECT updated_at FROM ai_calls`+runtimeWhere+` UNION ALL SELECT updated_at FROM anonymous_ai_costs`+anonymousRuntimeWhere+`) all_costs`, args...).Scan(&report.UpdatedAt); err != nil {
 		return report, runtimeError(err)
 	}
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE ($1='' OR id=NULLIF($1,'')::uuid)`, f.UserID).Scan(&report.UsersTotal); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM users WHERE id<>'00000000-0000-4000-8000-000000000036' AND ($1='' OR id=NULLIF($1,'')::uuid)`, f.UserID).Scan(&report.UsersTotal); err != nil {
 		return report, runtimeError(err)
 	}
 	// Only grouped rows leave PostgreSQL; costs never load the month's call ledger.
-	query := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + `) SELECT 'total','','','','',` + runtimeAggregate + ` FROM filtered GROUP BY currency UNION ALL SELECT 'scope',scope,'','','',` + runtimeAggregate + ` FROM filtered WHERE scope IN ('admin_test','system') GROUP BY scope,currency UNION ALL SELECT 'model',provider,model_id::text,max(model_name),stage,` + runtimeAggregate + ` FROM filtered GROUP BY provider,model_id,stage,currency ORDER BY 1,2,3,4,5,6 NULLS FIRST`
+	query := `WITH filtered AS (SELECT currency,adopted_amount,cost_kind,status,provider,model_id,model_name,stage,scope FROM ai_calls` + runtimeWhere + ` UNION ALL SELECT currency,adopted_amount,cost_kind,status,provider,model_id,model_id::text AS model_name,stage,scope FROM anonymous_ai_costs` + anonymousRuntimeWhere + `) SELECT 'total','','','','',` + runtimeAggregate + ` FROM filtered GROUP BY currency UNION ALL SELECT 'scope',scope,'','','',` + runtimeAggregate + ` FROM filtered WHERE scope IN ('admin_test','system') GROUP BY scope,currency UNION ALL SELECT 'model',provider,model_id::text,max(model_name),stage,` + runtimeAggregate + ` FROM filtered GROUP BY provider,model_id,stage,currency ORDER BY 1,2,3,4,5,6 NULLS FIRST`
 	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
 		return report, runtimeError(err)
@@ -110,9 +114,30 @@ func (r *AIRuntimeRepository) Costs(ctx context.Context, f airuntime.CostFilter)
 	if err != nil {
 		return report, runtimeError(err)
 	}
+	rows, err = tx.Query(ctx, `SELECT `+runtimeAggregate+` FROM anonymous_ai_costs`+anonymousRuntimeWhere+` GROUP BY currency ORDER BY currency NULLS FIRST`, args...)
+	if err != nil {
+		return report, runtimeError(err)
+	}
+	for rows.Next() {
+		var totals airuntime.Totals
+		if err = rows.Scan(&totals.Currency, &totals.Amount, &totals.EstimatedAmount, &totals.ReportedAmount, &totals.Calls, &totals.UnknownCalls, &totals.Failures); err != nil {
+			rows.Close()
+			return report, runtimeError(err)
+		}
+		if err = normalizeRuntimeTotals(&totals); err != nil {
+			rows.Close()
+			return report, err
+		}
+		report.Anonymized = append(report.Anonymized, totals)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return report, runtimeError(err)
+	}
 	// Limit users first, then aggregate only their calls. LEFT JOIN retains users
 	// with no usage and count(call.id) distinguishes them from unknown-cost calls.
-	userQuery := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + `),page AS (SELECT id FROM users WHERE ($3='' OR id=NULLIF($3,'')::uuid) ORDER BY id LIMIT $9 OFFSET $10) SELECT p.id,c.currency,COALESCE(sum(c.adopted_amount),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='estimated'),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='provider_reported'),0)::text,count(c.id),count(c.id) FILTER(WHERE c.cost_kind='unknown'),count(c.id) FILTER(WHERE c.status IN ('failed','unknown')) FROM page p LEFT JOIN filtered c ON c.consuming_user_id=p.id GROUP BY p.id,c.currency ORDER BY p.id,c.currency NULLS FIRST`
+	userQuery := `WITH filtered AS (SELECT * FROM ai_calls` + runtimeWhere + `),page AS (SELECT id FROM users WHERE id<>'00000000-0000-4000-8000-000000000036' AND ($3='' OR id=NULLIF($3,'')::uuid) ORDER BY id LIMIT $9 OFFSET $10) SELECT p.id,c.currency,COALESCE(sum(c.adopted_amount),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='estimated'),0)::text,COALESCE(sum(c.adopted_amount) FILTER(WHERE c.cost_kind='provider_reported'),0)::text,count(c.id),count(c.id) FILTER(WHERE c.cost_kind='unknown'),count(c.id) FILTER(WHERE c.status IN ('failed','unknown')) FROM page p LEFT JOIN filtered c ON c.consuming_user_id=p.id GROUP BY p.id,c.currency ORDER BY p.id,c.currency NULLS FIRST`
 	rows, err = tx.Query(ctx, userQuery, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return report, runtimeError(err)

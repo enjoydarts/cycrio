@@ -25,6 +25,23 @@ func NewMailOAuthRepository(pool *pgxpool.Pool, keys *secretstore.Keyring) *Mail
 
 var _ mailoauth.Repository = (*MailOAuthRepository)(nil)
 
+// WithUserOperation fences the whole OAuth exchange, including configuration
+// resolution and token persistence, against erasure after pending state is consumed.
+func (r *MailOAuthRepository) WithUserOperation(ctx context.Context, owner string, execute func(context.Context) error) error {
+	started := false
+	err := WithUserOperation(ctx, r.pool, owner, func(ctx context.Context) error {
+		started = true
+		return execute(ctx)
+	})
+	if !started {
+		if err != nil {
+			return mailaccounts.ErrUnavailable
+		}
+		return mailaccounts.ErrNotFound
+	}
+	return err
+}
+
 func (r *MailOAuthRepository) ActiveClient(ctx context.Context, provider string) (string, error) {
 	if provider != "gmail" && provider != "outlook" {
 		return "", mailaccounts.ErrInvalid

@@ -69,7 +69,7 @@ func run() error {
 	if addr == "" {
 		addr = ":8080"
 	}
-	store := database.NewStore(pool)
+	store := database.NewStore(pool, keyring)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
 	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
 	integrationService := integrations.NewService(database.NewIntegrationRepository(pool, keyring, config.Issuer()), credentialService, integrations.NewResendSender(nil))
@@ -83,7 +83,7 @@ func run() error {
 	exchangeRatesOption := httpapi.WithExchangeRates(exchangerates.NewClient(nil, nil))
 	budgetOption := httpapi.WithAIBudgets(database.NewAIBudgetRepository(pool))
 	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, exchangeRatesOption, budgetOption, httpapi.WithNotifications(notificationRepository), httpapi.WithOverview(overviewRepository), httpapi.WithReports(reportsRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithPriceResearch(priceresearchruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithUserErasure(database.NewErasureRepository(pool, keyring)), exchangeRatesOption, budgetOption, httpapi.WithNotifications(notificationRepository), httpapi.WithOverview(overviewRepository), httpapi.WithReports(reportsRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithPriceResearch(priceresearchruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

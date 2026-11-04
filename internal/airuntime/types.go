@@ -200,6 +200,7 @@ type CostReport struct {
 	To             time.Time      `json:"to"`
 	Provisional    bool           `json:"provisional"`
 	Totals         []Totals       `json:"totals"`
+	Anonymized     []Totals       `json:"anonymized"`
 	Users          []ConsumerCost `json:"users"`
 	UsersTotal     int            `json:"users_total"`
 	Administration []ScopeCost    `json:"administration"`

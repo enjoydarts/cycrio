@@ -5,13 +5,13 @@ import {
   availableSettings,
   settingsAccess,
 } from './settings.ts';
-test('ordinary owners see only mail and appearance, administrators retain every separate setting URL', () => {
+test('ordinary owners see personal settings including account, administrators retain every separate setting URL', () => {
   assert.deepEqual(
     availableSettings('user').map((section) => section.id),
-    ['mail', 'appearance'],
+    ['mail', 'appearance', 'account'],
   );
-  assert.equal(availableSettings('platform_admin').length, 10);
-  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 10);
+  assert.equal(availableSettings('platform_admin').length, 11);
+  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 11);
 });
 test('direct administrator routes deny owners and unknown sections are unavailable', () => {
   for (const section of settingsSections) {

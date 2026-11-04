@@ -43,6 +43,7 @@ type Repository interface {
 	SavePending(context.Context, string, string, Pending) error
 	ConsumePending(context.Context, string, string, string) (Pending, error)
 	SaveConnection(context.Context, Pending, Token) error
+	WithUserOperation(context.Context, string, func(context.Context) error) error
 }
 type Service struct {
 	repo    Repository
@@ -148,13 +149,15 @@ func (s *Service) Callback(ctx context.Context, provider, state, code, browser s
 	if p.Provider != provider || !time.Now().Before(p.ExpiresAt) {
 		return mailaccounts.ErrNotFound
 	}
-	c, e := s.config(ctx, provider, p.ClientID)
-	if e != nil {
-		return e
-	}
-	token, e := s.client.Exchange(ctx, provider, c, code, p.Verifier)
-	if e != nil {
-		return e
-	}
-	return s.repo.SaveConnection(ctx, p, token)
+	return s.repo.WithUserOperation(ctx, p.OwnerID, func(ctx context.Context) error {
+		c, e := s.config(ctx, provider, p.ClientID)
+		if e != nil {
+			return e
+		}
+		token, e := s.client.Exchange(ctx, provider, c, code, p.Verifier)
+		if e != nil {
+			return e
+		}
+		return s.repo.SaveConnection(ctx, p, token)
+	})
 }

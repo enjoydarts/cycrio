@@ -57,6 +57,7 @@
     },
     setTheme,
     onDenied,
+    signOut: () => controller?.signOut(),
     api,
     catalogAPI: createCatalogAPI(PUBLIC_API_BASE_URL),
     runtimeAPI: createAIRuntimeAPI(PUBLIC_API_BASE_URL),

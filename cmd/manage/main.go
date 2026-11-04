@@ -14,6 +14,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
 	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -108,7 +109,11 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 		return errors.New("database connection failed")
 	}
 	defer pool.Close()
-	store := database.NewStore(pool)
+	keys, err := secretstore.Load(*keyringPath)
+	if err != nil {
+		return err
+	}
+	store := database.NewStore(pool, keys)
 	if command == "grant-admin" || command == "allow-user" {
 		if _, err := store.AllowIdentity(ctx, c.Issuer(), *subject, command == "grant-admin"); err != nil {
 			return err

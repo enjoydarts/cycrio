@@ -108,3 +108,58 @@ func TestMailOAuthStateIsEncryptedSingleUseAndOwnerBound(t *testing.T) {
 		t.Fatal("stopped owner consumed state", e)
 	}
 }
+
+func TestMailOAuthOperationFenceRejectsInactiveOwnerAndDefersErasure(t *testing.T) {
+	identity, pool := testStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	owner, err := identity.AllowIdentity(ctx, "https://oauth-fence.example.test", "owner", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := NewMailOAuthRepository(pool, nil)
+	err = r.WithUserOperation(ctx, owner.ID, func(operation context.Context) error {
+		tx, err := pool.Begin(operation)
+		if err != nil {
+			return err
+		}
+		defer tx.Rollback(operation)
+		var locked bool
+		if err = tx.QueryRow(operation, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, "user-erasure-fence/v1:"+owner.ID).Scan(&locked); err != nil {
+			return err
+		}
+		if locked {
+			t.Error("purge crossed OAuth exchange fence")
+		}
+		if _, err = tx.Exec(operation, `UPDATE users SET state='deleting' WHERE id=$1`, owner.ID); err != nil {
+			return err
+		}
+		return tx.Commit(operation)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	if err = r.WithUserOperation(ctx, owner.ID, func(context.Context) error { called = true; return nil }); !errors.Is(err, mailaccounts.ErrNotFound) || called {
+		t.Fatal("inactive owner exchanged token", err, called)
+	}
+	if err = r.WithUserOperation(ctx, uuid.NewString(), func(context.Context) error { called = true; return nil }); !errors.Is(err, mailaccounts.ErrNotFound) || called {
+		t.Fatal("missing owner exchanged token", err, called)
+	}
+	if _, err = pool.Exec(ctx, `UPDATE users SET state='active' WHERE id=$1`, owner.ID); err != nil {
+		t.Fatal(err)
+	}
+	sentinel := errors.New("synthetic exchange failure")
+	if err = r.WithUserOperation(ctx, owner.ID, func(context.Context) error { return sentinel }); !errors.Is(err, sentinel) {
+		t.Fatal("exchange failure replaced", err)
+	}
+	tx, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(ctx)
+	var locked bool
+	if err = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, "user-erasure-fence/v1:"+owner.ID).Scan(&locked); err != nil || !locked {
+		t.Fatal("finished exchange retained fence", err, locked)
+	}
+}

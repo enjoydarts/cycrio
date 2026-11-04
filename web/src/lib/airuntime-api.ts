@@ -199,6 +199,7 @@ export type CostReport = {
   to: string;
   provisional: boolean;
   totals: Totals[];
+  anonymized?: Totals[];
   users: ConsumerCost[];
   users_total: number;
   administration: { scope: 'admin_test' | 'system'; totals: Totals[] }[];
@@ -451,6 +452,8 @@ export function parseCostReport(value: unknown): CostReport {
     to: timestamp(v.to),
     provisional: bool(v.provisional),
     totals: array(v.totals, parseTotals),
+    anonymized:
+      v.anonymized === undefined ? [] : array(v.anonymized, parseTotals),
     users: array(
       v.users,
       (x) => {
