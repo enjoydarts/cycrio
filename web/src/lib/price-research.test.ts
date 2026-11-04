@@ -37,6 +37,10 @@ const run = (values: Partial<ResearchRun> = {}): ResearchRun => ({
   finished_at: null,
   updated_count: 0,
   unresolved_count: 0,
+  target_count: 0,
+  completed_count: 0,
+  non_text_count: 0,
+  unclassified_count: 0,
   call_id: null,
   sources: [],
   ...values,
@@ -196,6 +200,138 @@ test('candidate lookup keeps models without prices and excludes disabled models'
   await f.controller.search('openai', '');
   assert.equal(f.controller.state.models[0].current_price, null);
   assert.equal(f.controller.state.models[0].id, id);
+});
+test('candidate selector loads every page at 100 and preserves the draft and baseline while filtering', async () => {
+  const models = Array.from({ length: 121 }, (_, index) =>
+    parseModel({
+      ...modelFixture(),
+      id: `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
+      provider: 'openai',
+      model_id: `model-${index}`,
+      display_name: `Model ${index}`,
+    }),
+  );
+  const requests: unknown[] = [];
+  const controller = createPriceResearchController(
+    { ...createPriceResearchAPI(''), load: async () => state() },
+    {
+      ...createCatalogAPI(''),
+      list: async (filter) => {
+        requests.push(filter);
+        return {
+          models: models.slice(filter.offset ?? 0, (filter.offset ?? 0) + 100),
+          total: models.length,
+        };
+      },
+    },
+    token,
+    () => {},
+    () => {},
+  );
+  await controller.load();
+  controller.edit({ model_id: models[120].id, interval_hours: 48 });
+  await controller.search('openai', '');
+  assert.equal(controller.state.models.length, 121);
+  assert.deepEqual(requests, [
+    { provider: 'openai', limit: 100, offset: 0 },
+    { provider: 'openai', limit: 100, offset: 100 },
+  ]);
+  await controller.search('openai', 'model-120');
+  assert.deepEqual(
+    controller.state.models.map((model) => model.id),
+    [models[120].id],
+  );
+  assert.equal(controller.state.draft?.model_id, models[120].id);
+  assert.equal(controller.state.draft?.expected_version, 1);
+  assert.equal(controller.state.draft?.interval_hours, 48);
+  assert.equal(controller.state.dirty, true);
+});
+test('research parser retains all-target progress and rejects invalid counts', () => {
+  const progress = run({
+    target_count: 121,
+    completed_count: 40,
+    non_text_count: 8,
+    unclassified_count: 2,
+  });
+  assert.equal(parseResearchRun(progress).target_count, 121);
+  assert.equal(parseResearchRun(progress).completed_count, 40);
+  for (const field of [
+    'target_count',
+    'completed_count',
+    'non_text_count',
+    'unclassified_count',
+  ])
+    assert.throws(
+      () => parseResearchRun({ ...progress, [field]: -1 }),
+      ApiError,
+    );
+});
+test('candidate pagination rejects incomplete pages and disposal aborts a later page', async () => {
+  let finish: (value: {
+    models: ReturnType<typeof parseModel>[];
+    total: number;
+  }) => void = () => {};
+  let signal: AbortSignal | undefined;
+  const controller = createPriceResearchController(
+    { ...createPriceResearchAPI(''), load: async () => state() },
+    {
+      ...createCatalogAPI(''),
+      list: async (filter, _token, requestSignal) => {
+        if (!filter.offset)
+          return { models: [parseModel(modelFixture())], total: 2 };
+        signal = requestSignal;
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+    },
+    token,
+    () => {},
+    () => {},
+  );
+  const pending = controller.search('openai', '');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  controller.dispose();
+  finish({ models: [parseModel(modelFixture())], total: 2 });
+  await pending;
+  assert.equal(signal?.aborted, true);
+  assert.equal(controller.state.status, 'disposed');
+  assert.deepEqual(controller.state.models, []);
+  const broken = createPriceResearchController(
+    createPriceResearchAPI(''),
+    { ...createCatalogAPI(''), list: async () => ({ models: [], total: 2 }) },
+    token,
+    () => {},
+    () => {},
+  );
+  await broken.search('openai', '');
+  assert.equal(broken.state.error, 'dependency_unavailable');
+});
+test('catalog transport accepts 100 candidates for the selector while retaining its default page size', async () => {
+  const urls: string[] = [];
+  const api = createCatalogAPI('', async (url) => {
+    urls.push(String(url));
+    return Response.json({
+      models: Array.from(
+        { length: urls.length === 1 ? 100 : 20 },
+        modelFixture,
+      ),
+      total: 121,
+    });
+  });
+  assert.equal(
+    (await api.list({ provider: 'openai', limit: 100 }, token)).models.length,
+    100,
+  );
+  assert.equal((await api.list({}, token)).models.length, 20);
+  assert.equal(
+    new URL(urls[0], 'https://example.com').searchParams.get('limit'),
+    '100',
+  );
+  assert.equal(
+    new URL(urls[1], 'https://example.com').searchParams.get('limit'),
+    '20',
+  );
 });
 test('save retains original CAS revision and draft on conflict and requires explicit reload', async () => {
   const f = fixture({

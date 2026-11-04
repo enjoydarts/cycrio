@@ -1,5 +1,6 @@
 import type { Subscription } from '../src/lib/subscriptions-api.ts';
 import { budgetFixture } from './budget-fixture.ts';
+import { priceResearchFixture } from './price-research-fixture.ts';
 import { notificationFixture } from './notification-fixture.ts';
 import { erasureFixture } from './erasure-fixture.ts';
 import { integrationProfileFixture } from './integration-profile-fixture.ts';
@@ -42,6 +43,7 @@ const response = (body: unknown) =>
 // This fake checks transport contracts and returns fixed synthetic records.
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
+  const research = mode === 'price-research' ? priceResearchFixture() : null;
   const integration =
     mode === 'integration-profile' ? integrationProfileFixture() : null;
   const erasure = mode.startsWith('erasure') ? erasureFixture(mode) : null;
@@ -74,6 +76,7 @@ export function installAPI(mode: string, initial: Subscription) {
         'Bearer synthetic'
       )
         fail('Unexpected authorization');
+      if (research && url.origin === location.origin) return research(url);
       if (erasure && url.origin === location.origin)
         return erasure(url, method, body);
       if (integration && url.origin === location.origin)

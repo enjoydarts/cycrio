@@ -70,7 +70,67 @@ const priceEvidence = "Example Model input $2.50 output $10.00 USD per million t
 
 func quoteFixture() Quote {
 	limit := int64(200000)
-	return Quote{ModelID: "example-model", Provider: "openai", Currency: "USD", InputPerMillion: "2.50", OutputPerMillion: "10.00", MaxInputTokens: &limit, SourceURL: officialSource, Evidence: priceEvidence, Conditions: "standard_global"}
+	return Quote{ModelKind: "text_generation", ModelID: "example-model", Provider: "openai", Currency: "USD", InputPerMillion: "2.50", OutputPerMillion: "10.00", MaxInputTokens: &limit, SourceURL: officialSource, Evidence: priceEvidence, Conditions: "standard_global"}
+}
+
+func TestResearchClassifiesBeforeAcceptingTextTokenPrices(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic"} {
+		for _, kind := range []string{"text_generation", "non_text", "unknown", "", "image_generation"} {
+			t.Run(provider+"/"+kind, func(t *testing.T) {
+				q := quoteFixture()
+				q.ModelKind = kind
+				if kind == "non_text" {
+					q.Evidence = "Official documentation describes text input with image output."
+				} else if kind == "text_generation" {
+					q.Evidence = "Official documentation confirms text output from text input; image input is optional. These are ordinary text token rates."
+				}
+				client := NewClient(researchTransport(func(*http.Request) (*http.Response, error) {
+					return reply(200, responseFixture(provider, []Quote{q}, officialSource, true)), nil
+				}))
+				got, err := client.Research(context.Background(), requestFixture(provider))
+				wantKind, wantQuotes := kind, 0
+				if kind == "" || kind == "image_generation" {
+					wantKind = "unknown"
+				}
+				if kind == "text_generation" {
+					wantQuotes = 1
+				}
+				if err != nil || got.ModelKind != wantKind || len(got.Quotes) != wantQuotes || len(got.Sources) != 1 {
+					t.Fatalf("classification=%q quotes=%d sources=%v err=%v", got.ModelKind, len(got.Quotes), got.Sources, err)
+				}
+			})
+		}
+	}
+}
+
+func TestResearchClassificationDoesNotRequirePricesButRequiresOfficialIdentity(t *testing.T) {
+	for _, tc := range []struct {
+		name, kind, model, source string
+		search                    bool
+		accepted                  bool
+	}{
+		{"non_text_without_prices", "non_text", "example-model", officialSource, true, true},
+		{"unknown_without_prices", "unknown", "example-model", officialSource, true, true},
+		{"text_without_prices", "text_generation", "example-model", officialSource, true, true},
+		{"wrong_model", "non_text", "other-model", officialSource, true, false},
+		{"unofficial_quote", "non_text", "example-model", "https://attacker.example/pricing", true, false},
+		{"no_search", "non_text", "example-model", officialSource, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := Quote{ModelKind: tc.kind, ModelID: tc.model, Provider: "openai", SourceURL: tc.source}
+			client := NewClient(researchTransport(func(*http.Request) (*http.Response, error) {
+				return reply(200, responseFixture("openai", []Quote{q}, officialSource, tc.search)), nil
+			}))
+			got, err := client.Research(context.Background(), requestFixture("openai"))
+			if tc.accepted {
+				if err != nil || got.ModelKind != tc.kind || len(got.Sources) != 1 || len(got.Quotes) != 0 {
+					t.Fatalf("classification without price rejected: %+v %v", got, err)
+				}
+			} else if got.ModelKind != "unknown" || len(got.Quotes) != 0 || len(got.Sources) != 0 {
+				t.Fatalf("unverified classification accepted: %+v %v", got, err)
+			}
+		})
+	}
 }
 func requestFixture(provider string) Request {
 	return Request{Provider: provider, ModelID: "research-model", Key: []byte("SECRET"), MaxOutputTokens: 2048, Targets: []Target{{ID: "uuid", Provider: "openai", ModelID: "example-model", DisplayName: "Example Model"}}}

@@ -13,7 +13,7 @@ func TestCandidateSelection(t *testing.T) {
 	no := false
 	models := []modelcatalog.Model{{ID: "2", Provider: "openai", ModelID: "new-model", Available: true, Enabled: true}, {ID: "1", Provider: "openai", ModelID: "text-embedding-3", Available: true, Enabled: true}, {ID: "3", Provider: "anthropic", ModelID: "claude-next", Available: true, Enabled: true}, {ID: "4", Provider: "openai", ModelID: "disabled", Available: true}, {ID: "5", Provider: "openai", ModelID: "explicit", TextInput: &no, Available: true, Enabled: true}}
 	got := Candidates(models, "openai")
-	if len(got) != 1 || got[0].ID != "2" {
+	if len(got) != 2 || got[0].ID != "1" || got[1].ID != "2" {
 		t.Fatalf("candidates: %+v", got)
 	}
 }

@@ -44,6 +44,13 @@ func (r *PriceResearchRepository) BeginCall(ctx context.Context, lease pricerese
 	if dispatched {
 		return "", priceresearch.ErrDispatched
 	}
+	reserved, err := tx.Exec(ctx, `UPDATE price_research_items SET state='calling',lease_id=$3 WHERE run_id=$1 AND target_index=$2 AND state='pending' AND (lease_id=$3 OR (lease_id IS NULL AND (SELECT count(*) FROM price_research_items WHERE run_id=$1 AND lease_id=$3)<4))`, lease.RunID, index, lease.LeaseID)
+	if err != nil {
+		return "", researchError(err)
+	}
+	if reserved.RowsAffected() != 1 {
+		return "", priceresearch.ErrDispatched
+	}
 	target, _, err := readModel(ctx, tx, e.Targets[index].ID, true)
 	if err != nil || !target.Enabled || !target.Available || target.DeletedAt != nil {
 		return "", priceresearch.ErrConflict
@@ -57,6 +64,9 @@ func (r *PriceResearchRepository) BeginCall(ctx context.Context, lease pricerese
 		return "", researchError(err)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET call_id=coalesce(call_id,$3),targets=jsonb_set(targets,$2::text[],to_jsonb(clock_timestamp())) WHERE id=$1`, lease.RunID, []string{strconv.Itoa(index), "dispatched_at"}, id); err != nil {
+		return "", researchError(err)
+	}
+	if _, err = tx.Exec(ctx, `UPDATE price_research_items SET call_id=$3 WHERE run_id=$1 AND target_index=$2`, lease.RunID, index, id); err != nil {
 		return "", researchError(err)
 	}
 	return id, researchCommit(ctx, tx)
@@ -97,6 +107,9 @@ func (r *PriceResearchRepository) FinishCall(ctx context.Context, lease priceres
 	}
 	if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status=$2,outcome=$3,generation_id=NULLIF($4,''),finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1 AND status='calling'`, id, status, outcome, generation); err != nil {
 		return researchError(err)
+	}
+	if err = finishResearchItem(ctx, tx, lease, id, result, code); err != nil {
+		return err
 	}
 	return researchCommit(ctx, tx)
 }

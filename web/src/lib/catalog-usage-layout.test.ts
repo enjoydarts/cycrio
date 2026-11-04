@@ -184,6 +184,10 @@ test('price research displays unknown prices, pending results, official evidence
       finished_at: null,
       updated_count: 2,
       unresolved_count: 3,
+      target_count: 10,
+      completed_count: 7,
+      non_text_count: 2,
+      unclassified_count: 1,
       call_id: null,
       sources: ['https://docs.liquid.ai/pricing'],
     },
@@ -223,6 +227,9 @@ test('price research displays unknown prices, pending results, official evidence
   assert.match(html, /定期更新は\s+Web検索テストの成功まで保留/);
   assert.match(html, /結果不明です。自動で再送しません/);
   assert.match(html, /2 件 \/ 3 件/);
+  assert.match(html, /7 件 \/ 10 件/);
+  assert.match(html, /2 件 \/ 1 件/);
+  assert.doesNotMatch(html, /料金調査モデルのページ|最大 20/);
   assert.match(html, /href="https:\/\/docs.liquid.ai\/pricing"/);
   assert.match(
     html,

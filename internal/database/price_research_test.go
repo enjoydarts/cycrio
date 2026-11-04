@@ -72,7 +72,7 @@ func researchTestReady(t *testing.T, r *PriceResearchRepository, actor string, m
 	}
 }
 func researchResult() priceresearch.Result {
-	return priceresearch.Result{SearchCalls: 1, Sources: []string{"https://openai.com/api/pricing/"}, Usage: ai.Usage{Present: true, Valid: true, InputTokens: 100, OrdinaryInputTokens: 100, OutputTokens: 20}, Cost: ai.Cost{Status: "unknown", Reason: "unknown"}, Quotes: []priceresearch.Quote{{ModelID: "future-model", Provider: "openai", Currency: "USD", InputPerMillion: "1.25", OutputPerMillion: "5", SourceURL: "https://openai.com/api/pricing/", Evidence: "future-model 1.25 5", Conditions: "standard_global"}}}
+	return priceresearch.Result{ModelKind: "text_generation", SearchCalls: 1, Sources: []string{"https://openai.com/api/pricing/"}, Usage: ai.Usage{Present: true, Valid: true, InputTokens: 100, OrdinaryInputTokens: 100, OutputTokens: 20}, Cost: ai.Cost{Status: "unknown", Reason: "unknown"}, Quotes: []priceresearch.Quote{{ModelKind: "text_generation", ModelID: "future-model", Provider: "openai", Currency: "USD", InputPerMillion: "1.25", OutputPerMillion: "5", SourceURL: "https://openai.com/api/pricing/", Evidence: "future-model 1.25 5", Conditions: "standard_global"}}}
 }
 func TestPriceResearchLifecyclePreservesOverridesAndHistory(t *testing.T) {
 	r, catalog, actor, m, _ := researchFixture(t)

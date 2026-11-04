@@ -173,6 +173,43 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    await visit('price-research', width);
+    await wait(
+      'document.querySelector("#research-model").options.length===122',
+    );
+    assert.equal(
+      await js(
+        'return document.querySelector("#research-model").selectedOptions[0].textContent.includes("model-120")',
+      ),
+      true,
+    );
+    assert.equal(
+      await js(
+        `return document.querySelectorAll('[aria-label="料金調査モデルのページ"]').length`,
+      ),
+      0,
+    );
+    assert.match(
+      await js('return document.body.innerText'),
+      /121 件 \/ 121 件/,
+    );
+    assert.match(await js('return document.body.innerText'), /19 件 \/ 2 件/);
+    assert.equal(
+      await js(`return ${button('選んだ提供元の公式価格を更新')}.disabled`),
+      false,
+      'manual research stays available with automatic research disabled',
+    );
+    await input('document.querySelector("#research-search")', 'model-120');
+    await click(button('調査モデルを検索'));
+    await wait('document.querySelector("#research-model").options.length===2');
+    assert.equal(
+      await js(
+        'return document.querySelector("#research-model").selectedOptions[0].textContent.includes("model-120")',
+      ),
+      true,
+    );
+    await layout();
+    await screenshot(`${width}-price-research`);
     await visit('integration-profile', width);
     await wait(
       `${button('本人へのテスト')} && !${button('本人へのテスト')}.disabled`,
@@ -935,6 +972,7 @@ try {
     results.push({
       width,
       cases: [
+        'price-research',
         'integration-profile',
         'budget',
         'budget-conflict',

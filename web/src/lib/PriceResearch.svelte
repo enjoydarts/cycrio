@@ -18,7 +18,6 @@
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import ActionGroup from './ActionGroup.svelte';
-  import Pagination from './Pagination.svelte';
   let {
     catalog,
     token,
@@ -42,7 +41,6 @@
   let controller: ReturnType<typeof createPriceResearchController> | undefined;
   let provider = $state<ResearchProvider>('openai'),
     search = $state(''),
-    offset = $state(0),
     target = $state<ResearchTarget>('openai');
   const busy = $derived(
     ['idle', 'loading', 'saving', 'denied', 'disposed'].includes(view.status),
@@ -97,10 +95,9 @@
       onBusy(false);
     };
   });
-  async function find(event?: SubmitEvent, next = 0) {
+  async function find(event?: SubmitEvent) {
     event?.preventDefault();
-    offset = next;
-    await controller?.search(provider, search, offset);
+    await controller?.search(provider, search);
   }
   async function reload() {
     if (
@@ -212,14 +209,7 @@
             選択可能なモデルがありません。API
             キーを登録し、モデル一覧を同期してください。
           </p>{/if}
-        <Pagination
-          total={view.total}
-          {offset}
-          limit={20}
-          disabled={locked}
-          label="料金調査モデルのページ"
-          onchange={(next) => find(undefined, next)}
-        />
+        <p class="muted">全 {view.total} 件の候補から検索して選べます。</p>
         <label
           ><input
             type="checkbox"
@@ -293,8 +283,12 @@
           ><option value="anthropic">Anthropic</option></select
         >
         <p>
-          利用可能なモデルから最大 20
-          件を調査します。新しいモデルも対象になります。
+          API
+          同期した利用可能なモデル全件を、少数ずつ継続して調査します。OpenRouter
+          はモデル API の価格を使うため対象外です。
+        </p>
+        <p class="muted">
+          調査中にテキスト生成・非テキスト・分類不明に分類します。通常のテキスト入出力の料金だけを採用し、非テキストや分類不明の価格は採用しません。
         </p>
         <Button
           wrap
@@ -317,9 +311,31 @@
       <p>
         {run.kind === 'test' ? 'Web検索テスト' : '公式価格の更新'} · {providerNames[
           run.target_provider
-        ]} · {runNames[run.state]}
+        ]} · {run.kind === 'update' &&
+        run.target_count === 0 &&
+        run.state === 'succeeded'
+          ? '完了（全件の進捗は不明）'
+          : runNames[run.state]}
       </p>
       <dl>
+        {#if run.kind === 'update'}
+          <div>
+            <dt>完了 / 全対象</dt>
+            <dd>
+              {run.target_count > 0
+                ? `${run.completed_count} 件 / ${run.target_count} 件`
+                : '不明（全件進捗の記録なし）'}
+            </dd>
+          </div>
+          <div>
+            <dt>非テキスト / 分類不明</dt>
+            <dd>
+              {run.target_count > 0
+                ? `${run.non_text_count} 件 / ${run.unclassified_count} 件`
+                : '不明（分類の記録なし）'}
+            </dd>
+          </div>
+        {/if}
         <div>
           <dt>開始 / 完了（日本時間）</dt>
           <dd>{datetime(run.started_at)} / {datetime(run.finished_at)}</dd>
@@ -365,6 +381,10 @@
   }
   .research-grid .box {
     margin-bottom: 0;
+  }
+  .research select {
+    min-width: 0;
+    max-width: 100%;
   }
   .research :global(.ui-actions) {
     margin-top: 1rem;

@@ -135,18 +135,35 @@ export function createPriceResearchController(
           success: null,
         });
     },
-    search(provider: ResearchProvider, search: string, offset = 0) {
+    search(provider: ResearchProvider, search: string) {
       return perform(async (signal) => {
-        const page = await catalog.list(
-          { provider, search, offset },
-          token,
-          signal,
+        const candidates: Model[] = [];
+        let offset = 0;
+        for (;;) {
+          const page = await catalog.list(
+            { provider, limit: 100, offset },
+            token,
+            signal,
+          );
+          if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
+          candidates.push(...page.models);
+          offset += page.models.length;
+          if (offset >= page.total) break;
+          if (!page.models.length) throw new ApiError('dependency_unavailable');
+        }
+        const query = search.trim().toLocaleLowerCase();
+        const models = [
+          ...new Map(candidates.map((model) => [model.id, model])).values(),
+        ].filter(
+          (model) => model.enabled && model.available && !model.deleted_at,
         );
         return {
-          models: page.models.filter(
-            (model) => model.enabled && model.available && !model.deleted_at,
+          models: models.filter((model) =>
+            `${model.display_name} ${model.model_id}`
+              .toLocaleLowerCase()
+              .includes(query),
           ),
-          total: page.total,
+          total: models.length,
         };
       });
     },

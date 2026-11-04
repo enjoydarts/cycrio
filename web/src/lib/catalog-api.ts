@@ -80,6 +80,7 @@ export type CatalogFilter = {
   provider?: ModelProvider | '';
   search?: string;
   offset?: number;
+  limit?: 20 | 100;
 };
 export type ModelInput = Pick<
   Model,
@@ -357,12 +358,12 @@ export function createCatalogAPI(base: string, fetcher: typeof fetch = fetch) {
         provider: filter.provider ?? '',
         search: filter.search ?? '',
         include_disabled: 'true',
-        limit: '20',
+        limit: String(filter.limit ?? 20),
         offset: String(filter.offset ?? 0),
       });
       const v = record(await request(`catalog?${params}`, token, signal));
       return {
-        models: array(v.models, parseModel, 20),
+        models: array(v.models, parseModel, filter.limit ?? 20),
         total: integer(v.total),
       };
     },

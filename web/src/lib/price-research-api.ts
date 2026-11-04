@@ -13,6 +13,10 @@ export type ResearchRun = {
   finished_at: string | null;
   updated_count: number;
   unresolved_count: number;
+  target_count: number;
+  completed_count: number;
+  non_text_count: number;
+  unclassified_count: number;
   call_id: string | null;
   sources: string[];
 };
@@ -114,6 +118,10 @@ export function parseResearchRun(value: unknown): ResearchRun {
     finished_at: nullable(v.finished_at, timestamp),
     updated_count: integer(v.updated_count),
     unresolved_count: integer(v.unresolved_count),
+    target_count: integer(v.target_count),
+    completed_count: integer(v.completed_count),
+    non_text_count: integer(v.non_text_count),
+    unclassified_count: integer(v.unclassified_count),
     call_id: nullable(v.call_id, uuid),
     sources: v.sources.map(sourceURL),
   };

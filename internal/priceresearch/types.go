@@ -36,6 +36,7 @@ type Target struct {
 	DisplayName string
 }
 type Result struct {
+	ModelKind     string
 	CallsRecorded bool
 	Quotes        []Quote
 	Sources       []string
@@ -45,6 +46,7 @@ type Result struct {
 	SearchCalls   int
 }
 type Quote struct {
+	ModelKind               string  `json:"model_kind,omitempty"`
 	ModelID                 string  `json:"model_id"`
 	Provider                string  `json:"provider"`
 	Currency                string  `json:"currency"`
@@ -86,18 +88,22 @@ type RunInput struct {
 	TargetProvider  string `json:"target_provider"`
 }
 type Run struct {
-	ID              string     `json:"id"`
-	Kind            string     `json:"kind"`
-	TargetProvider  string     `json:"target_provider"`
-	State           string     `json:"state"`
-	ErrorCode       string     `json:"error_code"`
-	CreatedAt       time.Time  `json:"created_at"`
-	StartedAt       *time.Time `json:"started_at"`
-	FinishedAt      *time.Time `json:"finished_at"`
-	UpdatedCount    int        `json:"updated_count"`
-	UnresolvedCount int        `json:"unresolved_count"`
-	CallID          *string    `json:"call_id"`
-	Sources         []string   `json:"sources"`
+	TargetCount       int        `json:"target_count"`
+	CompletedCount    int        `json:"completed_count"`
+	NonTextCount      int        `json:"non_text_count"`
+	UnclassifiedCount int        `json:"unclassified_count"`
+	ID                string     `json:"id"`
+	Kind              string     `json:"kind"`
+	TargetProvider    string     `json:"target_provider"`
+	State             string     `json:"state"`
+	ErrorCode         string     `json:"error_code"`
+	CreatedAt         time.Time  `json:"created_at"`
+	StartedAt         *time.Time `json:"started_at"`
+	FinishedAt        *time.Time `json:"finished_at"`
+	UpdatedCount      int        `json:"updated_count"`
+	UnresolvedCount   int        `json:"unresolved_count"`
+	CallID            *string    `json:"call_id"`
+	Sources           []string   `json:"sources"`
 }
 type Lease struct {
 	RunID   string `json:"run_id"`

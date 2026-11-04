@@ -30,12 +30,12 @@ func researchError(err error) error {
 	return priceresearch.ErrUnavailable
 }
 
-const researchRunColumns = `id,kind,target_provider,state,error_code,created_at,started_at,finished_at,updated_count,unresolved_count,call_id,sources`
+const researchRunColumns = `id,kind,target_provider,state,error_code,created_at,started_at,finished_at,updated_count,unresolved_count,call_id,sources,target_count,completed_count,non_text_count,unclassified_count`
 
 func scanResearchRun(row interface{ Scan(...any) error }) (priceresearch.Run, error) {
 	var r priceresearch.Run
 	var sources []byte
-	err := row.Scan(&r.ID, &r.Kind, &r.TargetProvider, &r.State, &r.ErrorCode, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.UpdatedCount, &r.UnresolvedCount, &r.CallID, &sources)
+	err := row.Scan(&r.ID, &r.Kind, &r.TargetProvider, &r.State, &r.ErrorCode, &r.CreatedAt, &r.StartedAt, &r.FinishedAt, &r.UpdatedCount, &r.UnresolvedCount, &r.CallID, &sources, &r.TargetCount, &r.CompletedCount, &r.NonTextCount, &r.UnclassifiedCount)
 	if err != nil {
 		return r, researchError(err)
 	}
@@ -208,7 +208,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 	if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id IN(SELECT id FROM price_research_runs WHERE state='running' AND lease_until<=clock_timestamp()) AND stage='price_research' AND status='calling'`); err != nil {
 		return nil, researchError(err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='unknown',error_code='lease_expired',finished_at=clock_timestamp(),lease_id=NULL,lease_until=NULL WHERE state='running' AND lease_until<=clock_timestamp()`); err != nil {
+	if err = expireResearchBatches(ctx, tx); err != nil {
 		return nil, researchError(err)
 	}
 	var pending bool
@@ -255,7 +255,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 		return nil, researchError(err)
 	}
 	l := priceresearch.Lease{RunID: id, LeaseID: uuid.NewString()}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='running',started_at=clock_timestamp(),lease_id=$2,lease_until=clock_timestamp()+interval '10 minutes' WHERE id=$1`, id, l.LeaseID); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state='running',started_at=coalesce(started_at,clock_timestamp()),lease_id=$2,lease_until=clock_timestamp()+interval '10 minutes' WHERE id=$1`, id, l.LeaseID); err != nil {
 		return nil, researchError(err)
 	}
 	return append(out, l), researchCommit(ctx, tx)
@@ -362,6 +362,17 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 			return e, researchError(err)
 		}
 		e.Run.CallID = callID
+		if e.Run.Kind == "update" {
+			for index, target := range e.Targets {
+				if _, err = tx.Exec(ctx, `INSERT INTO price_research_items(run_id,target_index,target_id) VALUES($1,$2,$3)`, l.RunID, index, target.ID); err != nil {
+					return e, researchError(err)
+				}
+			}
+			if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET target_count=$2,unresolved_count=$2 WHERE id=$1`, l.RunID, len(e.Targets)); err != nil {
+				return e, researchError(err)
+			}
+			e.Run.TargetCount = len(e.Targets)
+		}
 	}
 	return e, researchCommit(ctx, tx)
 }
@@ -433,7 +444,13 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		code = "configuration_changed"
 	}
 	// Record received usage even if configuration or the lease changed after send.
-	if run.CallID != nil && !result.CallsRecorded {
+	legacyCall := run.Kind == "test"
+	if run.CallID != nil && run.Kind == "update" {
+		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM price_research_items WHERE call_id=$1 AND lease_id=$2 AND state='calling')`, run.CallID, l.LeaseID).Scan(&legacyCall); err != nil {
+			return researchError(err)
+		}
+	}
+	if run.CallID != nil && !result.CallsRecorded && legacyCall {
 		c, err := scanRuntimeCall(tx.QueryRow(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls WHERE id=$1 FOR UPDATE`, *run.CallID))
 		if err != nil {
 			return priceresearch.ErrUnavailable
@@ -472,17 +489,29 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		}
 	}
 	if result.CallsRecorded {
-		if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='provider_unavailable',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id=$1 AND stage='price_research' AND status='calling'`, l.RunID); err != nil {
+		if _, err = tx.Exec(ctx, `UPDATE ai_calls c SET status='unknown',outcome='provider_unavailable',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE c.operation_id=$1 AND c.stage='price_research' AND c.status='calling' AND EXISTS(SELECT 1 FROM price_research_items i WHERE i.call_id=c.id AND i.lease_id=$2)`, l.RunID, l.LeaseID); err != nil {
 			return researchError(err)
 		}
 	}
 	if run.State != "running" || lease == nil || *lease != l.LeaseID || !live {
 		return researchCommit(ctx, tx)
 	}
+	batch := run.Kind == "update" && (result.CallsRecorded || code != "" && code != "research_failed" && run.TargetCount > 0)
+	var progress researchBatchProgress
+	if batch {
+		result, progress, err = researchBatchResult(ctx, tx, run, code)
+		if err != nil {
+			return err
+		}
+	}
 	updated := 0
 	unresolved := len(e.Targets)
 	sources := []string{}
-	if code == "" {
+	if batch {
+		updated = run.UpdatedCount
+		sources = result.Sources
+	}
+	if code == "" || batch && code == "research_failed" {
 		seen := map[string]bool{}
 		quotes := result.Quotes
 		if run.Kind == "test" {
@@ -496,7 +525,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 					break
 				}
 			}
-			if target == nil || seen[target.ID] {
+			if target == nil || seen[target.ID] || q.ModelKind != "text_generation" || !batch && result.ModelKind != "text_generation" {
 				continue
 			}
 			p, err := priceresearch.QuotePrice(q)
@@ -539,7 +568,9 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 				updated++
 			}
 			unresolved--
-			sources = append(sources, q.SourceURL)
+			if !batch {
+				sources = append(sources, q.SourceURL)
+			}
 		}
 		if run.Kind == "test" {
 			unresolved = 0
@@ -563,12 +594,31 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 	if code != "" {
 		state = "failed"
 	}
+	if batch {
+		unresolved = len(e.Targets) - updated - progress.nonText
+		if (code == "" || code == "research_failed") && progress.pending > 0 {
+			state = "queued"
+			code = ""
+		}
+		if _, err = tx.Exec(ctx, `UPDATE price_research_items SET applied_at=clock_timestamp() WHERE run_id=$1 AND state NOT IN('pending','calling') AND applied_at IS NULL`, l.RunID); err != nil {
+			return researchError(err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE price_research_items SET lease_id=NULL WHERE run_id=$1 AND state='pending'`, l.RunID); err != nil {
+			return researchError(err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET target_count=$2,completed_count=$3,non_text_count=$4,unclassified_count=$5 WHERE id=$1`, l.RunID, len(e.Targets), progress.completed, progress.nonText, progress.unclassified); err != nil {
+			return researchError(err)
+		}
+	}
 	raw, _ := json.Marshal(sources)
 	searchCalls := result.SearchCalls
+	if batch {
+		searchCalls = progress.searchCalls
+	}
 	if searchCalls < 0 {
 		searchCalls = 0
 	}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state=$2,error_code=$3,finished_at=clock_timestamp(),updated_count=$4,unresolved_count=$5,sources=$6,search_calls=$7,lease_id=NULL,lease_until=NULL WHERE id=$1`, l.RunID, state, code, updated, unresolved, raw, searchCalls); err != nil {
+	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET state=$2,error_code=$3,finished_at=CASE WHEN $2='queued' THEN NULL ELSE clock_timestamp() END,dispatched_at=CASE WHEN $2='queued' THEN NULL ELSE dispatched_at END,updated_count=$4,unresolved_count=$5,sources=$6,search_calls=$7,lease_id=NULL,lease_until=NULL WHERE id=$1`, l.RunID, state, code, updated, unresolved, raw, searchCalls); err != nil {
 		return researchError(err)
 	}
 	return researchCommit(ctx, tx)

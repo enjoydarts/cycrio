@@ -202,11 +202,9 @@ func TestIntegrationProfileSyncMigrationPreservesAuditHistory(t *testing.T) {
 	ctx := context.Background()
 	p := automationMigrationProvider(t, f.runtime.pool)
 	down, e := p.DownTo(ctx, 37)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 38 || down[0].Direction != "down" {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 38)
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 38, 38)
+	assertMigrationRange(t, up, e, 38, latestMigrationVersion)
 	reader := &syntheticProfileReader{profile: clerkdelete.Profile{Subject: "user_syncAdmin", Email: "verified@example.com", UpdatedAt: time.Now().Add(-time.Second).UnixMilli()}}
 	if _, e = r.SyncProfile(ctx, f.admin, in, reader); e != nil {
 		t.Fatal(e)

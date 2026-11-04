@@ -1,5 +1,7 @@
 <script lang="ts">
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
+  import PriceResearch from '../src/lib/PriceResearch.svelte';
+  import { createCatalogAPI } from '../src/lib/catalog-api.ts';
   import AIUsage from '../src/lib/AIUsage.svelte';
   import AccountSettings from '../src/lib/AccountSettings.svelte';
   import IntegrationSettings from '../src/lib/IntegrationSettings.svelte';
@@ -208,7 +210,17 @@
   }}
 />
 
-{#if mode === 'integration-profile'}
+{#if mode === 'price-research'}
+  <main>
+    <PriceResearch
+      catalog={createCatalogAPI('/synthetic')}
+      apiBase="/synthetic"
+      token={async () => 'synthetic'}
+      onDenied={denied}
+      onSync={() => {}}
+    />
+  </main>
+{:else if mode === 'integration-profile'}
   <main>
     <IntegrationSettings
       api={createIntegrationAPI('/synthetic')}

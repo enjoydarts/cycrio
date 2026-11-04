@@ -8,7 +8,6 @@ import (
 	"github.com/google/uuid"
 	"sort"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 )
@@ -60,6 +59,9 @@ func (s *Service) QueueAutomatic(ctx context.Context, p string) error {
 func (s *Service) Execute(ctx context.Context, l Lease) error {
 	e, err := s.repository.Prepare(ctx, l)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if e.Run.ID != "" && (errors.Is(err, ErrConflict) || errors.Is(err, ErrCredentialsRequired)) {
 			code := "configuration_changed"
 			if errors.Is(err, ErrCredentialsRequired) {
@@ -71,6 +73,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	}
 	key, err := s.resolve(ctx, e.CredentialID)
 	if err != nil || len(key) == 0 {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		return s.finish(ctx, l, e, Result{}, "credentials_required")
 	}
 	defer func() {
@@ -81,6 +86,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	// Recheck after resolving the active encrypted version, immediately before sending.
 	check, err := s.repository.Prepare(ctx, l)
 	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if errors.Is(err, ErrDispatched) {
 			return err
 		}
@@ -93,6 +101,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		return s.finish(ctx, l, e, Result{}, "")
 	}
 	if err = s.repository.Begin(ctx, l); err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if errors.Is(err, ErrDispatched) {
 			return err
 		}
@@ -104,7 +115,30 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	_ = json.Unmarshal(e.Model.RawMetadata, &metadata)
 	request := Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 4096}
 	if recorder, ok := s.repository.(CallRecorder); ok && e.Run.Kind == "update" {
-		result, code := s.researchModels(ctx, l, request, recorder)
+		indices := make([]int, len(request.Targets))
+		for i := range indices {
+			indices[i] = i
+		}
+		if batched, ok := s.repository.(BatchRepository); ok {
+			indices, err = batched.BatchIndices(ctx, l)
+			if err != nil {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				return s.finish(ctx, l, e, Result{CallsRecorded: true}, "configuration_changed")
+			}
+			if len(indices) > ResearchBatchSize {
+				return s.finish(ctx, l, e, Result{CallsRecorded: true}, "configuration_changed")
+			}
+		}
+		seen := map[int]bool{}
+		for _, index := range indices {
+			if index < 0 || index >= len(request.Targets) || seen[index] {
+				return s.finish(ctx, l, e, Result{CallsRecorded: true}, "configuration_changed")
+			}
+			seen[index] = true
+		}
+		result, code := s.researchModels(ctx, l, request, recorder, indices)
 		return s.finish(ctx, l, e, result, code)
 	}
 	result, err := s.client.Research(ctx, request)
@@ -121,37 +155,67 @@ type CallRecorder interface {
 	FinishCall(context.Context, Lease, string, Result, string) error
 }
 
-func (s *Service) researchModels(ctx context.Context, lease Lease, request Request, recorder CallRecorder) (Result, string) {
-	results := make([]Result, len(request.Targets))
-	codes := make([]string, len(request.Targets))
+// BatchRepository selects pending items from a persisted, frozen target list.
+// The original target index remains the per-call accounting/deduplication key.
+const ResearchBatchSize = 4
+
+type BatchRepository interface {
+	BatchIndices(context.Context, Lease) ([]int, error)
+	SkipTarget(context.Context, Lease, int, string) error
+}
+
+func (s *Service) researchModels(ctx context.Context, lease Lease, request Request, recorder CallRecorder, indices []int) (Result, string) {
+	results := make([]Result, len(indices))
+	codes := make([]string, len(indices))
+	for i := range codes {
+		codes[i] = "not_started"
+	}
 	jobs := make(chan int)
 	var workers sync.WaitGroup
 	for n := 0; n < 4; n++ {
 		workers.Add(1)
 		go func() {
 			defer workers.Done()
-			for index := range jobs {
+			for position := range jobs {
+				if ctx.Err() != nil {
+					continue
+				}
+				index := indices[position]
 				callID, err := recorder.BeginCall(ctx, lease, index)
 				if err != nil {
-					codes[index] = "configuration_changed"
+					if ctx.Err() != nil {
+						continue
+					}
+					codes[position] = "configuration_changed"
+					if batched, ok := s.repository.(BatchRepository); ok {
+						bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+						_ = batched.SkipTarget(bounded, lease, index, "configuration_changed")
+						cancel()
+					}
 					continue
 				}
 				single := request
 				single.Targets = []Target{request.Targets[index]}
-				results[index], err = s.client.Research(ctx, single)
+				codes[position] = ""
+				results[position], err = s.client.Research(ctx, single)
 				if err != nil {
-					codes[index] = "research_failed"
+					codes[position] = "research_failed"
 				}
 				bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				if recorder.FinishCall(bounded, lease, callID, results[index], codes[index]) != nil {
-					codes[index] = "research_failed"
+				if recorder.FinishCall(bounded, lease, callID, results[position], codes[position]) != nil {
+					codes[position] = "research_failed"
 				}
 				cancel()
 			}
 		}()
 	}
-	for index := range request.Targets {
-		jobs <- index
+feed:
+	for position := range indices {
+		select {
+		case jobs <- position:
+		case <-ctx.Done():
+			break feed
+		}
 	}
 	close(jobs)
 	workers.Wait()
@@ -165,7 +229,7 @@ func (s *Service) researchModels(ctx context.Context, lease Lease, request Reque
 			out.Sources = append(out.Sources, result.Sources...)
 		}
 	}
-	if succeeded == 0 {
+	if succeeded == 0 && len(indices) > 0 && ctx.Err() == nil {
 		return out, "research_failed"
 	}
 	return out, ""
@@ -178,6 +242,9 @@ func (s *Service) finish(ctx context.Context, l Lease, e Execution, r Result, co
 func ValidProvider(p string) bool       { return p == "openai" || p == "anthropic" }
 func ValidTargetProvider(p string) bool { return ValidProvider(p) || p == "liquid" }
 func Candidates(models []modelcatalog.Model, provider string) []Target {
+	if !ValidTargetProvider(provider) {
+		return []Target{}
+	}
 	sort.SliceStable(models, func(i, j int) bool {
 		a, b := created(models[i]), created(models[j])
 		if a != b {
@@ -190,21 +257,7 @@ func Candidates(models []modelcatalog.Model, provider string) []Target {
 		if m.Provider != provider || !m.Enabled || !m.Available || m.DeletedAt != nil || m.TextInput != nil && !*m.TextInput {
 			continue
 		}
-		id := strings.ToLower(m.ModelID)
-		excluded := false
-		for _, p := range []string{"text-embedding-", "embedding-", "whisper-", "tts-", "dall-e", "gpt-image", "sora-", "gpt-4o-transcribe", "gpt-4o-mini-transcribe", "gpt-4o-mini-tts", "gpt-realtime", "gpt-audio", "omni-moderation", "text-moderation"} {
-			if strings.HasPrefix(id, p) {
-				excluded = true
-				break
-			}
-		}
-		if excluded {
-			continue
-		}
 		out = append(out, Target{m.ID, m.Provider, m.ModelID, m.DisplayName})
-		if len(out) == 20 {
-			break
-		}
 	}
 	return out
 }
