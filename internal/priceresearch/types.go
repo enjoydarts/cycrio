@@ -36,14 +36,15 @@ type Target struct {
 	DisplayName string
 }
 type Result struct {
-	ModelKind     string
-	CallsRecorded bool
-	Quotes        []Quote
-	Sources       []string
-	Usage         ai.Usage
-	Cost          ai.Cost
-	GenerationID  string
-	SearchCalls   int
+	ModelKind        string
+	CallsRecorded    bool
+	Quotes           []Quote
+	Sources          []string
+	Usage            ai.Usage
+	Cost             ai.Cost
+	GenerationID     string
+	SearchCalls      int
+	SearchCallsKnown bool
 }
 type Quote struct {
 	ModelKind               string  `json:"model_kind,omitempty"`

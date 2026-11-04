@@ -227,6 +227,21 @@ For text_generation only, prices are USD per ONE MILLION ordinary text tokens at
 	out.Usage = ai.ParseResearchUsage(r.Provider, envelope["usage"])
 	text, sources, calls, complete := researchOutput(r.Provider, envelope)
 	out.SearchCalls = calls
+	if r.Provider == "openai" {
+		var blocks []struct {
+			Type   string `json:"type"`
+			Status string `json:"status"`
+		}
+		rawOutput := bytes.TrimSpace(envelope["output"])
+		if len(rawOutput) > 0 && rawOutput[0] == '[' && json.Unmarshal(rawOutput, &blocks) == nil {
+			out.SearchCallsKnown = true
+			for _, block := range blocks {
+				if block.Type == "web_search_call" && block.Status != "completed" {
+					out.SearchCallsKnown = false
+				}
+			}
+		}
+	}
 	if r.Provider == "anthropic" {
 		var usage struct {
 			Tools struct {
@@ -235,6 +250,7 @@ For text_generation only, prices are USD per ONE MILLION ordinary text tokens at
 		}
 		if json.Unmarshal(envelope["usage"], &usage) == nil && usage.Tools.Searches != nil && *usage.Tools.Searches >= 0 && *usage.Tools.Searches <= 1000 {
 			out.SearchCalls = *usage.Tools.Searches
+			out.SearchCallsKnown = true
 		}
 	}
 	var id string

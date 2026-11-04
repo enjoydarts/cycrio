@@ -353,17 +353,19 @@ func TestPriceResearchMigrationPreservesLegacySnapshotAndProtectsNewProgress(t *
 	r, _, actor, m, _ := researchFixture(t)
 	ctx := context.Background()
 	researchTestReady(t, r, actor, m)
+	// This test exercises v39 progress; v40 has its own evidence preservation test.
+	if _, err := r.pool.Exec(ctx, `DELETE FROM research_call_costs`); err != nil {
+		t.Fatal(err)
+	}
 	p := automationMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 38)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 39 || down[0].Direction != "down" {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 39)
 	id := uuid.NewString()
 	if _, err = r.pool.Exec(ctx, `INSERT INTO price_research_runs(id,kind,target_provider,config_version,requested_by,model_id,state,lease_id,lease_until,targets) VALUES($1,'update','openai',1,$2,$3,'running',$4,clock_timestamp()-interval '1 second','[{"ID":"frozen-old-target"}]')`, id, actor, m.ID, uuid.NewString()); err != nil {
 		t.Fatal(err)
 	}
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 39, 39)
+	assertMigrationRange(t, up, err, 39, latestMigrationVersion)
 	var count int
 	var state, snapshot string
 	if err = r.pool.QueryRow(ctx, `SELECT state,targets::text,(SELECT count(*) FROM price_research_items) FROM price_research_runs WHERE id=$1`, id).Scan(&state, &snapshot, &count); err != nil || count != 0 || state != "running" || snapshot != `[{"ID": "frozen-old-target"}]` {

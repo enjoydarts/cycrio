@@ -35,7 +35,7 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	}
 	command := args[0]
 	switch command {
-	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user":
+	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user", "recalculate-research-costs":
 	default:
 		return errors.New("unknown management command")
 	}
@@ -44,8 +44,19 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	path := flags.String("bootstrap-file", ".local/bootstrap.json", "public sign-in configuration")
 	keyringPath := flags.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	subject := flags.String("user-id", "", "Clerk user ID")
+	apply := flags.Bool("apply", false, "apply research cost recalculation; default is dry run")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid command options")
+	}
+	if *apply && command != "recalculate-research-costs" {
+		return errors.New("invalid command options")
+	}
+	if command == "recalculate-research-costs" {
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			return errors.New("database connection is required")
+		}
+		return recalculateResearchCosts(ctx, dsn, *apply, out)
 	}
 	if command == "init-keyring" {
 		return initializeKeyring(ctx, *keyringPath, func(ctx context.Context) (bool, error) {

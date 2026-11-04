@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/google/uuid"
@@ -455,19 +454,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if err != nil {
 			return priceresearch.ErrUnavailable
 		}
-		usage, err := runtimeNormalizeUsage(result.Usage)
-		if err != nil {
-			usage = ai.Usage{}
-		}
-		cost := result.Cost
-		if result.SearchCalls > 0 && cost.Status != "provider_reported" {
-			cost = ai.Cost{Status: "unknown", Reason: "unknown_search_charge"}
-		}
-		cost, err = runtimeNormalizeCost(cost)
-		if err != nil {
-			cost = ai.Cost{Status: "unknown", Reason: "unknown"}
-		}
-		if _, _, err = runtimeRevision(ctx, tx, c, usage, cost); err != nil {
+		if err = recordResearchCost(ctx, tx, c, result); err != nil {
 			return priceresearch.ErrUnavailable
 		}
 		status, outcome := "succeeded", "success"

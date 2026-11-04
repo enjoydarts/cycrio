@@ -4,7 +4,6 @@ import (
 	"context"
 	"strconv"
 
-	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/google/uuid"
 )
@@ -79,22 +78,15 @@ func (r *PriceResearchRepository) FinishCall(ctx context.Context, lease priceres
 		return researchError(err)
 	}
 	defer tx.Rollback(ctx)
+	// Match Complete/recalculation lock order, including late terminal responses.
+	if _, err = researchState(ctx, tx, true); err != nil {
+		return err
+	}
 	call, err := scanRuntimeCall(tx.QueryRow(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls WHERE id=$1 AND operation_id=$2 AND stage='price_research' FOR UPDATE`, id, lease.RunID))
 	if err != nil {
 		return researchError(err)
 	}
-	usage, err := runtimeNormalizeUsage(result.Usage)
-	if err != nil {
-		usage = ai.Usage{}
-	}
-	cost := result.Cost
-	if result.SearchCalls > 0 && cost.Status != "provider_reported" {
-		cost = ai.Cost{Status: "unknown", Reason: "unknown_search_charge"}
-	}
-	if cost, err = runtimeNormalizeCost(cost); err != nil {
-		cost = ai.Cost{Status: "unknown", Reason: "unknown"}
-	}
-	if _, _, err = runtimeRevision(ctx, tx, call, usage, cost); err != nil {
+	if err = recordResearchCost(ctx, tx, call, result); err != nil {
 		return researchError(err)
 	}
 	status, outcome := "succeeded", "success"
