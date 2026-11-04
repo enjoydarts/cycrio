@@ -1,5 +1,8 @@
 <script lang="ts">
   import Pagination from './Pagination.svelte';
+  import AIBudgetSettings from './AIBudgetSettings.svelte';
+  import { createAIBudgetAPI } from './aibudget-api';
+  import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import Button from './Button.svelte';
   import DataTable from './DataTable.svelte';
   import ActionGroup from './ActionGroup.svelte';
@@ -43,6 +46,7 @@
   }: { api: AIRuntimeAPI; token: TokenProvider; onDenied: () => void } =
     $props();
   let view = $state<UsageView>(emptyUsageView());
+  const budgetAPI = createAIBudgetAPI(PUBLIC_API_BASE_URL);
   let controller: ReturnType<typeof createUsageController> | undefined;
   let purpose = $state<'overview' | 'users' | 'calls'>('overview');
   let selectedAccountName = $state('');
@@ -111,6 +115,14 @@
       >
     {/snippet}
   </LibraryHeader>
+  {#if view.filter.user_id}
+    {#key view.filter.user_id}<AIBudgetSettings
+        owner={view.filter.user_id}
+        api={budgetAPI}
+        {token}
+        {onDenied}
+      />{/key}
+  {/if}
   <LibraryPanel>
     <div class="catalog-ui usage-ui usage-body">
       <nav class="library-tabs" aria-label="原価の表示">

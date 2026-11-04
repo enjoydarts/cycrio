@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"time"
 )
 
 type MailProcessingRepository struct{ pool *pgxpool.Pool }
@@ -139,7 +140,14 @@ func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lo
 		if e = runtimeProfileReady(ctx, tx, p, true, lock); e != nil {
 			out.BlockedReason = "configuration_unavailable"
 		} else {
-			out.Ready = true
+			budget, err := readAIBudget(ctx, tx, owner, time.Now())
+			if err != nil {
+				return out, processingError(err)
+			}
+			if budget.BlockedReason != "budget_pending" {
+				out.BlockedReason = budget.BlockedReason
+			}
+			out.Ready = out.BlockedReason == ""
 		}
 	}
 	return out, nil

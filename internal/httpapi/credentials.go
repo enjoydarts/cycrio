@@ -28,6 +28,7 @@ type handlerOptions struct {
 	catalog         ModelCatalogService
 	priceResearch   PriceResearchService
 	runtime         AIRuntimeService
+	budgets         AIBudgetService
 	routes          AIRoutesService
 	mail            MailAccountService
 	mailOAuth       MailOAuthService

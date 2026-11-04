@@ -1,6 +1,8 @@
 import type { MailAutomationState } from './mail-automation-api.ts';
 
 const administratorAIReasons = new Set([
+  'budget_exceeded',
+  'budget_unknown',
   'runtime_inactive',
   'policy_disabled',
   'full_email_not_allowed',
@@ -28,6 +30,8 @@ export function automationAIWaiting(s: {
 }
 
 export function automationAISetupPath(reasons: string[]): string {
+  if (reasons.some((r) => ['budget_exceeded', 'budget_unknown'].includes(r)))
+    return '/settings/usage';
   return reasons.some((r) =>
     [
       'policy_disabled',
@@ -44,6 +48,15 @@ export const automationAIWaitingDescription =
 
 export function automationProgressStatus(s: MailAutomationState): string {
   if (s.state === 'stopped') return '停止中';
+  if (
+    automationAIWaiting(s) &&
+    automationAISetupPath([
+      s.reason,
+      ...s.blocked_reasons,
+      ...s.preparation_blocked_reasons,
+    ]) === '/settings/usage'
+  )
+    return 'AI 月額上限の確認待ち';
   if (automationAIWaiting(s)) return '管理者のAI設定待ち';
   if (s.state === 'needs_confirmation') return '条件の再確認が必要';
   if (s.state === 'not_configured') return '取り込み開始前';
@@ -58,7 +71,14 @@ export function automationProgressStatus(s: MailAutomationState): string {
 export function automationProgressDescription(s: MailAutomationState): string {
   if (s.state === 'stopped')
     return '取り込み・解析は停止中です。再開すると進捗を引き継ぎます。';
-  if (automationAIWaiting(s)) return automationAIWaitingDescription;
+  if (automationAIWaiting(s))
+    return automationAISetupPath([
+      s.reason,
+      ...s.blocked_reasons,
+      ...s.preparation_blocked_reasons,
+    ]) === '/settings/usage'
+      ? 'AI の月額上限または原価の確認が必要です。取り込み条件と進捗を保持し、判定条件が整うと自動で再開します。'
+      : automationAIWaitingDescription;
   if (s.state === 'needs_confirmation')
     return '条件を確認して開始するまで、取り込み・解析は再開しません。';
   if (s.state === 'not_configured')

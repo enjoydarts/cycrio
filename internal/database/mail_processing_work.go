@@ -358,6 +358,9 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 	}
 	// Lease validation and calling marker are atomic. ai_calls.run_id belongs to
 	// admin tests, so attempt identity is carried solely by operation_id here.
+	if e = checkAIBudget(ctx, tx, w.work.OwnerID); e != nil {
+		return airuntime.Call{}, e
+	}
 	c, e := scanRuntimeCall(tx.QueryRow(ctx, `INSERT INTO ai_calls(id,operation_id,profile_id,scope,consuming_user_id,initiated_by_user_id,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status) VALUES($1,$2,$3,'user',$4,$4,$5,$6,$7,$8,$9,$10,$11,1,'calling') RETURNING `+runtimeCallColumns, uuid.NewString(), w.work.AttemptID, w.work.Profile.ID, w.work.OwnerID, ref.Provider, ref.ID, ref.DisplayName, ref.ModelID, ref.CredentialID, price, stage))
 	if e != nil {
 		return c, processingError(e)
@@ -404,7 +407,7 @@ func validProcessingCompletion(c mailprocessing.Completion) bool {
 		return false
 	}
 	switch c.ErrorCode {
-	case "", "authentication_failed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled", "credentials_unavailable", "source_missing", "uid_validity_changed", "input_too_large", "unsupported_content", "configuration_unavailable", "execution_panic", "recording_failed", "lease_expired", "invalid_request", "transport_error", "request_cancelled", "response_read", "response_too_large", "invalid_json", "provider_http", "provider_error", "model_mismatch", "invalid_output", "refusal", "incomplete", "generation_mismatch", "provider_unavailable":
+	case "", "authentication_failed", "tls_failed", "connection_failed", "timeout", "invalid_response", "cancelled", "credentials_unavailable", "source_missing", "uid_validity_changed", "input_too_large", "unsupported_content", "configuration_unavailable", "execution_panic", "recording_failed", "lease_expired", "invalid_request", "transport_error", "request_cancelled", "response_read", "response_too_large", "invalid_json", "provider_http", "provider_error", "model_mismatch", "invalid_output", "refusal", "incomplete", "generation_mismatch", "provider_unavailable", "budget_exceeded", "budget_unknown", "budget_pending":
 	default:
 		return false
 	}

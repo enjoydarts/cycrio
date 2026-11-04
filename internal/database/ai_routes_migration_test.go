@@ -30,7 +30,9 @@ func allLegacyRouteRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 		if e = rows.Scan(&name); e != nil {
 			t.Fatal(e)
 		}
-		names = append(names, name)
+		if preBudgetMigrationTable(name) {
+			names = append(names, name)
+		}
 	}
 	rows.Close()
 	if rows.Err() != nil {

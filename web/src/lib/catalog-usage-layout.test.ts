@@ -18,6 +18,9 @@ async function component(
 ): Promise<string> {
   replacements = {
     '$app/navigation': moduleURL('export const beforeNavigate=()=>{};'),
+    '$app/env/public': moduleURL(
+      "export const PUBLIC_API_BASE_URL='https://synthetic.invalid';",
+    ),
     ...replacements,
   };
   const source = await readFile(

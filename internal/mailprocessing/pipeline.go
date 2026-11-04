@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/aibudget"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
@@ -311,8 +312,18 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 	if e != nil || len(key) == 0 {
 		return empty, "credentials_unavailable", nil
 	}
-	call, e := s.repo.BeginCall(ctx, l, stage)
+	call, e := s.beginBudgetCall(ctx, l, stage, w.Profile.TimeoutSeconds)
 	if e != nil {
+		switch {
+		case errors.Is(e, aibudget.ErrExceeded):
+			return empty, "budget_exceeded", nil
+		case errors.Is(e, aibudget.ErrUnknown):
+			return empty, "budget_unknown", nil
+		case errors.Is(e, aibudget.ErrPending):
+			return empty, "budget_pending", nil
+		case ctx.Err() != nil:
+			return empty, "request_cancelled", nil
+		}
 		if errors.Is(e, ErrNotFound) || errors.Is(e, ErrConflict) {
 			return empty, "configuration_unavailable", nil
 		}
@@ -353,4 +364,37 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 		return response, "recording_failed", e
 	}
 	return response, outcome, nil
+}
+
+// Recheck only the database authorization while another budgeted call is in
+// flight. A provider request is sent once, after a calling marker is committed.
+func (s *Service) beginBudgetCall(ctx context.Context, l Lease, stage string, timeoutSeconds int) (airuntime.Call, error) {
+	call, err := s.repo.BeginCall(ctx, l, stage)
+	if !errors.Is(err, aibudget.ErrPending) {
+		return call, err
+	}
+	wait, stop := context.WithTimeout(ctx, time.Duration(timeoutSeconds)*time.Second)
+	defer stop()
+	for {
+		timer := time.NewTimer(250 * time.Millisecond)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return airuntime.Call{}, ctx.Err()
+		case <-wait.Done():
+			timer.Stop()
+			if ctx.Err() != nil {
+				return airuntime.Call{}, ctx.Err()
+			}
+			return airuntime.Call{}, aibudget.ErrPending
+		case <-timer.C:
+		}
+		call, err = s.repo.BeginCall(wait, l, stage)
+		if !errors.Is(err, aibudget.ErrPending) {
+			if wait.Err() != nil && ctx.Err() == nil && err != nil {
+				return airuntime.Call{}, aibudget.ErrPending
+			}
+			return call, err
+		}
+	}
 }

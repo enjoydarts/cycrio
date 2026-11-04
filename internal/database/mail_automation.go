@@ -64,6 +64,14 @@ func automationReadiness(ctx context.Context, tx pgx.Tx, owner, account string, 
 	if !credential {
 		reasons = append(reasons, "credentials_required")
 	}
+	budget, e := readAIBudget(ctx, tx, owner, time.Now())
+	if e != nil {
+		return basis, reasons, processingError(e)
+	}
+	// A calling marker is ordinary worker activity, not an administrator wait.
+	if budget.BlockedReason != "" && budget.BlockedReason != "budget_pending" {
+		reasons = append(reasons, budget.BlockedReason)
+	}
 	settings, p, e := processingState(ctx, tx, lock)
 	if e != nil {
 		return basis, reasons, e
@@ -343,7 +351,7 @@ func (r *MailAutomationRepository) control(ctx context.Context, owner, account s
 // Administrator preparation is transient and never revokes the owner's scope.
 func administratorAutomationReason(reason string) bool {
 	switch reason {
-	case "runtime_inactive", "policy_disabled", "full_email_not_allowed", "policy_reconfirmation_required", "configuration_unavailable", "configuration_changed":
+	case "runtime_inactive", "policy_disabled", "full_email_not_allowed", "policy_reconfirmation_required", "configuration_unavailable", "configuration_changed", "budget_exceeded", "budget_unknown":
 		return true
 	}
 	return false
@@ -377,6 +385,17 @@ func pauseAutomation(ctx context.Context, tx pgx.Tx, id, reason string) error {
 				reason = current
 				break
 			}
+		}
+	}
+	if reason == "budget_exceeded" || reason == "budget_unknown" {
+		// Budget changes guard new calls. Let previously authorized calls finish
+		// recording both their cost and result before stopping unsent snapshots.
+		var calling bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_calls c JOIN mail_processing_items i ON i.id=c.operation_id JOIN mail_processing_runs r ON r.id=i.run_id WHERE r.automation_id=$1 AND (c.status='calling' OR i.state='running'))`, id).Scan(&calling); e != nil {
+			return processingError(e)
+		}
+		if calling {
+			return nil
 		}
 	}
 	target := "needs_confirmation"

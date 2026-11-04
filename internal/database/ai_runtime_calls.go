@@ -76,7 +76,7 @@ func (r *AIRuntimeRepository) BeginCall(ctx context.Context, in airuntime.BeginC
 	}
 	if in.ConsumingUserID != nil {
 		var id string
-		if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 AND state='active' FOR SHARE`, *in.ConsumingUserID).Scan(&id); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT id FROM users WHERE id=$1 AND state='active' FOR NO KEY UPDATE`, *in.ConsumingUserID).Scan(&id); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return airuntime.Call{}, airuntime.ErrUnavailable
 			}
@@ -97,6 +97,11 @@ func (r *AIRuntimeRepository) BeginCall(ctx context.Context, in airuntime.BeginC
 	var price *string
 	if ref.Price != nil {
 		price = &ref.Price.ID
+	}
+	if in.Scope == "user" {
+		if err := checkAIBudget(ctx, tx, *in.ConsumingUserID); err != nil {
+			return airuntime.Call{}, err
+		}
 	}
 	c, err := scanRuntimeCall(tx.QueryRow(ctx, `INSERT INTO ai_calls(id,operation_id,run_id,profile_id,scope,consuming_user_id,initiated_by_user_id,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'calling') RETURNING `+runtimeCallColumns, uuid.NewString(), in.OperationID, in.RunID, in.ProfileID, in.Scope, in.ConsumingUserID, in.InitiatedByUserID, ref.Provider, ref.ID, ref.DisplayName, ref.ModelID, ref.CredentialID, price, in.Stage, in.AttemptNo))
 	if err != nil {

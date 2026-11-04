@@ -31,6 +31,9 @@ export type PublicProcessingProfile = {
   timeout_seconds: number;
 };
 export const blockedReasons = [
+  'budget_exceeded',
+  'budget_unknown',
+  'budget_pending',
   '',
   'account_not_ready',
   'credentials_required',
@@ -92,6 +95,9 @@ export type ProcessingRun = {
   finished_at: string | null;
 };
 export const processingErrorCodes = [
+  'budget_exceeded',
+  'budget_unknown',
+  'budget_pending',
   '',
   'authentication_failed',
   'tls_failed',

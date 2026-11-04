@@ -173,6 +173,61 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    for (const mode of ['budget', 'budget-conflict', 'budget-uncertain']) {
+      await visit(mode, width);
+      await wait(
+        `${button('ユーザー・メール別')} && !${button('ユーザー・メール別')}.disabled`,
+      );
+      await click(button('ユーザー・メール別'));
+      await wait(
+        'Array.from(document.querySelectorAll("button")).some(e=>e.textContent.trim()==="この利用者を表示")',
+      );
+      await click(button('この利用者を表示'));
+      await wait('document.querySelector("#ai-budget-limit")!==null');
+      await wait(`!${button('ユーザー・メール別')}.disabled`);
+      assert.equal(
+        await js(
+          'return window.browserTest.requests.filter(r=>r.method==="GET"&&r.url.includes("/budgets/")).length',
+        ),
+        1,
+        'Updating the usage report must not reload the same owner budget',
+      );
+      await input('document.querySelector("#ai-budget-limit")', '0');
+      assert.equal(
+        await js(`return ${button('月額上限を保存')}.disabled`),
+        true,
+      );
+      await click('document.querySelector(".confirmation input")');
+      await click(button('月額上限を保存'));
+      if (mode === 'budget-conflict') {
+        await wait('document.body.innerText.includes("元の基準")');
+        assert.equal(
+          await js('return document.querySelector("#ai-budget-limit").value'),
+          '0',
+        );
+      } else {
+        await wait(
+          'document.body.innerText.includes("月額上限を保存しました")',
+        );
+        await wait('document.body.innerText.includes("新しい解析を停止")');
+      }
+      assert.equal(
+        await js(
+          'return window.browserTest.requests.filter(r=>r.method==="PUT"&&r.url.includes("/budgets/")).length',
+        ),
+        1,
+      );
+      if (mode === 'budget-uncertain')
+        assert.deepEqual(
+          await js(
+            'const requests=window.browserTest.requests.filter(r=>r.url.includes("/budgets/"));const saved=requests.findIndex(r=>r.method==="PUT");return requests.slice(saved).map(r=>r.method)',
+          ),
+          ['PUT', 'GET'],
+          'An uncertain save must read the stored result after its only PUT',
+        );
+      await layout();
+      await screenshot(`${mode}-${width}`);
+    }
     for (const mode of ['register', 'edit']) {
       await visit(mode, width);
       await wait('document.querySelector("form input")!==null');
@@ -764,6 +819,9 @@ try {
     results.push({
       width,
       cases: [
+        'budget',
+        'budget-conflict',
+        'budget-uncertain',
         'register',
         'edit',
         'partial-amount',

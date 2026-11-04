@@ -25,7 +25,9 @@ func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 		if err = rows.Scan(&name); err != nil {
 			t.Fatal(err)
 		}
-		names = append(names, name)
+		if preBudgetMigrationTable(name) {
+			names = append(names, name)
+		}
 	}
 	rows.Close()
 	if rows.Err() != nil {

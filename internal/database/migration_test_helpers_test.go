@@ -8,7 +8,14 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestMigrationVersion = 34
+const latestMigrationVersion = 35
+
+// Budget tables first exist in v35 and are not legacy records in snapshots
+// compared against earlier schemas. Exclude only these explicit new tables;
+// empty legacy tables must remain covered by the record comparisons.
+func preBudgetMigrationTable(table string) bool {
+	return table != "ai_user_budgets" && table != "ai_user_budget_audit"
+}
 
 // assertMigrationRange checks every applied version, including direction and
 // count, so adding newer migrations does not weaken an older round-trip test.

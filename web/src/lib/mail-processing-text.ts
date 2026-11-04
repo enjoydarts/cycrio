@@ -17,6 +17,12 @@ export const processingBlocked: Record<
   ProcessingPreview['blocked_reason'],
   string
 > = {
+  budget_exceeded:
+    'AI の月額上限に達したため、新しい解析を停止しています。管理者に確認してください。',
+  budget_unknown:
+    'AI の原価を確認できないため、新しい解析を停止しています。管理者に確認してください。',
+  budget_pending:
+    '実行中の AI 呼び出しの原価確定を待っています。完了後に再試行してください。',
   '': '',
   account_not_ready: '接続確認済みのアカウントが必要です。',
   credentials_required: '接続情報を更新して接続確認を行ってください。',
@@ -32,6 +38,12 @@ export const processingBlocked: Record<
 };
 export const processingReasons: Record<ProcessingResult['error_code'], string> =
   {
+    budget_exceeded:
+      'AI の月額上限に達したため、解析を停止しました。管理者に確認してください。',
+    budget_unknown:
+      'AI の原価を確認できないため、解析を停止しました。管理者に確認してください。',
+    budget_pending:
+      '実行中の AI 呼び出しの原価確定を待ち、解析を保留しました。',
     '': '',
     authentication_failed: 'メール接続の認証に失敗しました。',
     tls_failed: '安全なメール接続を確立できませんでした。',

@@ -57,6 +57,9 @@
     );
   const reasons = $derived(s?.preparation_blocked_reasons ?? []);
   const blockedLabels: Record<string, string> = {
+    budget_exceeded: 'AI の月額上限に達しました。管理者に確認してください',
+    budget_unknown: 'AI の原価を確認できません。管理者に確認してください',
+    budget_pending: '実行中の AI 呼び出しの原価確定を待っています',
     account_not_ready: 'メールの接続確認が必要です',
     folders_required: '対象フォルダーを選択してください',
     credentials_required: 'メール認証情報を更新してください',
@@ -92,6 +95,15 @@
         label: 'メール連携を確認',
       };
     if (reasons.length) {
+      if (
+        reasons.some((r) => ['budget_exceeded', 'budget_unknown'].includes(r))
+      )
+        return session.user?.role === 'platform_admin'
+          ? { href: '/settings/usage', label: 'AI の原価と月額上限を確認する' }
+          : {
+              href: null,
+              label: '管理者による AI 月額上限の確認をお待ちください',
+            };
       const permission = reasons.some((r) =>
         [
           'policy_disabled',

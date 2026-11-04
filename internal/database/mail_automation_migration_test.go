@@ -45,7 +45,9 @@ func allAutomationLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]str
 		if e = rows.Scan(&name); e != nil {
 			t.Fatal(e)
 		}
-		tables = append(tables, name)
+		if preBudgetMigrationTable(name) {
+			tables = append(tables, name)
+		}
 	}
 	rows.Close()
 	if rows.Err() != nil {

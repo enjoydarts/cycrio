@@ -29,7 +29,9 @@ func allStandardLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]strin
 		if e = rows.Scan(&n); e != nil {
 			t.Fatal(e)
 		}
-		names = append(names, n)
+		if preBudgetMigrationTable(n) {
+			names = append(names, n)
+		}
 	}
 	rows.Close()
 	if rows.Err() != nil {

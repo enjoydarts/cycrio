@@ -63,6 +63,19 @@ export function processingAction(
   admin: boolean,
 ): { label: string; href: string | null } | null {
   switch (reason) {
+    case 'budget_exceeded':
+    case 'budget_unknown':
+      return {
+        label: admin
+          ? 'AI の原価と月額上限を確認する'
+          : '管理者による AI 月額上限の確認をお待ちください',
+        href: admin ? '/settings/usage' : null,
+      };
+    case 'budget_pending':
+      return {
+        label: '実行中の AI 呼び出しの完了をお待ちください',
+        href: null,
+      };
     case 'account_not_ready':
     case 'credentials_required':
     case 'folders_required':
@@ -130,6 +143,16 @@ export function setupReadiness(input: {
       ? 'full_email_not_allowed'
       : (input.preview?.blocked_reason ?? 'configuration_unavailable');
   const action = processingAction(effectiveReason, input.admin);
+  if (effectiveReason.startsWith('budget_'))
+    return {
+      stage: 'ai',
+      title:
+        effectiveReason === 'budget_pending'
+          ? 'AI の原価確定を待っています'
+          : 'AI 月額上限の確認が必要です',
+      label: action?.label ?? '管理者に確認してください',
+      href: action?.href ?? null,
+    };
   return {
     stage:
       effectiveReason === 'full_email_not_allowed' ||

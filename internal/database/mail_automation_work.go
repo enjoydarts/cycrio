@@ -17,7 +17,7 @@ func (r *MailAutomationRepository) Tick(ctx context.Context, limit int) (int, er
 	if limit < 1 || limit > 100 {
 		return 0, mailautomation.ErrInvalid
 	}
-	rows, e := r.pool.Query(ctx, `SELECT a.owner_id,a.account_id FROM mail_automations a JOIN users u ON u.id=a.owner_id AND u.state='active' WHERE a.state='enabled' OR (a.state='needs_confirmation' AND a.reason IN ('runtime_inactive','policy_disabled','full_email_not_allowed','policy_reconfirmation_required','configuration_unavailable','configuration_changed') AND coalesce((SELECT action FROM mail_automation_audit WHERE automation_id=a.id ORDER BY version DESC,created_at DESC,id DESC LIMIT 1),'')<>'stopped') ORDER BY a.updated_at,a.id LIMIT $1`, limit)
+	rows, e := r.pool.Query(ctx, `SELECT a.owner_id,a.account_id FROM mail_automations a JOIN users u ON u.id=a.owner_id AND u.state='active' WHERE a.state='enabled' OR (a.state='needs_confirmation' AND a.reason IN ('runtime_inactive','policy_disabled','full_email_not_allowed','policy_reconfirmation_required','configuration_unavailable','configuration_changed','budget_exceeded','budget_unknown') AND coalesce((SELECT action FROM mail_automation_audit WHERE automation_id=a.id ORDER BY version DESC,created_at DESC,id DESC LIMIT 1),'')<>'stopped') ORDER BY a.updated_at,a.id LIMIT $1`, limit)
 	if e != nil {
 		return 0, processingError(e)
 	}

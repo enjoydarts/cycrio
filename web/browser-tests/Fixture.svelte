@@ -1,5 +1,7 @@
 <script lang="ts">
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
+  import AIUsage from '../src/lib/AIUsage.svelte';
+  import { createAIRuntimeAPI } from '../src/lib/airuntime-api.ts';
   import SubscriptionNameModal from '../src/lib/SubscriptionNameModal.svelte';
   import AnalysisAttach from '../src/lib/AnalysisAttach.svelte';
   import SubscriptionChangeHistory from '../src/lib/SubscriptionChangeHistory.svelte';
@@ -199,7 +201,15 @@
   }}
 />
 
-{#if mode.startsWith('notifications')}
+{#if mode.startsWith('budget')}
+  <main>
+    <AIUsage
+      api={createAIRuntimeAPI('/synthetic')}
+      token={async () => 'synthetic'}
+      onDenied={denied}
+    />
+  </main>
+{:else if mode.startsWith('notifications')}
   <AppShell
     user={notificationUser}
     pathname={fixturePage.url.pathname}

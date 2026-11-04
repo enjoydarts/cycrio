@@ -655,11 +655,9 @@ func TestNotificationMigrationPreservesContractsAndGuardsHistory(t *testing.T) {
 		t.Fatal(e)
 	}
 	down, e := p.DownTo(ctx, 33)
-	if e != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 34 {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 34)
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 34, 34)
+	assertMigrationRange(t, up, e, 34, latestMigrationVersion)
 	if e = f.runtime.pool.QueryRow(ctx, `SELECT to_jsonb(s)::text FROM subscriptions s WHERE id=$1`, c.ID).Scan(&after); e != nil || before != after {
 		t.Fatal("migration changed confirmed contract", before, after, e)
 	}

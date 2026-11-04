@@ -114,13 +114,23 @@ export function gettingStartedGuide(
       label: '停止状態と再開条件を見る',
       href: analysis,
     };
-  if (automationAIWaiting(automation))
+  if (automationAIWaiting(automation)) {
+    const budgetWaiting =
+      automationAISetupPath([
+        automation.reason,
+        ...automation.blocked_reasons,
+        ...automation.preparation_blocked_reasons,
+      ]) === '/settings/usage';
     return {
       stage: 'preparation',
-      title: '管理者のAI設定待ち',
-      description: automationAIWaitingDescription,
+      title: budgetWaiting ? 'AI 月額上限の確認待ち' : '管理者のAI設定待ち',
+      description: budgetWaiting
+        ? 'AI の月額上限または原価の確認が必要です。条件と進捗を保持しています。判定条件が整うと自動で再開します。'
+        : automationAIWaitingDescription,
       label: admin
-        ? '管理者のAI設定を確認する'
+        ? budgetWaiting
+          ? 'AI の原価と月額上限を確認する'
+          : '管理者のAI設定を確認する'
         : '管理者の準備をお待ちください',
       href: admin
         ? automationAISetupPath([
@@ -130,6 +140,7 @@ export function gettingStartedGuide(
           ])
         : null,
     };
+  }
   if (automation.state === 'needs_confirmation')
     return {
       stage: 'confirmation',
