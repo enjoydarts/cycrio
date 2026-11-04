@@ -8,7 +8,7 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestMigrationVersion = 37
+const latestMigrationVersion = 38
 
 // Budget tables first exist in v35 and are not legacy records in snapshots
 // compared against earlier schemas. Exclude only these explicit new tables;

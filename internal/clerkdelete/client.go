@@ -158,12 +158,7 @@ func decodeResponse(rsp *http.Response, into any) bool {
 	return err == nil && len(raw) <= maxResponseBytes && json.Unmarshal(raw, into) == nil
 }
 
-func (c *Client) Delete(ctx context.Context, target Target, secret []byte) Result {
-	if !validTarget(target, secret) {
-		return Result{Code: "configuration_unavailable"}
-	}
-	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
+func (c *Client) verifyTarget(ctx context.Context, target Target, secret []byte) Result {
 	rsp, err := c.request(ctx, http.MethodGet, "/instance", secret)
 	if err != nil {
 		return transportResult(err)
@@ -187,7 +182,19 @@ func (c *Client) Delete(ctx context.Context, target Target, secret []byte) Resul
 	if binding := c.verifyIssuer(ctx, target.Issuer, secret); binding.Code != "" {
 		return binding
 	}
-	rsp, err = c.request(ctx, http.MethodDelete, "/users/"+url.PathEscape(target.Subject), secret)
+	return Result{}
+}
+
+func (c *Client) Delete(ctx context.Context, target Target, secret []byte) Result {
+	if !validTarget(target, secret) {
+		return Result{Code: "configuration_unavailable"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	if binding := c.verifyTarget(ctx, target, secret); binding.Code != "" {
+		return binding
+	}
+	rsp, err := c.request(ctx, http.MethodDelete, "/users/"+url.PathEscape(target.Subject), secret)
 	if err != nil {
 		return transportResult(err)
 	}

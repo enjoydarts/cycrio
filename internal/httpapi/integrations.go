@@ -11,6 +11,7 @@ import (
 )
 
 type IntegrationService interface {
+	SyncProfile(context.Context, string, integrations.ProfileSyncInput) (integrations.ProfileSyncResult, error)
 	View(context.Context, string) (integrations.View, error)
 	Configure(context.Context, string, integrations.ConfigInput) (integrations.Config, error)
 	Test(context.Context, string, integrations.Request) (integrations.Attempt, error)
@@ -55,6 +56,13 @@ func registerIntegrations(mux *http.ServeMux, service IntegrationService, protec
 			return nil, integrations.ErrInvalid
 		}
 		return service.Test(r.Context(), actor, in)
+	})
+	admin("POST /v1/admin/integrations/profile/sync", func(w http.ResponseWriter, r *http.Request, actor string) (any, error) {
+		var in integrations.ProfileSyncInput
+		if e := readSubscriptionJSON(w, r, &in, []string{"expected_version"}, "expected_version"); e != nil {
+			return nil, integrations.ErrInvalid
+		}
+		return service.SyncProfile(r.Context(), actor, in)
 	})
 	for _, provider := range []string{"clerk", "resend"} {
 		mux.HandleFunc("POST /v1/webhooks/"+provider, func(w http.ResponseWriter, r *http.Request) {

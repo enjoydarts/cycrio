@@ -3,6 +3,7 @@ package integrations
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/clerkdelete"
 	"time"
 )
 
@@ -28,6 +29,16 @@ type Request struct {
 	RequestID       string `json:"request_id"`
 	ExpectedVersion int64  `json:"expected_version"`
 	Confirm         bool   `json:"confirm"`
+}
+type ProfileSyncInput struct {
+	ExpectedVersion int64 `json:"expected_version"`
+}
+type ProfileSyncResult struct {
+	ProfileReady    bool       `json:"profile_ready"`
+	ProfileSyncedAt *time.Time `json:"profile_synced_at"`
+}
+type ProfileReader interface {
+	ReadProfile(context.Context, clerkdelete.Target, []byte) (clerkdelete.Profile, error)
 }
 type Attempt struct {
 	ID         string    `json:"id"`
@@ -57,6 +68,7 @@ type Sender interface {
 	Send(context.Context, Work) SendResult
 }
 type Repository interface {
+	SyncProfile(context.Context, string, ProfileSyncInput, ProfileReader) (ProfileSyncResult, error)
 	View(context.Context, string) (View, error)
 	Configure(context.Context, string, ConfigInput) (Config, error)
 	Send(context.Context, string, Request, Sender) (Attempt, error)

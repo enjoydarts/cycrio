@@ -231,6 +231,44 @@ test('integration landing prioritizes saved setup and separates webhook, send an
   assert.equal((html.match(/<form\b/g) ?? []).length, 0);
   assert.match(html, /送信設定を編集/);
 });
+test('integration test pane offers explicit self profile sync without requiring a webhook or revealing an address', async () => {
+  const Component = (
+    await import(
+      await component('IntegrationSettings', {
+        pane: 'test',
+        view: {
+          ...emptyIntegrationState(),
+          version: 1,
+          view: {
+            config: {
+              version: 1,
+              sender: 'sender@example.test',
+              clerk_instance_id: 'ins_synthetic',
+            },
+            profile_ready: false,
+            profile_synced_at: null,
+            resend_ready: true,
+            clerk_webhook_ready: false,
+            resend_webhook_ready: false,
+            attempts: [],
+          },
+        },
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => '', onDenied() {} },
+  }).body;
+  assert.match(html, /本人の確認済みメールを同期/);
+  assert.match(html, /Webhookなしのローカル環境でも同期できます/);
+  assert.match(html, /同期だけではメールを送信しません/);
+  assert.match(html, /Clerk Backend APIキーを登録/);
+  assert.doesNotMatch(html, /新しい user.updated|private@example.com/);
+  assert.match(
+    html,
+    /<button[^>]*type="button"[^>]*>(?:<!--.*?-->)*本人の確認済みメールを同期/,
+  );
+});
 test('successful AI test presents activation as the next action without another paid test form', async () => {
   const fixture = setupFixture();
   const controller = createAISetupController(

@@ -14,6 +14,11 @@ import (
 
 type integrationStub struct{ calls int }
 
+func (s *integrationStub) SyncProfile(context.Context, string, integrations.ProfileSyncInput) (integrations.ProfileSyncResult, error) {
+	s.calls++
+	return integrations.ProfileSyncResult{ProfileReady: true}, nil
+}
+
 func (s *integrationStub) View(context.Context, string) (integrations.View, error) {
 	s.calls++
 	return integrations.View{Attempts: []integrations.Attempt{}}, nil
@@ -66,6 +71,39 @@ func TestIntegrationAuthorizationAndStrictInput(t *testing.T) {
 		w = request(h, "POST", "/v1/webhooks/clerk", "", "")
 		if w.Code != 400 {
 			t.Fatal("unsigned webhook accepted", w.Code)
+		}
+	}
+}
+
+func TestIntegrationProfileSyncAuthorizationAndStrictInput(t *testing.T) {
+	for _, role := range []string{"user", "platform_admin"} {
+		s := &integrationStub{}
+		h := NewHandler(configured(), verifyFunc(func(context.Context, string) (auth.Identity, error) { return auth.Identity{Subject: "user_self"}, nil }), func(context.Context, string, string) (database.Principal, error) {
+			return database.Principal{ID: "11111111-1111-4111-8111-111111111111", Role: role}, nil
+		}, nil, WithIntegrations(s))
+		for _, body := range []string{`{"expected_version":1}`, `{"expected_version":1,"subject":"user_other"}`, `{"expected_version":1,"email":"other@example.com"}`, `{"expected_version":1,"expected_version":2}`, `{}`} {
+			r := httptest.NewRequest("POST", "/v1/admin/integrations/profile/sync", strings.NewReader(body))
+			r.Header.Set("Content-Type", "application/json")
+			r.Header.Set("Authorization", "Bearer valid")
+			r.Header.Set("Origin", "http://localhost:3100")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			want := 400
+			if role == "user" {
+				want = 403
+			} else if body == `{"expected_version":1}` {
+				want = 200
+			}
+			if w.Code != want {
+				t.Fatal(role, body, w.Code, w.Body.String())
+			}
+		}
+		expected := 0
+		if role == "platform_admin" {
+			expected = 1
+		}
+		if s.calls != expected {
+			t.Fatal("unsafe body or role reached sync", role, s.calls)
 		}
 	}
 }

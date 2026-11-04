@@ -22,6 +22,7 @@ test('settings conflicts retain the draft until the administrator explicitly ado
   let remote = snapshot();
   const versions: number[] = [];
   const api: IntegrationAPI = {
+    syncProfile: async () => ({ profile_ready: true, profile_synced_at: null }),
     view: async () => remote,
     save: async (input) => {
       versions.push(input.expected_version);
@@ -64,6 +65,7 @@ test('test send requires confirmation and preserves the exact request after resp
   const requests: unknown[] = [];
   let fail = true;
   const api: IntegrationAPI = {
+    syncProfile: async () => ({ profile_ready: true, profile_synced_at: null }),
     view: async () => snapshot(),
     save: async () => snapshot().config,
     test: async (request) => {

@@ -14,9 +14,7 @@ func TestClerkErasureMigrationKeepsLegacyRequestsAndBlocksDownForPendingTargets(
 	ctx := context.Background()
 	p := automationMigrationProvider(t, pool)
 	down, e := p.DownTo(ctx, 36)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 37 || down[0].Direction != "down" {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 37)
 	owner, request, nonce := uuid.NewString(), uuid.NewString(), uuid.NewString()
 	if _, e = pool.Exec(ctx, `INSERT INTO users(id,state) VALUES($1,'deleting')`, owner); e != nil {
 		t.Fatal(e)
@@ -25,7 +23,7 @@ func TestClerkErasureMigrationKeepsLegacyRequestsAndBlocksDownForPendingTargets(
 		t.Fatal(e)
 	}
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 37, 37)
+	assertMigrationRange(t, up, e, 37, latestMigrationVersion)
 	var count int
 	if e = pool.QueryRow(ctx, `SELECT count(*) FROM clerk_erasure_outbox`).Scan(&count); e != nil || count != 0 {
 		t.Fatal("legacy withdrawal retroactively queued remote deletion", count, e)

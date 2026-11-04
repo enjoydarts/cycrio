@@ -40,6 +40,10 @@ export type TestRequest = {
   expected_version: number;
   confirm: boolean;
 };
+export type ProfileSyncResult = {
+  profile_ready: boolean;
+  profile_synced_at: string | null;
+};
 const config = (v: unknown): IntegrationConfig => {
   const x = routeRecord(v);
   return {
@@ -125,6 +129,21 @@ export function createIntegrationAPI(
   return {
     view: async (token: TokenProvider, signal?: AbortSignal) =>
       parseIntegrationView(await request('GET', '', token, signal)),
+    syncProfile: async (
+      input: { expected_version: number },
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ): Promise<ProfileSyncResult> => {
+      const x = routeRecord(
+        await request('POST', '/profile/sync', token, signal, {
+          expected_version: input.expected_version,
+        }),
+      );
+      return {
+        profile_ready: routeBool(x.profile_ready),
+        profile_synced_at: routeNullable(x.profile_synced_at, routeTime),
+      };
+    },
     save: async (
       input: {
         expected_version: number;

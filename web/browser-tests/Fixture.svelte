@@ -2,6 +2,8 @@
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
   import AIUsage from '../src/lib/AIUsage.svelte';
   import AccountSettings from '../src/lib/AccountSettings.svelte';
+  import IntegrationSettings from '../src/lib/IntegrationSettings.svelte';
+  import { createIntegrationAPI } from '../src/lib/integrations-api.ts';
   import UsageOverview from '../src/lib/UsageOverview.svelte';
   import { report as costReport } from '../src/lib/airuntime-test-fixtures.ts';
   import { createErasureAPI } from '../src/lib/erasure-api.ts';
@@ -206,7 +208,15 @@
   }}
 />
 
-{#if mode.startsWith('erasure')}
+{#if mode === 'integration-profile'}
+  <main>
+    <IntegrationSettings
+      api={createIntegrationAPI('/synthetic')}
+      token={async () => 'synthetic'}
+      onDenied={denied}
+    />
+  </main>
+{:else if mode.startsWith('erasure')}
   <main>
     {#if withdrawn}<p role="status">サインアウトしました</p>{:else}
       <AccountSettings

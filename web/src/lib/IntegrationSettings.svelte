@@ -1,6 +1,7 @@
 <script lang="ts">
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
+  import ActionLink from './ActionLink.svelte';
   import { onMount } from 'svelte';
   import { beforeNavigate } from '$app/navigation';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -291,17 +292,34 @@
             {#if view.view && !view.view.profile_ready}<div class="notice">
                 <p>本人の確認済みメールが同期待ちです。</p>
                 <p>
-                  Clerkで本人のプロフィールを更新し、新しい user.updated
-                  イベントを発生させてください。user.created または user.updated
-                  の再配信も利用できます。インスタンスID変更後には新しいイベントが必要です。確認済みのメインメールアドレスだけを送信先に使います。
+                  「本人の確認済みメールを同期」で、Clerkから確認済みのメインメールを取得できます。Webhookなしのローカル環境でも同期できます。未確認のメールや別の宛先は使いません。
+                </p>
+                <p>
+                  同期後も同期待ちの場合は、Clerkでメインメールの確認状態を確認してください。
                 </p>
               </div>{/if}
+            <p class="muted">
+              同期には「APIキー」のClerk Backend
+              APIキーと、同じ環境のインスタンスIDが必要です。同期だけではメールを送信しません。Webhookによる自動同期も引き続き利用できます。
+            </p>
+            <ActionGroup>
+              <Button
+                type="button"
+                wrap
+                disabled={view.busy || !!view.pending || !view.view}
+                onclick={() => controller?.syncProfile()}
+                >本人の確認済みメールを同期</Button
+              >
+              <ActionLink wrap href="/settings/credentials"
+                >Clerk Backend APIキーを登録</ActionLink
+              >
+            </ActionGroup>
             {#if view.view?.profile_synced_at}<p class="muted">
                 本人メールの最終同期：{new Date(
                   view.view.profile_synced_at,
                 ).toLocaleString('ja-JP', {
                   timeZone: 'Asia/Tokyo',
-                })}（日本時間）。Webhookの到着には遅延があります。
+                })}（日本時間）。
               </p>{/if}
             {#if view.dirty}<p class="notice">
                 送信前に、編集中の設定を保存してください。

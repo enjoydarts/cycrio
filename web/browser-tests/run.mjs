@@ -173,6 +173,68 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    await visit('integration-profile', width);
+    await wait(
+      `${button('本人へのテスト')} && !${button('本人へのテスト')}.disabled`,
+    );
+    await click(button('本人へのテスト'));
+    await wait(
+      'document.body.innerText.includes("本人の確認済みメールが同期待ちです")',
+    );
+    assert.equal(
+      await js(`return ${button('テストメールを1通送信')}.disabled`),
+      true,
+    );
+    await click(button('本人の確認済みメールを同期'));
+    await wait('document.body.innerText.includes("本人メールの最終同期")');
+    assert.equal(
+      await js(
+        'return window.browserTest.requests.filter(r=>r.url.endsWith("/test")).length',
+      ),
+      0,
+      'Synchronizing a verified address must not send mail',
+    );
+    assert.equal(
+      await js(
+        'return document.body.innerText.includes("本人の確認済みメールが同期待ちです")',
+      ),
+      false,
+    );
+    await layout();
+    await screenshot(`integration-profile-ready-${width}`);
+    await click('document.querySelector(".confirmation input")');
+    await click(button('テストメールを1通送信'));
+    await wait('window.browserTest.requests.some(r=>r.url.endsWith("/test"))');
+    assert.deepEqual(
+      await js(
+        'return window.browserTest.requests.filter(r=>r.method==="POST").map(r=>r.url)',
+      ),
+      [
+        '/synthetic/v1/admin/integrations/profile/sync',
+        '/synthetic/v1/admin/integrations/test',
+      ],
+    );
+    await wait(`${button('送信履歴')} && !${button('送信履歴')}.disabled`);
+    await click(button('送信履歴'));
+    await wait('document.querySelector(".history li")!==null');
+    assert.equal(
+      await js(
+        'return document.querySelector(".history li").textContent.includes("送信受付済み")',
+      ),
+      true,
+    );
+    assert.equal(
+      await js('return document.querySelectorAll(".history li").length'),
+      1,
+    );
+    assert.equal(
+      await js(
+        'return document.body.innerText.includes("送信記録はありません")',
+      ),
+      false,
+    );
+    await screenshot(`integration-profile-history-${width}`);
+    await layout();
     for (const mode of ['erasure', 'erasure-uncertain']) {
       await visit(mode, width);
       assert.equal(
@@ -873,6 +935,7 @@ try {
     results.push({
       width,
       cases: [
+        'integration-profile',
         'budget',
         'budget-conflict',
         'budget-uncertain',

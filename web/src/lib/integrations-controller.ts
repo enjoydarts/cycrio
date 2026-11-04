@@ -107,6 +107,44 @@ export function createIntegrationController(
       if (id === generation) emit({ busy: false });
     }
   }
+  async function syncProfile() {
+    if (state.busy || state.disposed || state.pending || !state.view) return;
+    const id = ++generation;
+    emit({ busy: true, error: null });
+    try {
+      const synced = await api.syncProfile(
+        { expected_version: state.version },
+        token,
+        abort.signal,
+      );
+      if (id !== generation) return;
+      emit({
+        view: state.view
+          ? {
+              ...state.view,
+              profile_ready: synced.profile_ready,
+              profile_synced_at: synced.profile_synced_at,
+            }
+          : null,
+      });
+      const view = await api.view(token, abort.signal);
+      if (id !== generation) return;
+      emit({
+        view,
+        ...(!state.dirty
+          ? {
+              sender: view.config.sender,
+              instance: view.config.clerk_instance_id,
+              version: view.config.version,
+            }
+          : {}),
+      });
+    } catch (e) {
+      if (id === generation) fail(e);
+    } finally {
+      if (id === generation) emit({ busy: false });
+    }
+  }
   async function send(confirm: boolean) {
     if (!confirm || state.busy || state.disposed || !state.view) return;
     if (
@@ -123,7 +161,28 @@ export function createIntegrationController(
     emit({ pending, busy: true, error: null });
     try {
       const ack = await api.test(pending, token, abort.signal);
-      if (id === generation) emit({ ack });
+      if (id === generation)
+        emit({
+          ack,
+          view: state.view
+            ? {
+                ...state.view,
+                attempts: [
+                  ack,
+                  ...state.view.attempts.filter(
+                    (row) =>
+                      row.id !== ack.id && row.request_id !== ack.request_id,
+                  ),
+                ]
+                  .sort(
+                    (a, b) =>
+                      Date.parse(b.created_at) - Date.parse(a.created_at) ||
+                      b.id.localeCompare(a.id),
+                  )
+                  .slice(0, 30),
+              }
+            : null,
+        });
     } catch (e) {
       if (id === generation) fail(e);
     } finally {
@@ -142,6 +201,7 @@ export function createIntegrationController(
     load,
     save,
     send,
+    syncProfile,
     adoptLatestBasis() {
       if (!state.busy && !state.disposed && !state.pending && state.view)
         emit({ version: state.view.config.version, error: null });
