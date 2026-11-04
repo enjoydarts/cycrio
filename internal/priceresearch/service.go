@@ -138,6 +138,10 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 			}
 			seen[index] = true
 		}
+		if grouped, ok := s.repository.(GroupCallRecorder); ok {
+			result, code := s.researchGroup(ctx, l, request, recorder, grouped, indices)
+			return s.finish(ctx, l, e, result, code)
+		}
 		result, code := s.researchModels(ctx, l, request, recorder, indices)
 		return s.finish(ctx, l, e, result, code)
 	}
@@ -157,11 +161,47 @@ type CallRecorder interface {
 
 // BatchRepository selects pending items from a persisted, frozen target list.
 // The original target index remains the per-call accounting/deduplication key.
-const ResearchBatchSize = 4
+const ResearchBatchSize = 16
+
+// GroupCallRecorder reserves a single paid request for several frozen targets.
+type GroupCallRecorder interface {
+	BeginGroupCall(context.Context, Lease, []int) (string, error)
+}
 
 type BatchRepository interface {
 	BatchIndices(context.Context, Lease) ([]int, error)
 	SkipTarget(context.Context, Lease, int, string) error
+}
+
+func (s *Service) researchGroup(ctx context.Context, lease Lease, request Request, recorder CallRecorder, grouped GroupCallRecorder, indices []int) (Result, string) {
+	out := Result{CallsRecorded: true}
+	if len(indices) == 0 || ctx.Err() != nil {
+		return out, ""
+	}
+	callID, err := grouped.BeginGroupCall(ctx, lease, indices)
+	if err != nil {
+		if ctx.Err() != nil {
+			return out, ""
+		}
+		return out, "configuration_changed"
+	}
+	allTargets := request.Targets
+	request.Targets = make([]Target, 0, len(indices))
+	for _, index := range indices {
+		request.Targets = append(request.Targets, allTargets[index])
+	}
+	result, err := s.client.Research(ctx, request)
+	code := ""
+	if err != nil {
+		code = "research_failed"
+	}
+	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	if recorder.FinishCall(bounded, lease, callID, result, code) != nil {
+		code = "research_failed"
+	}
+	result.CallsRecorded = true
+	return result, code
 }
 
 func (s *Service) researchModels(ctx context.Context, lease Lease, request Request, recorder CallRecorder, indices []int) (Result, string) {

@@ -168,29 +168,9 @@ func (r *PriceResearchRepository) Run(ctx context.Context, id string) (pricerese
 	return scanResearchRun(r.pool.QueryRow(ctx, `SELECT `+researchRunColumns+` FROM price_research_runs WHERE id=$1`, id))
 }
 func (r *PriceResearchRepository) QueueAutomatic(ctx context.Context, provider string) error {
-	tx, err := r.pool.Begin(ctx)
-	if err != nil {
-		return researchError(err)
-	}
-	defer tx.Rollback(ctx)
-	s, err := researchState(ctx, tx, true)
-	if err != nil {
-		return err
-	}
-	if !s.AutomaticEnabled || !s.Ready {
-		return nil
-	}
-	var pending bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM price_research_runs WHERE state IN ('queued','running'))`).Scan(&pending) != nil {
-		return priceresearch.ErrUnavailable
-	}
-	if pending {
-		return nil
-	}
-	if _, err = researchInsert(ctx, tx, s, "", "update", provider); err != nil {
-		return err
-	}
-	return researchCommit(ctx, tx)
+	// Catalog synchronization never creates paid work. ClaimDue owns the
+	// configured interval and provider cycle; manual Request remains immediate.
+	return nil
 }
 func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch.Lease, error) {
 	out := []priceresearch.Lease{}

@@ -6,11 +6,28 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // BeginCall reserves one model's send opportunity in the frozen targets JSON.
 // Existing run/usage tables keep both dispatch deduplication and per-call costs.
 func (r *PriceResearchRepository) BeginCall(ctx context.Context, lease priceresearch.Lease, index int) (string, error) {
+	return r.BeginGroupCall(ctx, lease, []int{index})
+}
+
+// BeginGroupCall atomically reserves every target before creating one actual call.
+func (r *PriceResearchRepository) BeginGroupCall(ctx context.Context, lease priceresearch.Lease, indices []int) (string, error) {
+	if len(indices) == 0 || len(indices) > priceresearch.ResearchBatchSize {
+		return "", priceresearch.ErrInvalid
+	}
+	seen := map[int]bool{}
+	for _, index := range indices {
+		if index < 0 || seen[index] {
+			return "", priceresearch.ErrInvalid
+		}
+		seen[index] = true
+	}
+	index := indices[0]
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
 		return "", researchError(err)
@@ -24,35 +41,48 @@ func (r *PriceResearchRepository) BeginCall(ctx context.Context, lease pricerese
 	if err != nil {
 		return "", err
 	}
-	if e.Run.Kind != "update" || state.Version != e.Version || !state.Ready || !e.Model.Enabled || !e.Model.Available || e.Model.DeletedAt != nil || index < 0 || index >= len(e.Targets) {
+	if e.Run.Kind != "update" || state.Version != e.Version || !state.Ready || !e.Model.Enabled || !e.Model.Available || e.Model.DeletedAt != nil {
 		return "", priceresearch.ErrConflict
 	}
 	var active, dispatched, started bool
-	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions v JOIN provider_credentials p ON p.provider=v.provider WHERE v.id=$1 AND v.state='active' AND p.state='configured')`, e.CredentialID).Scan(&active); err != nil {
+	if err = tx.QueryRow(ctx, `SELECT true FROM credential_versions v JOIN provider_credentials p ON p.provider=v.provider WHERE v.id=$1 AND v.state='active' AND p.state='configured' FOR SHARE OF v,p`, e.CredentialID).Scan(&active); err == pgx.ErrNoRows {
+		return "", priceresearch.ErrCredentialsRequired
+	} else if err != nil {
 		return "", researchError(err)
 	}
 	if !active {
 		return "", priceresearch.ErrCredentialsRequired
 	}
-	if err = tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL,targets->$2::int->>'dispatched_at' IS NOT NULL FROM price_research_runs WHERE id=$1`, lease.RunID, index).Scan(&started, &dispatched); err != nil {
-		return "", researchError(err)
+	for _, index = range indices {
+		if index >= len(e.Targets) {
+			return "", priceresearch.ErrConflict
+		}
+		if err = tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL,targets->$2::int->>'dispatched_at' IS NOT NULL FROM price_research_runs WHERE id=$1`, lease.RunID, index).Scan(&started, &dispatched); err != nil {
+			return "", researchError(err)
+		}
+		if !started {
+			return "", priceresearch.ErrConflict
+		}
+		if dispatched {
+			return "", priceresearch.ErrDispatched
+		}
+		reserved, err := tx.Exec(ctx, `UPDATE price_research_items SET state='calling',lease_id=$3 WHERE run_id=$1 AND target_index=$2 AND state='pending' AND (lease_id=$3 OR (lease_id IS NULL AND (SELECT count(*) FROM price_research_items WHERE run_id=$1 AND lease_id=$3)<$4))`, lease.RunID, index, lease.LeaseID, priceresearch.ResearchBatchSize)
+		if err != nil {
+			return "", researchError(err)
+		}
+		if reserved.RowsAffected() != 1 {
+			return "", priceresearch.ErrDispatched
+		}
+		target, _, err := readModel(ctx, tx, e.Targets[index].ID, true)
+		if err != nil || !target.Enabled || !target.Available || target.DeletedAt != nil {
+			return "", priceresearch.ErrConflict
+		}
 	}
-	if !started {
-		return "", priceresearch.ErrConflict
-	}
-	if dispatched {
-		return "", priceresearch.ErrDispatched
-	}
-	reserved, err := tx.Exec(ctx, `UPDATE price_research_items SET state='calling',lease_id=$3 WHERE run_id=$1 AND target_index=$2 AND state='pending' AND (lease_id=$3 OR (lease_id IS NULL AND (SELECT count(*) FROM price_research_items WHERE run_id=$1 AND lease_id=$3)<4))`, lease.RunID, index, lease.LeaseID)
-	if err != nil {
-		return "", researchError(err)
-	}
-	if reserved.RowsAffected() != 1 {
-		return "", priceresearch.ErrDispatched
-	}
-	target, _, err := readModel(ctx, tx, e.Targets[index].ID, true)
-	if err != nil || !target.Enabled || !target.Available || target.DeletedAt != nil {
-		return "", priceresearch.ErrConflict
+	index = indices[0]
+	for _, i := range indices {
+		if i < index {
+			index = i
+		}
 	}
 	id := uuid.NewString()
 	var price any
@@ -62,11 +92,13 @@ func (r *PriceResearchRepository) BeginCall(ctx context.Context, lease pricerese
 	if _, err = tx.Exec(ctx, `INSERT INTO ai_calls(id,operation_id,scope,provider,model_id,model_name,requested_model_id,credential_id,price_id,stage,attempt_no,status)VALUES($1,$2,'system',$3,$4,$5,$6,$7,$8,'price_research',$9,'calling')`, id, lease.RunID, e.Model.Provider, e.Model.ID, e.Model.DisplayName, e.Model.ModelID, e.CredentialID, price, index+1); err != nil {
 		return "", researchError(err)
 	}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET call_id=coalesce(call_id,$3),targets=jsonb_set(targets,$2::text[],to_jsonb(clock_timestamp())) WHERE id=$1`, lease.RunID, []string{strconv.Itoa(index), "dispatched_at"}, id); err != nil {
-		return "", researchError(err)
-	}
-	if _, err = tx.Exec(ctx, `UPDATE price_research_items SET call_id=$3 WHERE run_id=$1 AND target_index=$2`, lease.RunID, index, id); err != nil {
-		return "", researchError(err)
+	for _, index = range indices {
+		if _, err = tx.Exec(ctx, `UPDATE price_research_runs SET call_id=coalesce(call_id,$3),targets=jsonb_set(targets,$2::text[],to_jsonb(clock_timestamp())) WHERE id=$1`, lease.RunID, []string{strconv.Itoa(index), "dispatched_at"}, id); err != nil {
+			return "", researchError(err)
+		}
+		if _, err = tx.Exec(ctx, `UPDATE price_research_items SET call_id=$3 WHERE run_id=$1 AND target_index=$2`, lease.RunID, index, id); err != nil {
+			return "", researchError(err)
+		}
 	}
 	return id, researchCommit(ctx, tx)
 }

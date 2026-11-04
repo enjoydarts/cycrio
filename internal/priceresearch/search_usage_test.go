@@ -2,10 +2,38 @@ package priceresearch
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestResearchExcessSearchUsageIsRetainedWithoutRetry(t *testing.T) {
+	for _, provider := range []string{"openai", "anthropic"} {
+		t.Run(provider, func(t *testing.T) {
+			var envelope map[string]any
+			_ = json.Unmarshal([]byte(responseFixture(provider, []Quote{quoteFixture()}, officialSource, true)), &envelope)
+			if provider == "openai" {
+				blocks := envelope["output"].([]any)
+				envelope["output"] = append([]any{blocks[0]}, blocks...)
+			} else {
+				blocks := envelope["content"].([]any)
+				envelope["content"] = append([]any{blocks[0], blocks[1]}, blocks...)
+				envelope["usage"].(map[string]any)["server_tool_use"].(map[string]any)["web_search_requests"] = 2
+			}
+			raw, _ := json.Marshal(envelope)
+			calls := 0
+			client := NewClient(researchTransport(func(*http.Request) (*http.Response, error) {
+				calls++
+				return reply(200, string(raw)), nil
+			}))
+			got, err := client.Research(context.Background(), requestFixture(provider))
+			if err == nil || calls != 1 || !got.SearchCallsKnown || got.SearchCalls != 2 || !got.Usage.Valid || len(got.Quotes) != 0 {
+				t.Fatalf("excess historical usage lost or request retried: %+v calls=%d err=%v", got, calls, err)
+			}
+		})
+	}
+}
 
 func TestResearchRetainsKnownSearchCountsIncludingZeroAndFailedExtraction(t *testing.T) {
 	for _, provider := range []string{"openai", "anthropic"} {

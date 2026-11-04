@@ -188,7 +188,7 @@ func TestResearchProviderWireAndVerifiedEvidence(t *testing.T) {
 						t.Fatal("missing domain filters")
 					}
 				} else {
-					if r.URL.String() != "https://api.anthropic.com/v1/messages" || r.Header.Get("x-api-key") != "SECRET" || r.Header.Get("anthropic-version") != "2023-06-01" || tool["type"] != "web_search_20250305" || tool["max_uses"] != float64(3) || tool["allowed_domains"] == nil {
+					if r.URL.String() != "https://api.anthropic.com/v1/messages" || r.Header.Get("x-api-key") != "SECRET" || r.Header.Get("anthropic-version") != "2023-06-01" || tool["type"] != "web_search_20250305" || tool["max_uses"] != float64(1) || tool["allowed_domains"] == nil {
 						t.Fatalf("bad request %s", b)
 					}
 				}

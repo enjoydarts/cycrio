@@ -3,6 +3,7 @@ package priceresearch
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"testing"
 )
@@ -48,13 +49,15 @@ func TestSingleModelPricingJSONDoesNotDependOnHTMLOrVerbatimEvidence(t *testing.
 	}
 }
 
-func TestPricingRequestRejectsMultipleTargets(t *testing.T) {
+func TestPricingRequestRejectsOversizedTargetGroups(t *testing.T) {
 	r := requestFixture("anthropic")
-	r.Targets = append(r.Targets, Target{Provider: "openai", ModelID: "second"})
+	for len(r.Targets) <= ResearchBatchSize {
+		r.Targets = append(r.Targets, Target{Provider: "openai", ModelID: fmt.Sprint(len(r.Targets))})
+	}
 	called := false
 	client := NewClient(researchTransport(func(*http.Request) (*http.Response, error) { called = true; return reply(500, `{}`), nil }))
 	_, err := client.Research(context.Background(), r)
 	if err != ErrInvalid || called {
-		t.Fatal("one request must research exactly one model")
+		t.Fatal("oversized group reached the paid provider")
 	}
 }

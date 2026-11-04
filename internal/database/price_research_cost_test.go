@@ -21,11 +21,9 @@ func TestResearchCostDetailMigration(t *testing.T) {
 	}
 	p := automationMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 39)
-	if err != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 40 {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 40)
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 40, 40)
+	assertMigrationRange(t, up, err, 40, latestMigrationVersion)
 	researchTestReady(t, r, actor, model)
 	if _, err = p.DownTo(ctx, 39); err == nil {
 		t.Fatal("downgrade discarded research cost evidence")

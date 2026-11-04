@@ -214,7 +214,7 @@ func (r *PriceResearchRepository) RecalculateCosts(ctx context.Context, apply bo
 			evidenceErr := tx.QueryRow(ctx, `SELECT search_calls,search_basis FROM research_call_costs WHERE call_id=$1`, c.ID).Scan(&count, &basis)
 			if errors.Is(evidenceErr, pgx.ErrNoRows) {
 				var searches int
-				itemErr := tx.QueryRow(ctx, `SELECT search_calls FROM price_research_items WHERE call_id=$1`, c.ID).Scan(&searches)
+				itemErr := tx.QueryRow(ctx, `SELECT max(search_calls) FROM price_research_items WHERE call_id=$1 HAVING count(*)>0`, c.ID).Scan(&searches)
 				if itemErr == nil {
 					if searches > 0 {
 						count = &searches

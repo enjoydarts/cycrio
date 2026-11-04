@@ -21,7 +21,7 @@ func TestPriceResearchBatchesFrozenTargetsAndClassifiesProgress(t *testing.T) {
 	r, catalog, actor, model, _ := researchFixture(t)
 	ctx := context.Background()
 	researchTestReady(t, r, actor, model)
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 18; i++ {
 		name := fmt.Sprintf("batch-model-%d", i)
 		if _, err := catalog.AddModel(ctx, actor, modelcatalog.ManualModelInput{Provider: "openai", ModelID: name, DisplayName: name}); err != nil {
 			t.Fatal(err)
@@ -43,14 +43,14 @@ func TestPriceResearchBatchesFrozenTargetsAndClassifiesProgress(t *testing.T) {
 		}
 		lease := leases[0]
 		e, err := r.Prepare(ctx, lease)
-		if err != nil || len(e.Targets) != 6 {
+		if err != nil || len(e.Targets) != 18 {
 			t.Fatal("full frozen targets", len(e.Targets), err)
 		}
 		if err = r.Begin(ctx, lease); err != nil {
 			t.Fatal(err)
 		}
 		indices, err := batches.BatchIndices(ctx, lease)
-		want := 4
+		want := 16
 		if batch == 1 {
 			want = 2
 		}
@@ -86,7 +86,7 @@ func TestPriceResearchBatchesFrozenTargetsAndClassifiesProgress(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if batch == 0 && (got.State != "queued" || got.TargetCount != 6 || got.CompletedCount != 4 || got.NonTextCount != 1 || got.UnclassifiedCount != 1 || got.UpdatedCount != 2) {
+		if batch == 0 && (got.State != "queued" || got.TargetCount != 18 || got.CompletedCount != 16 || got.NonTextCount != 1 || got.UnclassifiedCount != 1 || got.UpdatedCount != 14) {
 			t.Fatal(got)
 		}
 		if batch == 0 {
@@ -94,7 +94,7 @@ func TestPriceResearchBatchesFrozenTargetsAndClassifiesProgress(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		if batch == 1 && (got.State != "succeeded" || got.CompletedCount != 6 || got.UpdatedCount != 4 || got.NonTextCount != 1 || got.UnclassifiedCount != 1) {
+		if batch == 1 && (got.State != "succeeded" || got.CompletedCount != 18 || got.UpdatedCount != 16 || got.NonTextCount != 1 || got.UnclassifiedCount != 1) {
 			t.Fatal(got)
 		}
 	}
@@ -104,7 +104,7 @@ func TestPriceResearchExpiredBatchNeverResendsAndRetainsLateCost(t *testing.T) {
 	r, catalog, actor, m, _ := researchFixture(t)
 	ctx := context.Background()
 	researchTestReady(t, r, actor, m)
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 18; i++ {
 		name := fmt.Sprintf("expire-model-%d", i)
 		if _, err := catalog.AddModel(ctx, actor, modelcatalog.ManualModelInput{Provider: "openai", ModelID: name, DisplayName: name}); err != nil {
 			t.Fatal(err)
@@ -128,7 +128,7 @@ func TestPriceResearchExpiredBatchNeverResendsAndRetainsLateCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	indices, err := r.BatchIndices(ctx, old)
-	if err != nil || len(indices) != 4 {
+	if err != nil || len(indices) != 16 {
 		t.Fatal(indices, err)
 	}
 	call, err := r.BeginCall(ctx, old, indices[0])
@@ -160,7 +160,7 @@ func TestPriceResearchExpiredBatchNeverResendsAndRetainsLateCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	indices, err = r.BatchIndices(ctx, next)
-	if err != nil || len(indices) != 4 || indices[0] != 1 {
+	if err != nil || len(indices) != 16 || indices[0] != 1 {
 		t.Fatal("resume never-sent only", indices, err)
 	}
 	if _, err = r.BeginCall(ctx, next, 0); err == nil {
@@ -220,7 +220,7 @@ func TestPriceResearchFailedBatchContinuesNeverSentTargets(t *testing.T) {
 	r, catalog, actor, m, _ := researchFixture(t)
 	ctx := context.Background()
 	researchTestReady(t, r, actor, m)
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 18; i++ {
 		name := fmt.Sprintf("failed-model-%d", i)
 		if _, err := catalog.AddModel(ctx, actor, modelcatalog.ManualModelInput{Provider: "openai", ModelID: name, DisplayName: name}); err != nil {
 			t.Fatal(err)
@@ -260,7 +260,7 @@ func TestPriceResearchFailedBatchContinuesNeverSentTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err := r.Run(ctx, run.ID)
-	if err != nil || got.State != "queued" || got.CompletedCount != 4 || got.UnclassifiedCount != 4 {
+	if err != nil || got.State != "queued" || got.CompletedCount != 16 || got.UnclassifiedCount != 16 {
 		t.Fatal("one batch failure must not discard remaining targets", got, err)
 	}
 	ls, err = r.ClaimDue(ctx)
@@ -274,7 +274,7 @@ func TestPriceResearchFailedBatchContinuesNeverSentTargets(t *testing.T) {
 		t.Fatal(err)
 	}
 	indices, err = r.BatchIndices(ctx, ls[0])
-	if err != nil || len(indices) != 2 || indices[0] != 4 {
+	if err != nil || len(indices) != 2 || indices[0] != 16 {
 		t.Fatal(indices, err)
 	}
 }
@@ -283,7 +283,7 @@ func TestPriceResearchKeyChangeBetweenBatchesKeepsPriorUsageAndPrices(t *testing
 	r, catalog, actor, m, creds := researchFixture(t)
 	ctx := context.Background()
 	researchTestReady(t, r, actor, m)
-	for i := 1; i < 6; i++ {
+	for i := 1; i < 18; i++ {
 		name := fmt.Sprintf("rotate-model-%d", i)
 		if _, err := catalog.AddModel(ctx, actor, modelcatalog.ManualModelInput{Provider: "openai", ModelID: name, DisplayName: name}); err != nil {
 			t.Fatal(err)
@@ -339,12 +339,12 @@ func TestPriceResearchKeyChangeBetweenBatchesKeepsPriorUsageAndPrices(t *testing
 		t.Fatal(err)
 	}
 	got, err := r.Run(ctx, run.ID)
-	if err != nil || got.State != "failed" || got.UpdatedCount != 4 || got.CompletedCount != 6 || got.UnclassifiedCount != 2 {
+	if err != nil || got.State != "failed" || got.UpdatedCount != 16 || got.CompletedCount != 18 || got.UnclassifiedCount != 2 {
 		t.Fatal(got, err)
 	}
 	var calls int
 	var tokens int64
-	if err = r.pool.QueryRow(ctx, `SELECT count(*),sum((usage_doc->>'input_tokens')::bigint) FROM ai_calls WHERE operation_id=$1`, run.ID).Scan(&calls, &tokens); err != nil || calls != 4 || tokens != 400 {
+	if err = r.pool.QueryRow(ctx, `SELECT count(*),sum((usage_doc->>'input_tokens')::bigint) FROM ai_calls WHERE operation_id=$1`, run.ID).Scan(&calls, &tokens); err != nil || calls != 16 || tokens != 1600 {
 		t.Fatal("prior batch cost overwritten", calls, tokens, err)
 	}
 }
@@ -417,7 +417,7 @@ func TestPriceResearchCapsAggregatedSourcesAndRetainsAllItemSources(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	for batch := 0; batch < 3; batch++ {
+	for batch := 0; batch < 1; batch++ {
 		leases, err := r.ClaimDue(ctx)
 		if err != nil || len(leases) != 1 {
 			t.Fatal(leases, err)

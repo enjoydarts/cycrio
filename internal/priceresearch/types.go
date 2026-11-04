@@ -37,6 +37,7 @@ type Target struct {
 }
 type Result struct {
 	ModelKind        string
+	Models           []Quote
 	CallsRecorded    bool
 	Quotes           []Quote
 	Sources          []string
