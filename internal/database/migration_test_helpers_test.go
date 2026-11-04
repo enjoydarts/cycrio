@@ -8,14 +8,14 @@ import (
 	"github.com/pressly/goose/v3"
 )
 
-const latestMigrationVersion = 36
+const latestMigrationVersion = 37
 
 // Budget tables first exist in v35 and are not legacy records in snapshots
 // compared against earlier schemas. Exclude only these explicit new tables;
 // empty legacy tables must remain covered by the record comparisons.
 func preBudgetMigrationTable(table string) bool {
 	switch table {
-	case "ai_user_budgets", "ai_user_budget_audit", "user_erasure_requests", "erased_identities", "erased_resend_email_receipts", "anonymous_ai_costs", "erased_ai_call_receipts", "anonymous_ai_cost_revisions", "anonymous_audit_counts":
+	case "ai_user_budgets", "ai_user_budget_audit", "user_erasure_requests", "erased_identities", "erased_resend_email_receipts", "anonymous_ai_costs", "erased_ai_call_receipts", "anonymous_ai_cost_revisions", "anonymous_audit_counts", "clerk_erasure_outbox":
 		return false
 	default:
 		return true

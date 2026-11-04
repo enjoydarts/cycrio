@@ -29,7 +29,7 @@ func erasureReceipt(ctx context.Context, tx pgx.Tx, keys *secretstore.Keyring, i
 	}
 	for _, f := range fps {
 		var out erasure.Receipt
-		e = tx.QueryRow(ctx, `SELECT r.client_request_id,r.state FROM erased_identities i JOIN user_erasure_requests r ON r.id=i.request_id WHERE i.key_id=$1 AND i.identity_hash=$2`, f.KeyID, f.Digest).Scan(&out.RequestID, &out.Status)
+		e = tx.QueryRow(ctx, `SELECT r.client_request_id,CASE WHEN r.state='completed' AND EXISTS(SELECT 1 FROM clerk_erasure_outbox j WHERE j.request_id=r.id) THEN 'pending' ELSE r.state END FROM erased_identities i JOIN user_erasure_requests r ON r.id=i.request_id WHERE i.key_id=$1 AND i.identity_hash=$2`, f.KeyID, f.Digest).Scan(&out.RequestID, &out.Status)
 		if e == nil {
 			return out, nil
 		}
@@ -78,6 +78,11 @@ func queueErasure(ctx context.Context, tx pgx.Tx, keys *secretstore.Keyring, iss
 	e = tx.QueryRow(ctx, `INSERT INTO user_erasure_requests(client_request_id,owner_id,state,source) VALUES($1,$2,'pending',$3) RETURNING id`, clientID, owner, source).Scan(&requestID)
 	if e != nil {
 		return erasure.Receipt{}, erasure.ErrUnavailable
+	}
+	if source == "self" {
+		if e = enqueueClerkErasure(ctx, tx, keys, requestID, issuer, subject); e != nil {
+			return erasure.Receipt{}, erasure.ErrUnavailable
+		}
 	}
 	// Bind every identity belonging to this owner before changing the state.
 	rows, e := tx.Query(ctx, `SELECT issuer,subject FROM auth_identities WHERE user_id=$1`, owner)

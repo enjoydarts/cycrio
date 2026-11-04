@@ -84,6 +84,30 @@ func TestServiceEncryptsAndBindsMetadata(t *testing.T) {
 	}
 }
 
+func TestClerkBackendSecretUsesEncryptedCredentialLifecycle(t *testing.T) {
+	s, r := testService(t)
+	ctx := context.Background()
+	secret := "sk_test_synthetic_clerk_backend_secret"
+	summary, err := s.Put(ctx, uuid.NewString(), "clerk_backend", 0, secret)
+	if err != nil || summary.Provider != "clerk_backend" || summary.Version != 1 {
+		t.Fatal("Clerk backend key registration", summary, err)
+	}
+	if bytes.Contains(r.version.Envelope.Ciphertext, []byte(secret)) {
+		t.Fatal("Clerk key stored as plaintext")
+	}
+	raw, err := json.Marshal(summary)
+	if err != nil || bytes.Contains(raw, []byte(secret)) || bytes.Contains(raw, []byte("ciphertext")) {
+		t.Fatal("Clerk key exposed in summary", err)
+	}
+	plain, err := s.Resolve(ctx, r.version.ID)
+	if err != nil || string(plain) != secret {
+		t.Fatal("Clerk key resolution", err)
+	}
+	if _, err = s.Disable(ctx, uuid.NewString(), "clerk_backend", 1); err != nil {
+		t.Fatal("Clerk key disabling", err)
+	}
+}
+
 func TestServiceValidatesSecretsAndRequests(t *testing.T) {
 	s, r := testService(t)
 	ctx := context.Background()

@@ -81,6 +81,9 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 		if _, e = queueErasure(ctx, tx, r.keyring, r.issuer, in.Data.ID, uuid.NewString(), "clerk"); e != nil {
 			return integrations.ErrUnavailable
 		}
+		if e = wakeClerkErasure(ctx, tx, r.keyring, r.issuer, in.Data.ID); e != nil {
+			return integrations.ErrUnavailable
+		}
 		if _, e = tx.Exec(ctx, `DELETE FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, in.Data.ID); e != nil {
 			return integrations.ErrUnavailable
 		}

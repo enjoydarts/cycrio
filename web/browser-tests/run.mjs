@@ -175,6 +175,13 @@ try {
     });
     for (const mode of ['erasure', 'erasure-uncertain']) {
       await visit(mode, width);
+      assert.equal(
+        await js(
+          'return document.body.innerText.includes("Clerkのユーザーも削除") && document.body.innerText.includes("失敗した場合は自動で再試行") && document.body.innerText.includes("Google・Microsoftのアカウント自体は削除しません")',
+        ),
+        true,
+        'Withdrawal must explain Clerk deletion and retries without promising Google or Microsoft account deletion',
+      );
       await click(button('退会の確認へ'));
       await wait('document.querySelector("dialog[open]")!==null');
       await input(field('確認のため'), '退会する ');

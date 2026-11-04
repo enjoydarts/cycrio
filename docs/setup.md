@@ -34,6 +34,8 @@ make grant-admin USER_ID=user_example
 
 アプリへのGoogleログインは、Gmailの読み取り同意を代替しません。
 
+退会時のClerkユーザー削除には、管理者の「APIキー」でClerk Backend APIのSecret Keyを登録し、「外部連携」で同じインスタンスIDを設定します。Webhook署名鍵とは別のキーです。Secret KeyはDBへ暗号化保存し、環境変数には追加しません。未登録・無効化・Clerk障害時もCycrio内の削除は進み、Clerk側は設定復旧後に再試行します。詳細は[退会とデータ削除](user-erasure.md)を参照してください。
+
 ## 2. 管理者がAIを準備する
 
 管理者設定は、一般ユーザーからは操作できません。設定を保存するだけでは有料の接続テストを実行しません。

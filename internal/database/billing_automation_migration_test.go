@@ -40,7 +40,7 @@ func billingLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 			drop = append(drop, "provenance")
 		}
 		var raw string
-		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth'))x`, drop).Scan(&raw); err != nil {
+		if err = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend'))x`, drop).Scan(&raw); err != nil {
 			t.Fatal(err)
 		}
 		out[name] = raw

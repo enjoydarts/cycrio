@@ -64,11 +64,9 @@ func TestErasureMigrationRoundtripAndHistoryBlocksDown(t *testing.T) {
 				t.Fatal(err)
 			}
 			down, err := p.DownTo(ctx, 35)
-			if err != nil || len(down) != 1 || down[0].Source.Version != 36 || down[0].Direction != "down" {
-				t.Fatal(down, err)
-			}
+			assertMigrationRange(t, down, err, latestMigrationVersion, 36)
 			up, err := p.Up(ctx)
-			assertMigrationRange(t, up, err, 36, 36)
+			assertMigrationRange(t, up, err, 36, latestMigrationVersion)
 			var statement string
 			switch kind {
 			case "request":

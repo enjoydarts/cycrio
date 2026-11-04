@@ -135,6 +135,7 @@ const summaries = [
   'openai',
   'anthropic',
   'resend',
+  'clerk_backend',
   'clerk_webhook',
   'resend_webhook',
   'gmail_oauth',
@@ -154,6 +155,33 @@ const event = {
   outcome: 'success',
   created_at: '2026-10-25T12:30:00Z',
 };
+
+test('Clerk backend credential metadata discards secrets from saves and audit', async () => {
+  const secret = 'sk_test_synthetic_backend_key';
+  const api = createAPI('', async (_url, init) => {
+    if (init?.method === 'PUT')
+      return Response.json({
+        provider: 'clerk_backend',
+        state: 'configured',
+        version: 1,
+        updated_at: event.created_at,
+        secret,
+      });
+    return Response.json({
+      events: [{ ...event, provider: 'clerk_backend', secret }],
+    });
+  });
+  const saved = await api.putCredential(
+    'clerk_backend',
+    secret,
+    0,
+    async () => 'token',
+  );
+  const events = await api.audit(async () => 'token');
+  assert.equal(saved.provider, 'clerk_backend');
+  assert.equal(events[0].provider, 'clerk_backend');
+  assert.equal(JSON.stringify({ saved, events }).includes(secret), false);
+});
 
 test('credential requests use fresh bearer tokens and exact mutation bodies', async () => {
   let count = 0;

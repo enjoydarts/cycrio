@@ -47,6 +47,10 @@
     openai: { label: 'OpenAI', purpose: '二次処理' },
     anthropic: { label: 'Anthropic', purpose: '二次処理' },
     resend: { label: 'Resend', purpose: 'メール送信' },
+    clerk_backend: {
+      label: 'Clerk Backend API',
+      purpose: '退会時のClerkユーザー削除',
+    },
     clerk_webhook: { label: 'Clerk Webhook', purpose: 'イベント署名の検証' },
     resend_webhook: {
       label: 'Resend Webhook',

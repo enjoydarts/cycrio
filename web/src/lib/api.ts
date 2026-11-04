@@ -11,6 +11,7 @@ export const credentialProviders = [
   'openai',
   'anthropic',
   'resend',
+  'clerk_backend',
   'clerk_webhook',
   'resend_webhook',
   'gmail_oauth',

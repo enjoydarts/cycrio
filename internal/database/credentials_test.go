@@ -5,6 +5,7 @@ package database
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"sync"
@@ -14,6 +15,61 @@ import (
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 )
+
+func TestClerkBackendCredentialIsEncryptedAndCannotResurrectDisabledVersion(t *testing.T) {
+	identity, pool := testStore(t)
+	ctx := context.Background()
+	actor, err := identity.AllowIdentity(ctx, "https://clerk.test.example", "clerk_credentials_admin", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "keyring.json")
+	if err = secretstore.Initialize(path); err != nil {
+		t.Fatal(err)
+	}
+	keys, err := secretstore.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := credentials.NewService(NewCredentialRepository(pool), keys)
+	secret := "sk_test_synthetic_clerk_backend_key"
+	summary, err := service.Put(ctx, actor.ID, "clerk_backend", 0, secret)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id string
+	var encrypted []byte
+	if err = pool.QueryRow(ctx, `SELECT id,ciphertext FROM credential_versions WHERE provider='clerk_backend' AND version=1`).Scan(&id, &encrypted); err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(encrypted, []byte(secret)) {
+		t.Fatal("Clerk secret stored as plaintext")
+	}
+	plain, err := service.Resolve(ctx, id)
+	if err != nil || string(plain) != secret {
+		t.Fatal("Clerk credential resolution", err)
+	}
+	if _, err = service.Disable(ctx, actor.ID, "clerk_backend", 1); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Put(ctx, actor.ID, "clerk_backend", 2, "sk_test_synthetic_replacement"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = service.Resolve(ctx, id); !errors.Is(err, credentials.ErrNotFound) {
+		t.Fatal("disabled Clerk key resurrected", err)
+	}
+	audit, err := service.Audit(ctx)
+	if err != nil || len(audit) != 3 {
+		t.Fatal("Clerk credential audit", audit, err)
+	}
+	encoded, err := json.Marshal(struct {
+		Summary credentials.Summary
+		Audit   []credentials.AuditEntry
+	}{summary, audit})
+	if err != nil || bytes.Contains(encoded, []byte(secret)) || bytes.Contains(encoded, []byte("ciphertext")) {
+		t.Fatal("Clerk secret exposed in metadata", err)
+	}
+}
 
 func TestCredentialLifecycleAndNoResurrection(t *testing.T) {
 	identity, pool := testStore(t)
@@ -33,7 +89,7 @@ func TestCredentialLifecycleAndNoResurrection(t *testing.T) {
 	repo := NewCredentialRepository(pool)
 	service := credentials.NewService(repo, keys)
 	summaries, err := service.List(ctx)
-	if err != nil || len(summaries) != 9 {
+	if err != nil || len(summaries) != 10 {
 		t.Fatal("seeded providers", err)
 	}
 	for _, s := range summaries {

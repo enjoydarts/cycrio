@@ -75,6 +75,8 @@ func TestCredentialRoutesRequireCurrentAdministrator(t *testing.T) {
 		{"GET", "/v1/admin/credentials", ""}, {"GET", "/v1/admin/audit", ""},
 		{"PUT", "/v1/admin/credentials/openai", `{"secret":"synthetic-key","expected_version":0}`},
 		{"DELETE", "/v1/admin/credentials/openai", `{"expected_version":1}`},
+		{"PUT", "/v1/admin/credentials/clerk_backend", `{"secret":"sk_test_synthetic","expected_version":0}`},
+		{"DELETE", "/v1/admin/credentials/clerk_backend", `{"expected_version":1}`},
 	} {
 		f := &credentialFixture{}
 		role := "platform_admin"

@@ -56,7 +56,7 @@ func TestErasureIdentityRequestReplayAndTombstone(t *testing.T) {
 	if _, e = NewStore(pool).AllowIdentity(ctx, issuer, "user_unrelated", false); !errors.Is(e, ErrUnavailable) {
 		t.Fatal("missing key did not fail closed", e)
 	}
-	// Simulate cleanup's final receipt transition without deleting a real account.
+	// Simulate local cleanup and confirmed Clerk deletion using synthetic data.
 	if _, e = pool.Exec(ctx, `UPDATE user_erasure_requests SET owner_id=NULL,state='completed',completed_at=clock_timestamp() WHERE owner_id=$1`, p.ID); e != nil {
 		t.Fatal(e)
 	}
@@ -64,6 +64,9 @@ func TestErasureIdentityRequestReplayAndTombstone(t *testing.T) {
 		t.Fatal(e)
 	}
 	if _, e = pool.Exec(ctx, `DELETE FROM users WHERE id=$1`, p.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = pool.Exec(ctx, `DELETE FROM clerk_erasure_outbox`); e != nil {
 		t.Fatal(e)
 	}
 	got, e = r.Status(ctx, issuer, subject, in.RequestID)

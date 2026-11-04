@@ -46,14 +46,16 @@ function override(path: string, name: string, value: unknown) {
     `export * from ${JSON.stringify(new URL(path, import.meta.url).href)}; export const ${name}=()=>(${JSON.stringify(value)});`,
   );
 }
-test('account settings explain local deletion and keep destructive confirmation in the common modal', async () => {
+test('account settings explain Clerk deletion and retries and keep destructive confirmation in the common modal', async () => {
   const Component = (await import(await component('AccountSettings'))).default;
   const html = render(Component, {
     props: { api: {}, token: async () => null, signOut: () => {} },
   }).body;
   assert.match(html, /class="library-header/);
   assert.match(html, /class="library-panel/);
-  assert.match(html, /Google・Microsoft・Clerkのアカウント自体は削除しません/);
+  assert.match(html, /Clerkのユーザーも削除/);
+  assert.match(html, /失敗した場合は自動で再試行/);
+  assert.match(html, /Google・Microsoftのアカウント自体は削除しません/);
   assert.match(html, /サブスクリプションの解約/);
   assert.match(html, /OAuth許可は取り消されません/);
   assert.match(html, /共有のサービス用APIキー/);

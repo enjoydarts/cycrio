@@ -15,6 +15,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/airuntimeconfig"
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
+	"github.com/enjoydarts/cycrio/internal/clerkdelete"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/health"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
@@ -149,6 +150,8 @@ func run() (result error) {
 	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
 	go dispatchSubscriptionAutomation(ctx, notificationRepository.GenerateDue, 10*time.Second)
 	go dispatchSubscriptionAutomation(ctx, database.NewErasureRepository(pool, keyring).PurgeDue, 10*time.Second)
+	clerkErasure := clerkdelete.NewService(database.NewClerkErasureRepository(pool, keyring, config.Issuer()), clerkdelete.NewClient(nil))
+	go dispatchClerkErasure(ctx, clerkErasure.Drain, 10*time.Second)
 	go dispatchNotifications(ctx, notificationRepository.ClaimNotifications, func(ctx context.Context, task notificationruntime.Task) error {
 		_, err := notificationTask.RunNoWait(ctx, task)
 		return err

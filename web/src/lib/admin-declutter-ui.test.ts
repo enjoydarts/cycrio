@@ -100,7 +100,7 @@ const credentials = {
   error: null,
   success: null,
 };
-test('credential landing shows service statuses without mounting nine secret editors', async () => {
+test('credential landing shows service statuses without mounting secret editors', async () => {
   const Component = (
     await import(await component('AdminCredentials', { view: credentials }))
   ).default;
@@ -112,6 +112,8 @@ test('credential landing shows service statuses without mounting nine secret edi
   assert.equal((html.match(/type="password"/g) ?? []).length, 0);
   assert.match(html, /Liquid AI/);
   assert.match(html, /Outlook/);
+  assert.match(html, /Clerk Backend API/);
+  assert.match(html, /退会時のClerkユーザー削除/);
   assert.match(html, /操作履歴/);
 });
 test('one selected credential editor is available without exposing other provider forms', async () => {
@@ -133,6 +135,27 @@ test('one selected credential editor is available without exposing other provide
     /id="secret-liquid"|id="client-secret-gmail_oauth"/,
   );
   assert.match(html, /サービス一覧に戻る/);
+});
+test('Clerk backend editor requests a fresh secret without exposing saved values', async () => {
+  const Component = (
+    await import(
+      await component('AdminCredentials', {
+        view: credentials,
+        selectedProvider: 'clerk_backend',
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => '', onDenied() {} },
+  }).body;
+  assert.equal((html.match(/<form\b/g) ?? []).length, 1);
+  assert.match(html, /Clerk Backend API/);
+  const input = html.match(
+    /<input(?=[^>]*id="secret-clerk_backend")(?=[^>]*type="password")[^>]*>/,
+  )?.[0];
+  assert.ok(input);
+  assert.doesNotMatch(input, /\bvalue="[^"]+"/);
+  assert.doesNotMatch(html, /id="secret-openai"|id="secret-clerk_webhook"/);
 });
 test('credential selection preserves dirty secrets until explicit discard and blocks mutation-time switching', async () => {
   const source = await readFile(
