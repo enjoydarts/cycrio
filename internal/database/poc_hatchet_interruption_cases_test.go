@@ -221,7 +221,7 @@ func prepareInterruptionStop(t *testing.T, ctx context.Context, f processingFixt
 			if repository.ApplyClerk(ctx, credential, "msg_"+uuid.NewString(), body) != nil {
 				t.Fatal("apply synthetic user deletion")
 			}
-			store := NewStore(f.runtime.pool)
+			store := NewStore(f.runtime.pool, f.keys)
 			if _, err := store.AllowIdentity(ctx, issuer, subject, false); !errors.Is(err, ErrForbidden) {
 				t.Fatal("deleted identity revived")
 			}
