@@ -77,7 +77,7 @@ func (r Runner) Deploy(ctx context.Context) (bool, error) {
 	// before its asynchronous status collector has checked the new containers.
 	if err := request(ctx, client, "PATCH", appURL, c.CoolifyToken, map[string]string{
 		"git_commit_sha":                      c.SHA,
-		"docker_compose_custom_start_command": "docker compose up -d --wait --wait-timeout 300",
+		"docker_compose_custom_start_command": "docker compose --project-name " + c.Application + " up -d --wait --wait-timeout 300",
 	}, nil); err != nil {
 		return false, err
 	}

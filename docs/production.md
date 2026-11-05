@@ -116,7 +116,7 @@ docker compose -f compose.coolify.yaml run --rm --no-deps manage \
 mainへのpush・mergeで[CI](../.github/workflows/ci.yml)が起動します。ブラウザー・Go/Web・統合・PostgreSQL 16の全ジョブが成功した後、`production`ジョブが次の順に実行します。
 
 1. 必須の認証情報・変数を確認し、開始時点でmainの最新コミットでない実行はスキップ。
-2. CoolifyのコミットをCIと同じSHAに固定してデプロイ。起動コマンドも`docker compose up -d --wait --wait-timeout 300`に設定し、新しいイメージのmigration成功後にAPI・Workerを起動。両方のhealthcheck成功まで完了させません。
+2. CoolifyのコミットをCIと同じSHAに固定してデプロイ。起動コマンドも`docker compose --project-name <アプリUUID> up -d --wait --wait-timeout 300`に設定し、新しいイメージのmigration成功後にAPI・Workerを起動。既存のComposeプロジェクト名を維持し、両方のhealthcheck成功まで完了させません。
 3. Coolifyの完了コミット・全体のhealthy・公開APIの`/readyz`を確認。
 4. 同じCIでビルド・保存したWeb成果物を[本番Wrangler設定](../web/wrangler.production.jsonc)で公開。`https://cycrio.com/release.txt`のSHAを確認。
 

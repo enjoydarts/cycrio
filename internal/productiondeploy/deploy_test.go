@@ -51,7 +51,7 @@ func TestDeploy(t *testing.T) {
 					}
 					_ = json.NewDecoder(r.Body).Decode(&body)
 					pinned = body.SHA
-					if body.Start != "docker compose up -d --wait --wait-timeout 300" {
+					if body.Start != "docker compose --project-name app up -d --wait --wait-timeout 300" {
 						t.Error("new release must wait for both container healthchecks")
 					}
 					_, _ = w.Write([]byte(`{}`))
