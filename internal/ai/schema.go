@@ -98,6 +98,16 @@ func ExtractionSchema() map[string]any {
 	required := []string{"service", "plan", "event_type", "amount", "currency", "billed_at", "period_start", "period_end", "next_billing_at", "interval_unit", "interval_count", "recurring_amount", "recurring_currency", "effective_date", "access_end_date", "contract_kind", "trial_end_date", "auto_renew"}
 	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"events"}, "properties": map[string]any{"events": map[string]any{"type": "array", "items": map[string]any{"type": "object", "additionalProperties": false, "required": required, "properties": props}}}}
 }
+
+func anthropicExtractionSchema() map[string]any {
+	schema := ExtractionSchema()
+	properties := schema["properties"].(map[string]any)["events"].(map[string]any)["items"].(map[string]any)["properties"].(map[string]any)
+	// A finite enum accepts the same nullable boolean without consuming an
+	// extra union parameter in Anthropic's constrained-output compiler.
+	properties["auto_renew"] = map[string]any{"enum": []any{true, false, nil}}
+	return schema
+}
+
 func ValidateExtraction(b []byte) (Extraction, error) {
 	bad := func() (Extraction, error) { return Extraction{}, &Error{Code: "invalid_output"} }
 	v, err := decodeJSON(b)

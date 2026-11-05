@@ -102,6 +102,7 @@ func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 			return out, &Error{Code: "invalid_request"}
 		}
 		endpoint = "https://api.anthropic.com/v1/messages"
+		schema = anthropicExtractionSchema()
 		body = map[string]any{"model": r.ModelID, "service_tier": "standard_only", "max_tokens": r.MaxOutputTokens, "system": r.Input.Instructions, "messages": []any{map[string]any{"role": "user", "content": r.Input.Text}}, "output_config": map[string]any{"format": map[string]any{"type": "json_schema", "schema": schema}}}
 	default:
 		return out, &Error{Code: "invalid_request"}
