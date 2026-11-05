@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
@@ -16,6 +17,17 @@ type CatalogSyncInput struct {
 
 type CatalogSyncOutput struct {
 	Status string `json:"status"`
+}
+
+func executeCatalogSync(ctx context.Context, input CatalogSyncInput, sync func(context.Context, string, string) error) (CatalogSyncOutput, error) {
+	err := sync(ctx, input.Provider, input.LeaseID)
+	if errors.Is(err, modelcatalog.ErrCredentialsRequired) {
+		return CatalogSyncOutput{Status: "credentials_required"}, nil
+	}
+	if err != nil {
+		return CatalogSyncOutput{Status: "failed"}, errors.New("catalog synchronization failed")
+	}
+	return CatalogSyncOutput{Status: "ok"}, nil
 }
 
 func dispatchCatalog(ctx context.Context, claim func(context.Context) ([]modelcatalog.SyncLease, error), submit func(context.Context, CatalogSyncInput) error, interval time.Duration) {

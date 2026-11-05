@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -11,6 +12,39 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 )
+
+func TestCatalogExecutionDistinguishesMissingCredentialsFromFailure(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status string
+		failed bool
+	}{
+		{name: "success", status: "ok"},
+		{name: "missing credentials", err: modelcatalog.ErrCredentialsRequired, status: "credentials_required"},
+		{name: "wrapped missing credentials", err: fmt.Errorf("lookup: %w", modelcatalog.ErrCredentialsRequired), status: "credentials_required"},
+		{name: "provider unavailable", err: modelcatalog.ErrUnavailable, status: "failed", failed: true},
+		{name: "private upstream failure", err: errors.New("private upstream details"), status: "failed", failed: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			input := CatalogSyncInput{Provider: "openai", LeaseID: "lease-only"}
+			out, err := executeCatalogSync(context.Background(), input, func(_ context.Context, provider, lease string) error {
+				calls++
+				if provider != input.Provider || lease != input.LeaseID {
+					t.Fatal("catalog lease changed")
+				}
+				return tc.err
+			})
+			if calls != 1 || out.Status != tc.status || (err != nil) != tc.failed {
+				t.Fatalf("calls=%d status=%q error=%v", calls, out.Status, err)
+			}
+			if err != nil && err.Error() != "catalog synchronization failed" {
+				t.Fatal("private upstream error escaped")
+			}
+		})
+	}
+}
 
 func TestCatalogDispatcherUsesOnlyProviderAndLease(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())

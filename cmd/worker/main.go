@@ -73,10 +73,7 @@ func run() (result error) {
 	})
 	catalog := catalogruntime.New(pool, keyring)
 	catalogTask := client.NewStandaloneTask(catalogTaskName, func(ctx hatchet.Context, input CatalogSyncInput) (CatalogSyncOutput, error) {
-		if err := catalog.SyncProvider(ctx, input.Provider, input.LeaseID); err != nil {
-			return CatalogSyncOutput{Status: "failed"}, errors.New("catalog synchronization failed")
-		}
-		return CatalogSyncOutput{Status: "ok"}, nil
+		return executeCatalogSync(ctx, input, catalog.SyncProvider)
 	}, hatchet.WithRetries(0))
 	research := priceresearchruntime.New(pool, keyring)
 	researchTask := client.NewStandaloneTask(priceResearchTaskName, func(ctx hatchet.Context, input priceresearch.Lease) (PriceResearchOutput, error) {

@@ -384,7 +384,16 @@ func (r *ModelCatalogRepository) ClaimDue(ctx context.Context) ([]modelcatalog.S
 	}
 	defer tx.Rollback(ctx)
 	var provider string
-	err = tx.QueryRow(ctx, `SELECT provider FROM catalog_sync WHERE (lease_until IS NULL OR lease_until<=now()) AND ((status='queued') OR (automatic_enabled AND next_sync_at<=now()) OR status='running') ORDER BY next_sync_at NULLS FIRST,provider FOR UPDATE SKIP LOCKED LIMIT 1`).Scan(&provider)
+	err = tx.QueryRow(ctx, `SELECT s.provider FROM catalog_sync s
+		WHERE (s.lease_until IS NULL OR s.lease_until<=now())
+		AND (s.status='queued' OR s.status='running' OR (
+			s.automatic_enabled AND s.next_sync_at<=now()
+			AND (s.status<>'credentials_required' OR s.provider='openrouter' OR EXISTS (
+				SELECT 1 FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider
+				WHERE p.provider=s.provider AND p.state='configured' AND v.state='active'
+			))
+		))
+		ORDER BY s.next_sync_at NULLS FIRST,s.provider FOR UPDATE OF s SKIP LOCKED LIMIT 1`).Scan(&provider)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return items, nil
 	}
