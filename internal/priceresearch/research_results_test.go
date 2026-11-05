@@ -6,6 +6,27 @@ import (
 	"testing"
 )
 
+func TestResearchModelDiagnosticsSeparateMissingUnverifiedAndUnknown(t *testing.T) {
+	targets := []Target{}
+	for _, id := range []string{"good", "missing", "source", "unknown", "price", "bad", "duplicate", "nontext"} {
+		targets = append(targets, Target{Provider: "openai", ModelID: id})
+	}
+	text := `{"models":[{"model_id":"good","provider":"openai","model_kind":"text_generation","currency":"USD","input_per_million":"1","output_per_million":"2","source_url":"https://openai.com/api/pricing/","conditions":"standard_global"},{"model_id":"source","provider":"openai","model_kind":"text_generation","source_url":null},{"model_id":"unknown","provider":"openai","model_kind":"unknown","source_url":"https://openai.com/api/pricing/"},{"model_id":"price","provider":"openai","model_kind":"text_generation","source_url":"https://openai.com/api/pricing/"},{"model_id":"bad","provider":"openai","private-field":"must-not-be-saved"},{"model_id":"duplicate","provider":"openai"},{"model_id":"duplicate","provider":"openai"},{"model_id":"nontext","provider":"openai","model_kind":"non_text","source_url":"https://openai.com/api/pricing/"}]}`
+	models, prices, issues, err := inspectResearchModels(text, targets)
+	if err != nil || len(models) != 4 || len(prices) != 1 {
+		t.Fatalf("models=%d prices=%d err=%v", len(models), len(prices), err)
+	}
+	want := map[string]string{"good": "verified", "missing": "missing_model", "source": "unverified_source", "unknown": "classification_unknown", "price": "price_unverified", "bad": "invalid_entry", "duplicate": "ambiguous_identity", "nontext": "non_text"}
+	for id, code := range want {
+		if issues[id] != code {
+			t.Errorf("%s got %q want %q", id, issues[id], code)
+		}
+	}
+	if len(issues) != len(targets) {
+		t.Fatal(issues)
+	}
+}
+
 func TestParseResearchModelsKeepsIndependentValidEntries(t *testing.T) {
 	good := `{"model_id":"good","provider":"openai","model_kind":"text_generation","currency":"USD","input_per_million":"1","output_per_million":"2","source_url":"https://openai.com/api/pricing/","conditions":"standard_global","text_input":true,"structured_output":true}`
 	targets := []Target{{Provider: "openai", ModelID: "good"}, {Provider: "openai", ModelID: "bad"}}

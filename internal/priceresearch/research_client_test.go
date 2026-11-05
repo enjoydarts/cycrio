@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
@@ -14,7 +15,19 @@ import (
 
 type researchTransport func(*http.Request) (*http.Response, error)
 
-func (f researchTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (f researchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.Method == http.MethodGet && r.URL.String() == "https://developers.openai.com/api/docs/pricing.md" {
+		return reply(200, officialTestMarkdown()), nil
+	}
+	return f(r)
+}
+func officialTestMarkdown() string {
+	text := "Short context: ≤200K input tokens.\n### Standard pricing data\n| Model | Short context input | Short context output | Short context cached input |\n| --- | --- | --- | --- |\n| example-model | $2.5 | $10 | - |\n| second | $2.5 | $10 | - |\n"
+	for i := 0; i < 136; i++ {
+		text += fmt.Sprintf("| model-%d | $2.5 | $10 | - |\n", i)
+	}
+	return text
+}
 func reply(code int, body string) *http.Response {
 	return &http.Response{StatusCode: code, Header: http.Header{"Content-Type": []string{"text/html"}}, Body: io.NopCloser(strings.NewReader(body))}
 }

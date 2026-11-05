@@ -157,12 +157,25 @@ func finishResearchItem(ctx context.Context, tx pgx.Tx, lease priceresearch.Leas
 		}
 		raw, _ := json.Marshal(quotes)
 		sourceRaw, _ := json.Marshal(sources)
-		_, err = tx.Exec(ctx, `UPDATE price_research_items SET state=$2,classification=$3,quote_doc=$4,sources=$5,search_calls=$6,error_code=$7 WHERE call_id=$1 AND target_index=$8 AND state='calling'`, callID, state, kind, raw, sourceRaw, searchCalls, code, i.index)
+		reason := researchResultReason(result.ModelIssues[modelID], code)
+		_, err = tx.Exec(ctx, `UPDATE price_research_items SET state=$2,classification=$3,quote_doc=$4,sources=$5,search_calls=$6,error_code=$7,result_reason=$9 WHERE call_id=$1 AND target_index=$8 AND state='calling'`, callID, state, kind, raw, sourceRaw, searchCalls, code, i.index, reason)
 		if err != nil {
 			return researchError(err)
 		}
 	}
 	return nil
+}
+
+func researchResultReason(reason, code string) string {
+	if code != "" {
+		return "request_failed"
+	}
+	switch reason {
+	case "missing_model", "invalid_entry", "ambiguous_identity", "unverified_source", "classification_unknown", "price_unverified", "verified", "non_text":
+		return reason
+	default:
+		return ""
+	}
 }
 
 type researchBatchProgress struct{ completed, nonText, unclassified, pending, searchCalls, failedCalls int }

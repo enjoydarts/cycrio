@@ -55,3 +55,32 @@ func TestInspectOpenAISearchUsageBoundsEvidence(t *testing.T) {
 		t.Fatalf("got count=%d known=%v evidence=%d; want retained count=33, unknown and bounded evidence=32", count, known, len(actions))
 	}
 }
+
+func TestInspectOpenAISearchUsageCompletedBuiltinCap(t *testing.T) {
+	const completedSearch = `{"type":"web_search_call","id":"search1","status":"completed","action":{"type":"search"}}`
+	const pendingSearch = `{"type":"web_search_call","id":"search2","status":"searching","action":{"type":"search"}}`
+	tests := []struct {
+		name  string
+		other string
+		known bool
+	}{
+		{"completed page consumes final tool slot", `{"type":"web_search_call","id":"page","status":"completed","action":{"type":"open_page"}}`, true},
+		{"completed find consumes final tool slot", `{"type":"web_search_call","id":"find","status":"completed","action":{"type":"find_in_page"}}`, true},
+		{"unfinished page leaves search uncertain", `{"type":"web_search_call","id":"page","status":"in_progress","action":{"type":"open_page"}}`, false},
+		{"failed find leaves search uncertain", `{"type":"web_search_call","id":"find","status":"failed","action":{"type":"find_in_page"}}`, false},
+		{"duplicate cannot consume final slot", completedSearch, false},
+		{"conflicting id invalidates cap proof", `{"type":"web_search_call","id":"search1","status":"completed","action":{"type":"open_page"}}`, false},
+		{"malformed item invalidates cap proof", `{"type":"web_search_call","id":"page","status":"completed","action":{"type":"open_page"}},null`, false},
+		{"malformed id invalidates cap proof", `{"type":"web_search_call","id":42,"status":"completed","action":{"type":"open_page"}}`, false},
+		{"unknown action cannot consume final slot", `{"type":"web_search_call","id":"other","status":"completed","action":{"type":"other"}}`, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			raw := json.RawMessage("[" + completedSearch + "," + tt.other + "," + pendingSearch + "]")
+			count, known, _ := InspectOpenAISearchUsage(raw, 2)
+			if count != 1 || known != tt.known {
+				t.Fatalf("got search count=%d known=%v, want search count=1 known=%v", count, known, tt.known)
+			}
+		})
+	}
+}

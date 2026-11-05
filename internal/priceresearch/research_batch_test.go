@@ -70,6 +70,9 @@ func TestResearchBatchUsesOneBoundedRequestAndKeepsPerModelEvidence(t *testing.T
 				if len(prompt) > 2000 || strings.Contains(prompt, "DO NOT INCLUDE") {
 					t.Fatalf("verbose prompt (%d bytes): %s", len(prompt), prompt)
 				}
+				if !strings.Contains(prompt, "official model documentation") || !strings.Contains(prompt, "legacy") || strings.Contains(prompt, "this model family") {
+					t.Fatal("research misses model-specific and legacy sources", prompt)
+				}
 				t.Logf("16-target prompt: %d bytes", len(prompt))
 				return reply(200, batchResponse(provider, quotes)), nil
 			}))

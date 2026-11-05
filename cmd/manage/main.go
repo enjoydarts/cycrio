@@ -15,6 +15,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -35,7 +36,7 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	}
 	command := args[0]
 	switch command {
-	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user", "recalculate-research-costs":
+	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user", "recalculate-research-costs", "repair-research-prices":
 	default:
 		return errors.New("unknown management command")
 	}
@@ -44,12 +45,23 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	path := flags.String("bootstrap-file", ".local/bootstrap.json", "public sign-in configuration")
 	keyringPath := flags.String("keyring-file", ".local/secrets/keyring.json", "encryption keyring file")
 	subject := flags.String("user-id", "", "Clerk user ID")
-	apply := flags.Bool("apply", false, "apply research cost recalculation; default is dry run")
+	apply := flags.Bool("apply", false, "apply research maintenance changes; default is dry run")
+	runID := flags.String("run-id", "", "completed manual research run ID")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid command options")
 	}
-	if *apply && command != "recalculate-research-costs" {
+	if *apply && command != "recalculate-research-costs" && command != "repair-research-prices" || *runID != "" && command != "repair-research-prices" {
 		return errors.New("invalid command options")
+	}
+	if command == "repair-research-prices" {
+		if _, err := uuid.Parse(*runID); err != nil {
+			return errors.New("valid research run ID is required")
+		}
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			return errors.New("database connection is required")
+		}
+		return repairResearchPrices(ctx, dsn, *runID, *apply, out)
 	}
 	if command == "recalculate-research-costs" {
 		dsn := os.Getenv("DATABASE_URL")

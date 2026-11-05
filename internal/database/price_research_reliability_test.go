@@ -281,18 +281,20 @@ func TestResearchReliabilityMigrationLegacySharedBoundOnly(t *testing.T) {
 	if err = r.Complete(ctx, ls[0], e, priceresearch.Result{CallsRecorded: true}, ""); err != nil {
 		t.Fatal(err)
 	}
+	// This fixture represents v41 records, which had no per-model reasons.
+	if _, err = r.pool.Exec(ctx, `UPDATE price_research_items SET result_reason='' WHERE call_id IN ($1,$2)`, id, single); err != nil {
+		t.Fatal(err)
+	}
 	p := automationMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 41)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 42 || down[0].Direction != "down" {
-		t.Fatal(down, err)
-	}
-	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(d)-'request_tool_limit'-'tool_actions'-'response_state'-'failure_code'-'http_status' ORDER BY call_id) FROM research_call_costs d),(SELECT jsonb_agg(c ORDER BY id) FROM ai_calls c),(SELECT jsonb_agg(r ORDER BY id) FROM ai_usage_revisions r),(SELECT jsonb_agg(i ORDER BY run_id,target_index) FROM price_research_items i))::text`
+	assertMigrationRange(t, down, err, latestMigrationVersion, 42)
+	const snapshot = `SELECT jsonb_build_array((SELECT jsonb_agg(to_jsonb(d)-'request_tool_limit'-'tool_actions'-'response_state'-'failure_code'-'http_status' ORDER BY call_id) FROM research_call_costs d),(SELECT jsonb_agg(c ORDER BY id) FROM ai_calls c),(SELECT jsonb_agg(r ORDER BY id) FROM ai_usage_revisions r),(SELECT jsonb_agg(to_jsonb(i)-'result_reason' ORDER BY run_id,target_index) FROM price_research_items i))::text`
 	var before, after string
 	if err = r.pool.QueryRow(ctx, snapshot).Scan(&before); err != nil {
 		t.Fatal(err)
 	}
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 42, 42)
+	assertMigrationRange(t, up, err, 42, latestMigrationVersion)
 	if err = r.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("migration changed saved usage/cost/classification", err)
 	}

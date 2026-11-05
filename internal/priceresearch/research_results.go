@@ -8,36 +8,45 @@ import (
 // ParseResearchModels isolates invalid model entries while rejecting ambiguous
 // response framing. An identity mentioned twice is never adopted.
 func ParseResearchModels(text string, targets []Target) (models []Quote, prices []Quote, err error) {
+	models, prices, _, err = inspectResearchModels(text, targets)
+	return
+}
+
+func inspectResearchModels(text string, targets []Target) (models []Quote, prices []Quote, issues map[string]string, err error) {
+	issues = map[string]string{}
+	for _, target := range targets {
+		issues[target.ModelID] = "missing_model"
+	}
 	raw := []byte(researchJSON(text))
 	if !json.Valid(raw) {
-		return nil, nil, ErrInvalid
+		return nil, nil, issues, ErrInvalid
 	}
 	raw = bytes.TrimSpace(raw)
 	var entries []json.RawMessage
 	switch raw[0] {
 	case '[':
 		if json.Unmarshal(raw, &entries) != nil {
-			return nil, nil, ErrInvalid
+			return nil, nil, issues, ErrInvalid
 		}
 	case '{':
 		fields, ok := researchRootFields(raw)
 		if !ok {
-			return nil, nil, ErrInvalid
+			return nil, nil, issues, ErrInvalid
 		}
 		if value, wrapped := fields["models"]; wrapped {
 			if len(fields) != 1 || len(bytes.TrimSpace(value)) == 0 || bytes.TrimSpace(value)[0] != '[' || json.Unmarshal(value, &entries) != nil {
-				return nil, nil, ErrInvalid
+				return nil, nil, issues, ErrInvalid
 			}
 		} else if len(targets) == 1 {
 			entries = []json.RawMessage{raw}
 		} else {
-			return nil, nil, ErrInvalid
+			return nil, nil, issues, ErrInvalid
 		}
 	default:
-		return nil, nil, ErrInvalid
+		return nil, nil, issues, ErrInvalid
 	}
 	if len(entries) > 2*ResearchBatchSize {
-		return nil, nil, ErrInvalid
+		return nil, nil, issues, ErrInvalid
 	}
 	counts := map[string]int{}
 	for _, entry := range entries {
@@ -47,6 +56,14 @@ func ParseResearchModels(text string, targets []Target) (models []Quote, prices 
 	}
 	invalidEntry := false
 	for _, entry := range entries {
+		for id := range researchEntryIDs(entry) {
+			if _, requested := issues[id]; requested {
+				issues[id] = "invalid_entry"
+				if counts[id] > 1 {
+					issues[id] = "ambiguous_identity"
+				}
+			}
+		}
 		var q Quote
 		if strictJSON(entry, &q) != nil || counts[q.ModelID] != 1 {
 			invalidEntry = true
@@ -59,6 +76,7 @@ func ParseResearchModels(text string, targets []Target) (models []Quote, prices 
 		}
 		canonical, ok := officialURL(q.SourceURL, q.Provider)
 		if !ok {
+			issues[q.ModelID] = "unverified_source"
 			continue
 		}
 		q.SourceURL = canonical
@@ -67,14 +85,22 @@ func ParseResearchModels(text string, targets []Target) (models []Quote, prices 
 		}
 		q.TextInput, q.StructuredOutput = nil, nil
 		models = append(models, q)
+		issues[q.ModelID] = "classification_unknown"
+		if q.ModelKind == "non_text" {
+			issues[q.ModelID] = "non_text"
+		}
+		if q.ModelKind == "text_generation" {
+			issues[q.ModelID] = "price_unverified"
+		}
 		if q.ModelKind == "text_generation" && validQuote(q, target) {
 			prices = append(prices, q)
+			issues[q.ModelID] = "verified"
 		}
 	}
 	if len(models) == 0 && invalidEntry {
-		return nil, nil, ErrInvalid
+		return nil, nil, issues, ErrInvalid
 	}
-	return models, prices, nil
+	return models, prices, issues, nil
 }
 
 // Decode only the root fields: duplicate fields within an entry are handled

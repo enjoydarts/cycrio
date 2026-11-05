@@ -43,6 +43,7 @@ type Result struct {
 	HTTPStatus       int
 	ModelKind        string
 	Models           []Quote
+	ModelIssues      map[string]string
 	CallsRecorded    bool
 	Quotes           []Quote
 	Sources          []string

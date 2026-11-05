@@ -19,6 +19,7 @@ func InspectOpenAISearchUsage(raw json.RawMessage, limit int) (observed int, kno
 	}
 	seen := make(map[string]callMetadata)
 	uncertain, invalid := false, false
+	completedBuiltins := 0
 	for _, item := range output {
 		var entry struct {
 			Type   string          `json:"type"`
@@ -65,6 +66,9 @@ func InspectOpenAISearchUsage(raw json.RawMessage, limit int) (observed int, kno
 		} else {
 			invalid = true
 		}
+		if !duplicate && evidence.Action != "unknown" && evidence.Status == "completed" {
+			completedBuiltins++
+		}
 		switch evidence.Action {
 		case "search":
 			if evidence.Status == "completed" {
@@ -79,8 +83,9 @@ func InspectOpenAISearchUsage(raw json.RawMessage, limit int) (observed int, kno
 		}
 	}
 	// max_tool_calls bounds processed built-in tool calls; further attempts are
-	// ignored. Reaching that cap with completed searches proves their total even
-	// when the response also exposes an unfinished attempt. Do not clamp an
-	// unexpectedly larger completed total or override malformed evidence.
-	return observed, !invalid && (!uncertain || (limit > 0 && observed == limit)), actions
+	// ignored. Completed searches, page opens and page finds all consume this
+	// cap, proving the search total even when an unfinished attempt also appears.
+	// Do not clamp an unexpectedly larger completed total or override malformed
+	// evidence. Only searches contribute to the billable observed count.
+	return observed, !invalid && (!uncertain || (limit > 0 && completedBuiltins == limit)), actions
 }
