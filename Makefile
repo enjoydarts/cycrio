@@ -86,6 +86,10 @@ test-recovery:
 test-postgres16:
 	sh deploy/test/postgres16.sh
 
+.PHONY: test-deploy-gate
+test-deploy-gate:
+	sh deploy/test/deploy-gate.sh
+
 # Default is dry-run. Paid external evaluation requires explicit EVAL_ARGS.
 .PHONY: prompt-evaluation
 prompt-evaluation:

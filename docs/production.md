@@ -60,9 +60,9 @@ migration用URLのDB名部分は`cycrio_migration`です。実際には同じPos
 - Composeファイルは`compose.coolify.yaml`、build contextはリポジトリ直下。
 - [変数サンプル](../deploy/production/coolify.env.example)に従い、`CYCRIO_SECRETS_DIR`へ上記の絶対パスを設定。
 - APIのドメインを`https://api.cycrio.com`、転送先の内部ポートを`8080`に設定。Workerにはドメインを設定しない。
-- 初回はAuto Deployを無効にし、CI成功済みのコミットを選択。
+- Auto Deployは無効にします。更新は後述のGitHub Actionsから、CI成功済みコミットを指定して実行します。
 
-DB、HatchetはこのComposeに含みません。ホストへのAPIポート公開もありません。CoolifyのプロキシからAPIへ接続します。healthcheckはCompose定義を使用します。`manage`・`migrate`は`tools` profileなので通常起動しません。
+DB、HatchetはこのComposeに含みません。ホストへのAPIポート公開もありません。CoolifyのプロキシからAPIへ接続します。healthcheckはCompose定義を使用します。`manage`は`tools` profileなので通常起動しません。`migrate`は毎回起動し、同じコミットからビルドした`manage migrate`が未適用のSQLを適用します。API・Workerは`service_completed_successfully`で成功を待ちます。migration失敗時は新しいAPI・Workerを起動しません。`restart: "no"`のmigrationはCoolifyの状態集計から除外されます。
 
 ## 4. migrationと鍵の初期化
 
@@ -113,7 +113,28 @@ docker compose -f compose.coolify.yaml run --rm --no-deps manage \
 
 ## 6. 更新・バックアップ・受入確認
 
-更新はCI成功済みコミットを対象に、バックアップ確認 → 必要なら取り込み・定期処理の停止と実行中処理の完了確認 → migration → Coolify Deploy → API・Worker・主要画面の確認、の順です。DB変更が旧アプリと互換かを事前確認し、非互換ならAPI・Workerを停止するメンテナンス手順を用意します。
+mainへのpush・mergeで[CI](../.github/workflows/ci.yml)が起動します。ブラウザー・Go/Web・統合・PostgreSQL 16の全ジョブが成功した後、`production`ジョブが次の順に実行します。
+
+1. 必須の認証情報・変数を確認し、開始時点でmainの最新コミットでない実行はスキップ。
+2. CoolifyのコミットをCIと同じSHAに固定してデプロイ。起動コマンドも`docker compose up -d --wait --wait-timeout 300`に設定し、新しいイメージのmigration成功後にAPI・Workerを起動。両方のhealthcheck成功まで完了させません。
+3. Coolifyの完了コミット・全体のhealthy・公開APIの`/readyz`を確認。
+4. 同じCIでビルド・保存したWeb成果物を[本番Wrangler設定](../web/wrangler.production.jsonc)で公開。`https://cycrio.com/release.txt`のSHAを確認。
+
+本番ジョブは同時実行せず、実行中のデプロイを新しいpushで中断しません。PRではデプロイせず、本番の秘密値も渡しません。CoolifyのAuto Deployは無効を維持し、CIを通さない二重デプロイを避けます。APIとWebの更新は別サービスなので原子的ではありません。失敗時はGitHub ActionsとCoolifyの状態を確認してから再実行してください。DBの自動巻き戻しは行いません。
+
+GitHubリポジトリのActions設定に以下を登録します。`production` Environmentに承認待ちを設定すると自動実行が停止するため、無人更新を行う場合は必須承認を設定しません。
+
+| 種別 | 名前 | 値・権限 |
+| --- | --- | --- |
+| Secret | `COOLIFY_API_TOKEN` | 対象チームのCI専用トークン。`read`・`write`・`deploy`。`read:sensitive`・`root`は不要 |
+| Secret | `CLOUDFLARE_API_TOKEN` | 対象アカウントのWorkers Scripts Edit、対象ゾーンのWorkers Routes Edit・Zone Read |
+| Variable | `COOLIFY_API_URL` | CoolifyのHTTPS API URL（末尾`/api/v1`） |
+| Variable | `COOLIFY_APPLICATION_UUID` | API・Workerを管理するComposeアプリのUUID |
+| Variable | `CLOUDFLARE_ACCOUNT_ID` | Webを公開するCloudflareアカウントID |
+
+DB接続URL・keyring・Hatchetトークン・AI APIキーはGitHubへ登録しません。既存ホストのsecretファイルとDBを使い続けます。
+
+DB変更が旧アプリと互換かをマージ前に確認し、非互換なら本番ジョブの停止・バックアップ確認・取り込みと定期処理の停止・実行中処理の完了待ちを含むメンテナンス手順を用意します。バックアップの監視と復元検証は自動デプロイとは別に継続します。
 
 切り戻しはCoolifyで旧コミットを再デプロイします。DBの自動ダウングレードは行いません。旧アプリが新schemaで動かない場合は、互換性修正またはデータ復元を別途判断します。
 
@@ -129,6 +150,7 @@ docker compose -f compose.coolify.yaml run --rm --no-deps manage \
 
 ```sh
 make test-postgres16
+make test-deploy-gate
 ```
 
 これは専用の一時Composeプロジェクトに合成DBを作り、初期化SQL・実行用権限・migration・DB/API統合テストを確認します。既存の開発DB・本番DBへ接続しません。実際のCoolifyによるCompose解釈、TLS接続、PgBouncer設定、Clerk・Hatchet・Webhookは、対象環境で別途確認する必要があります。
@@ -139,5 +161,7 @@ make test-postgres16
 - [Coolify: Persistent Storage](https://coolify.io/docs/applications/configuration/persistent-storage)
 - [Clerk: Production deployment](https://clerk.com/docs/guides/development/deployment/production)
 - [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
+- [Cloudflare: GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)
+- [Docker Compose: 起動順序](https://docs.docker.com/compose/how-tos/startup-order/)
 - [pgx: QueryExecMode](https://pkg.go.dev/github.com/jackc/pgx/v5#QueryExecMode)
 - [PgBouncer: poolingとSQL機能の互換性](https://www.pgbouncer.org/features.html)

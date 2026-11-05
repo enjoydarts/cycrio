@@ -32,11 +32,17 @@ x-runtime: &runtime
 services:
   api:
     <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     command: [api, -bootstrap-file, /run/secrets/bootstrap, -keyring-file, /run/secrets/keyring]
     expose: ["8080"]
 
   worker:
     <<: *runtime
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     command: [worker, -bootstrap-file, /run/secrets/bootstrap, -keyring-file, /run/secrets/keyring]
 
   manage:
@@ -49,7 +55,6 @@ services:
 
   migrate:
     <<: *runtime
-    profiles: [tools]
     command: [manage, migrate]
     restart: "no"
     environment:

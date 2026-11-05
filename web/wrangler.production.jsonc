@@ -1,0 +1,12 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "cycrio",
+  "compatibility_date": "2026-10-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "cycrio.com", "custom_domain": true }],
+  "assets": {
+    "directory": "./build",
+    "not_found_handling": "single-page-application",
+  },
+}
