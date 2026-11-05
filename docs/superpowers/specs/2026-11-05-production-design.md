@@ -9,7 +9,7 @@ Webを`https://cycrio.com`、APIを`https://api.cycrio.com`で公開する。Web
 ## 制約
 
 - PostgreSQL 16.15でmigrationとDB/API統合テストを検証する。開発用PostgreSQL 18は変更しない。
-- アプリはTLS必須のPgBouncer transaction poolingへ接続する。migrationは直接接続を使う。
+- アプリはTLS必須のPgBouncer transaction poolingへ接続する。migrationは直接接続または専用session poolingを使う。
 - APIだけをCoolifyのプロキシから公開する。WorkerとDBのホストポートは公開しない。
 - 基盤設定は秘密ファイル、外部サービスの資格情報は管理画面から暗号化DB保存とする。
 - keyringは再デプロイで消えない場所に置き、DBと別にバックアップする。

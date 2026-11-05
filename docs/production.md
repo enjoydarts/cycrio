@@ -18,7 +18,17 @@ postgresql://cycrio:URL_ENCODED_PASSWORD@db.example.com:6432/cycrio?sslmode=requ
 
 `default_query_exec_mode=cache_describe`は型情報をキャッシュし、名前付きprepared statementの保持に依存しません。JSON等のパラメーターはサーバーが返した型に従ってエンコードします。型の事前取得を省く`exec`は、このアプリのJSON保存と互換性がないため使いません。接続先DBのロール設定で`search_path=cycrio,public`が適用されることも確認します。TLSの最低条件は`require`です。CAと証明書名を検証できる環境では`verify-full`を使い、必要なCAをコンテナへ読み取り専用で配置します。
 
-migration用URLは、同じ専用DBのPostgreSQLへ直接接続する`cycrio_migrator`のURLにします。PgBouncerを通しません。接続経路はプライベート経路を優先し、公開経路を使う場合も必要な送信元だけ許可します。
+migration用URLは、同じ専用DBへ接続する`cycrio_migrator`のURLにします。PostgreSQLへの直接接続、または専用のsession pooling接続を使います。直接接続のためにDBポートの公開範囲を広げる必要はありません。
+
+PgBouncerを共用する場合は、例えば次の専用マッピングを追加します。通常処理とmigrationのロールをそれぞれ認証設定へ登録し、新しいロールの接続元と接続先だけを制限します。既存設定を保全し、reload後に両マッピングを使った実接続と既存アプリの稼働を確認します。
+
+```ini
+[databases]
+cycrio = host=127.0.0.1 port=5432 dbname=cycrio pool_mode=transaction
+cycrio_migration = host=127.0.0.1 port=5432 dbname=cycrio pool_mode=session
+```
+
+migration用URLのDB名部分は`cycrio_migration`です。実際には同じPostgreSQL DB `cycrio`へ接続します。接続の間は同じバックエンドを保持するsession poolingを使い、migration用URLを通常処理に使いません。SCRAM認証ではPostgreSQLとPgBouncerのverifierを一致させ、平文パスワードをSQLログへ送らない方式で登録します。
 
 ## 2. 永続する基盤設定を配置する
 
@@ -27,7 +37,7 @@ migration用URLは、同じ専用DBのPostgreSQLへ直接接続する`cycrio_mig
 | ファイル | 内容 |
 | --- | --- |
 | `database_url` | PgBouncer経由の実行用URL |
-| `migration_database_url` | PostgreSQL直接接続のmigration用URL |
+| `migration_database_url` | PostgreSQL直接接続または専用session接続のmigration用URL |
 | `bootstrap.json` | 本番ClerkのPublishable Keyと許可origin |
 | `hatchet_token` | Hatchet Cloud本番テナントの接続トークン |
 | `keyring.json` | 初回migration後に生成する本番専用鍵 |
