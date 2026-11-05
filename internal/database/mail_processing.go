@@ -66,7 +66,9 @@ func (r *MailProcessingRepository) beginAccount(ctx context.Context, owner, acco
 		return nil, mailprocessing.ErrUnavailable
 	}
 	var found string
-	if e = tx.QueryRow(ctx, `SELECT id FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, account, owner).Scan(&found); e != nil {
+	// Provider call attribution takes KEY SHARE after model references. The
+	// account identity stays fixed; ordinary account edits still serialize.
+	if e = tx.QueryRow(ctx, `SELECT id FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR NO KEY UPDATE`, account, owner).Scan(&found); e != nil {
 		tx.Rollback(ctx)
 		return nil, processingError(e)
 	}

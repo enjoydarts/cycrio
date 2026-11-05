@@ -48,7 +48,9 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string, atte
 	if e = tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`, w.work.OwnerID).Scan(&w.userState); e != nil {
 		return fail(e)
 	}
-	if e = tx.QueryRow(ctx, `SELECT state,version,credential_version,provider,host,port FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.work.Run.AccountID, w.work.OwnerID).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion, &w.work.Credential.Provider, &w.work.Credential.Host, &w.work.Credential.Port); e != nil {
+	// Serialize account changes without blocking call-attribution FK checks
+	// that already retain a model lock while this transition waits for models.
+	if e = tx.QueryRow(ctx, `SELECT state,version,credential_version,provider,host,port FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR NO KEY UPDATE`, w.work.Run.AccountID, w.work.OwnerID).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion, &w.work.Credential.Provider, &w.work.Credential.Host, &w.work.Credential.Port); e != nil {
 		return fail(e)
 	}
 	if e = lockAutomation(ctx, tx, w.work.OwnerID, w.work.Run.AccountID); e != nil {
