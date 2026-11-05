@@ -2,6 +2,8 @@
 
 [運用・復元ガイド](operations.md) / [初期設定ガイド](setup.md)
 
+配置先・通信経路・権限分離の概要は[本番環境の構成](production-architecture.md)を参照してください。
+
 Webは`https://cycrio.com`、APIは`https://api.cycrio.com`で公開します。API・WorkerはCoolifyのGit連携Docker Composeアプリ、DBは既存の別ホストのPostgreSQL、ジョブ基盤はHatchet Cloudを使います。本番DBは新規作成し、開発データ・開発用keyringをコピーしません。
 
 ## 1. DBを準備する

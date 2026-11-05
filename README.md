@@ -121,6 +121,7 @@ compose.production.yaml      本番向けAPI・Worker構成
 | [開発・検証](docs/development.md)                         | Makeコマンド、テスト、合成評価、ログとトラブルシュート |
 | [運用・復元](docs/operations.md)                          | 永続データ、暗号化鍵、復元訓練、本番向け構成、Webhook  |
 | [本番デプロイ](docs/production.md)                       | Coolify、専用DB、初回設定、更新・切り戻し             |
+| [本番環境の構成](docs/production-architecture.md)        | 配置図、公開先、DB接続・権限分離、初期設定の範囲     |
 | [通知](docs/notifications.md)                            | 通知設定、配信管理、再送防止、Webhookによる配信確認    |
 | [AI費用の上限](docs/ai-budgets.md)                       | 管理者向け月額上限、原価不明時の停止、適用範囲        |
 | [退会とデータ削除](docs/user-erasure.md)                 | 受付、個人データ削除、匿名原価・監査の保持            |
