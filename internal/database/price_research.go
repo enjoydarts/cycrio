@@ -437,16 +437,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if err = recordResearchCost(ctx, tx, c, result); err != nil {
 			return priceresearch.ErrUnavailable
 		}
-		status, outcome := "succeeded", "success"
-		if code != "" {
-			status, outcome = "failed", "provider_unavailable"
-			if code == "configuration_changed" {
-				outcome = "configuration_unavailable"
-			}
-			if code == "credentials_required" {
-				outcome = "credentials_unavailable"
-			}
-		}
+		status, outcome := researchFailureOutcome(code, result.FailureCode)
 		generation := result.GenerationID
 		if !runtimeMetadata(generation, 256) {
 			generation = ""
@@ -566,6 +557,9 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if (code == "" || code == "research_failed") && progress.pending > 0 {
 			state = "queued"
 			code = ""
+		}
+		if progress.pending == 0 && progress.failedCalls > 0 && (code == "" || code == "research_failed") {
+			state, code = "failed", "partial_research_failed"
 		}
 		if _, err = tx.Exec(ctx, `UPDATE price_research_items SET applied_at=clock_timestamp() WHERE run_id=$1 AND state NOT IN('pending','calling') AND applied_at IS NULL`, l.RunID); err != nil {
 			return researchError(err)

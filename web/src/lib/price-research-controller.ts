@@ -4,9 +4,27 @@ import type {
   PriceResearchAPI,
   ResearchInput,
   ResearchProvider,
+  ResearchRun,
   ResearchState,
   ResearchTarget,
 } from './price-research-api.ts';
+export function researchRunLabel(run: ResearchRun): string {
+  if (run.kind === 'update') {
+    if (run.state === 'failed' && run.updated_count > 0)
+      return '一部失敗（確認済み価格は保存済み）';
+    if (run.state === 'succeeded') {
+      if (run.target_count === 0) return '完了（全件の進捗は不明）';
+      if (run.unresolved_count > 0) return '完了（一部未確認）';
+    }
+  }
+  return {
+    queued: '待機中',
+    running: '実行中',
+    succeeded: '成功',
+    failed: '失敗',
+    unknown: '結果不明',
+  }[run.state];
+}
 export type PriceResearchView = {
   status:
     'idle' | 'loading' | 'saving' | 'ready' | 'error' | 'denied' | 'disposed';

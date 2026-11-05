@@ -36,6 +36,11 @@ type Target struct {
 	DisplayName string
 }
 type Result struct {
+	ToolCallLimit    int
+	ToolActions      []SearchAction
+	ResponseState    string
+	FailureCode      string
+	HTTPStatus       int
 	ModelKind        string
 	Models           []Quote
 	CallsRecorded    bool
@@ -46,6 +51,10 @@ type Result struct {
 	GenerationID     string
 	SearchCalls      int
 	SearchCallsKnown bool
+}
+type SearchAction struct {
+	Action string `json:"action"`
+	Status string `json:"status"`
 }
 type Quote struct {
 	ModelKind               string  `json:"model_kind,omitempty"`

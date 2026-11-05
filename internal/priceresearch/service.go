@@ -162,6 +162,7 @@ type CallRecorder interface {
 // BatchRepository selects pending items from a persisted, frozen target list.
 // The original target index remains the per-call accounting/deduplication key.
 const ResearchBatchSize = 16
+const ResearchToolCallLimit = 2
 
 // GroupCallRecorder reserves a single paid request for several frozen targets.
 type GroupCallRecorder interface {
@@ -299,7 +300,7 @@ func Candidates(models []modelcatalog.Model, provider string) []Target {
 		}
 		out = append(out, Target{m.ID, m.Provider, m.ModelID, m.DisplayName})
 	}
-	return out
+	return groupResearchFamilies(out)
 }
 func created(m modelcatalog.Model) float64 {
 	var v map[string]any

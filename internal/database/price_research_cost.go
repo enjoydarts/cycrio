@@ -132,7 +132,10 @@ func recordResearchCost(ctx context.Context, tx pgx.Tx, c airuntime.Call, result
 	if err != nil {
 		return err
 	}
-	return saveAdoptedResearchCostDetail(ctx, tx, c.ID, d, adopted)
+	if err = saveAdoptedResearchCostDetail(ctx, tx, c.ID, d, adopted); err != nil {
+		return err
+	}
+	return saveResearchResponseEvidence(ctx, tx, c.ID, result)
 }
 
 // ResearchCostRecalculation contains aggregates only; no identifiers or response data.
@@ -210,8 +213,20 @@ func (r *PriceResearchRepository) RecalculateCosts(ctx context.Context, apply bo
 		hasUnknownEvidence := false
 		for i, c := range calls {
 			var count *int
+			var observed, limit *int
 			var basis string
-			evidenceErr := tx.QueryRow(ctx, `SELECT search_calls,search_basis FROM research_call_costs WHERE call_id=$1`, c.ID).Scan(&count, &basis)
+			var legacyEvidence bool
+			evidenceErr := tx.QueryRow(ctx, `SELECT search_calls,search_basis,observed_search_calls,request_tool_limit,tool_actions='[]'::jsonb AND response_state='' AND failure_code='' AND http_status IS NULL FROM research_call_costs WHERE call_id=$1`, c.ID).Scan(&count, &basis, &observed, &limit, &legacyEvidence)
+			// The documented OpenAI bound counts processed built-in calls.
+			// Completed searches filling every slot prove that further attempts
+			// cannot add a search charge, even if their response is incomplete.
+			// Only historical rows without response metadata need this recovery.
+			// New responses already passed the stricter inspector: its unknown
+			// result may indicate contradictory or malformed evidence and must stand.
+			if evidenceErr == nil && legacyEvidence && count == nil && c.Provider == "openai" && observed != nil && limit != nil && *observed > 0 && *observed == *limit {
+				count = observed
+				basis = "call"
+			}
 			if errors.Is(evidenceErr, pgx.ErrNoRows) {
 				var searches int
 				itemErr := tx.QueryRow(ctx, `SELECT max(search_calls) FROM price_research_items WHERE call_id=$1 HAVING count(*)>0`, c.ID).Scan(&searches)

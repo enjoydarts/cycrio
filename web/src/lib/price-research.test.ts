@@ -10,11 +10,40 @@ import {
   type ResearchState,
   type ResearchRun,
 } from './price-research-api.ts';
-import { createPriceResearchController } from './price-research-controller.ts';
+import {
+  createPriceResearchController,
+  researchRunLabel,
+} from './price-research-controller.ts';
 import { createCatalogController } from './model-catalog.ts';
 
 const id = '11111111-1111-4111-8111-111111111111';
 const now = '2026-11-01T00:00:00Z';
+test('research result distinguishes partial confirmation and partial failure', () => {
+  assert.equal(
+    researchRunLabel(
+      run({
+        kind: 'update',
+        state: 'succeeded',
+        target_count: 16,
+        unresolved_count: 2,
+      }),
+    ),
+    '完了（一部未確認）',
+  );
+  assert.equal(
+    researchRunLabel(
+      run({ kind: 'update', state: 'failed', updated_count: 3 }),
+    ),
+    '一部失敗（確認済み価格は保存済み）',
+  );
+  assert.equal(
+    researchRunLabel(
+      run({ kind: 'update', state: 'succeeded', target_count: 16 }),
+    ),
+    '成功',
+  );
+  assert.equal(researchRunLabel(run({ state: 'failed' })), '失敗');
+});
 const state = (values: Partial<ResearchState> = {}): ResearchState => ({
   version: 1,
   provider: 'openai',

@@ -165,7 +165,7 @@ func finishResearchItem(ctx context.Context, tx pgx.Tx, lease priceresearch.Leas
 	return nil
 }
 
-type researchBatchProgress struct{ completed, nonText, unclassified, pending, searchCalls int }
+type researchBatchProgress struct{ completed, nonText, unclassified, pending, searchCalls, failedCalls int }
 
 func researchBatchResult(ctx context.Context, tx pgx.Tx, run priceresearch.Run, code string) (priceresearch.Result, researchBatchProgress, error) {
 	var progress researchBatchProgress
@@ -226,6 +226,10 @@ func researchBatchResult(ctx context.Context, tx pgx.Tx, run priceresearch.Run, 
 		}
 	}
 	if err = rows.Err(); err != nil {
+		return result, progress, researchError(err)
+	}
+	rows.Close()
+	if err = tx.QueryRow(ctx, `SELECT count(*) FROM ai_calls WHERE operation_id=$1 AND stage='price_research' AND status IN ('failed','unknown')`, run.ID).Scan(&progress.failedCalls); err != nil {
 		return result, progress, researchError(err)
 	}
 	return result, progress, nil

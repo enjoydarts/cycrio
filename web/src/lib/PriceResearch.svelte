@@ -12,6 +12,7 @@
     createPriceResearchController,
     emptyPriceResearchView,
     researchPending,
+    researchRunLabel,
   } from './price-research-controller.ts';
   import { providerNames, datetime } from './model-catalog.ts';
   import { runtimeErrors } from './ai-runtime-controller.ts';
@@ -50,14 +51,9 @@
   const ready = $derived(
     !!view.saved?.ready && !view.dirty && !pending && !locked,
   );
-  const runNames = {
-    queued: '待機中',
-    running: '実行中',
-    succeeded: '成功',
-    failed: '失敗',
-    unknown: '結果不明',
-  };
   const errorNames: Record<string, string> = {
+    partial_research_failed:
+      '一部の問い合わせに失敗しました。確認済みの価格は保存しています。',
     credentials_required: 'API キーが未登録または無効です。',
     provider_unavailable: '提供元に接続できませんでした。',
     research_unavailable: '公式価格を確認できませんでした。',
@@ -311,11 +307,7 @@
       <p>
         {run.kind === 'test' ? 'Web検索テスト' : '公式価格の更新'} · {providerNames[
           run.target_provider
-        ]} · {run.kind === 'update' &&
-        run.target_count === 0 &&
-        run.state === 'succeeded'
-          ? '完了（全件の進捗は不明）'
-          : runNames[run.state]}
+        ]} · {researchRunLabel(run)}
       </p>
       <dl>
         {#if run.kind === 'update'}

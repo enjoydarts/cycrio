@@ -121,10 +121,7 @@ func (r *PriceResearchRepository) FinishCall(ctx context.Context, lease priceres
 	if err = recordResearchCost(ctx, tx, call, result); err != nil {
 		return researchError(err)
 	}
-	status, outcome := "succeeded", "success"
-	if code != "" {
-		status, outcome = "failed", "provider_unavailable"
-	}
+	status, outcome := researchFailureOutcome(code, result.FailureCode)
 	generation := result.GenerationID
 	if !runtimeMetadata(generation, 256) {
 		generation = ""

@@ -58,7 +58,7 @@ func TestResearchBatchUsesOneBoundedRequestAndKeepsPerModelEvidence(t *testing.T
 				var prompt string
 				if provider == "openai" {
 					prompt = p["input"].(string)
-					if p["max_tool_calls"] != float64(1) || tool["search_context_size"] != "low" || p["max_output_tokens"] != float64(4096) || p["reasoning"].(map[string]any)["effort"] != "low" || p["text"].(map[string]any)["verbosity"] != "low" {
+					if p["max_tool_calls"] != float64(ResearchToolCallLimit) || tool["search_context_size"] != "low" || p["max_output_tokens"] != float64(4096) || p["reasoning"].(map[string]any)["effort"] != "low" || p["text"].(map[string]any)["verbosity"] != "low" {
 						t.Fatalf("unbounded OpenAI request: %+v", p)
 					}
 				} else {
@@ -111,7 +111,7 @@ func TestResearchBatchRejectsAmbiguousIdentitiesWithoutRetry(t *testing.T) {
 			if calls != 1 {
 				t.Fatalf("request retried or rejected before dispatch: %d", calls)
 			}
-			if name == "missing" || name == "unofficial" {
+			if name != "duplicate" {
 				if err != nil || len(got.Models) != 1 || len(got.Quotes) != 1 {
 					t.Fatalf("verified partial result lost: %+v %v", got, err)
 				}
