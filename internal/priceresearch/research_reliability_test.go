@@ -28,7 +28,7 @@ func TestReliableResearchKeepsCompletedSearchFeeWhenPageOpeningIsIncomplete(t *t
 	client := NewClient(researchTransport(func(r *http.Request) (*http.Response, error) {
 		var payload map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&payload)
-		if payload["max_tool_calls"] != float64(2) {
+		if payload["max_tool_calls"] != nil {
 			t.Fatalf("page opening cannot proceed: %+v", payload)
 		}
 		text := payload["text"].(map[string]any)
@@ -39,7 +39,7 @@ func TestReliableResearchKeepsCompletedSearchFeeWhenPageOpeningIsIncomplete(t *t
 		return reply(200, reliabilityResponse(string(raw), true)), nil
 	}))
 	got, err := client.Research(context.Background(), request)
-	if err != nil || len(got.Quotes) != 1 || got.ModelIssues[q.ModelID] != "verified" || !got.SearchCallsKnown || got.SearchCalls != 1 || got.ToolCallLimit != 2 || len(got.ToolActions) != 2 || got.ResponseState != "completed" || got.HTTPStatus != 200 {
+	if err != nil || len(got.Quotes) != 1 || got.ModelIssues[q.ModelID] != "verified" || !got.SearchCallsKnown || got.SearchCalls != 1 || got.ToolCallLimit != 0 || len(got.ToolActions) != 2 || got.ResponseState != "completed" || got.HTTPStatus != 200 {
 		t.Fatalf("valid result/known search fee lost: %+v %v", got, err)
 	}
 }

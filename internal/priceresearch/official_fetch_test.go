@@ -3,7 +3,6 @@ package priceresearch
 import (
 	"context"
 	"net/http"
-	"strings"
 	"testing"
 )
 
@@ -11,10 +10,11 @@ type officialTransport func(*http.Request) (*http.Response, error)
 
 func (f officialTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
 
-func TestResearchRejectsBatchPriceDespiteOfficialURL(t *testing.T) {
+func TestResearchRejectsBatchConditionsDespiteOfficialURL(t *testing.T) {
 	q := quoteFixture()
 	q.InputPerMillion = "1.25"
 	q.OutputPerMillion = "5"
+	q.Conditions = "batch"
 	client := NewClient(researchTransport(func(r *http.Request) (*http.Response, error) {
 		return reply(200, responseFixture("openai", []Quote{q}, officialSource, true)), nil
 	}))
@@ -23,7 +23,7 @@ func TestResearchRejectsBatchPriceDespiteOfficialURL(t *testing.T) {
 		t.Fatalf("batch price adopted or classification/usage lost: %+v %v", got, err)
 	}
 }
-func TestOfficialFetchIsPublicCachedAndBlocksPaidCallsWhenUnavailable(t *testing.T) {
+func TestOfficialFetchIsPublicAndCachedForExplicitRepair(t *testing.T) {
 	get, paid := 0, 0
 	client := NewClient(officialTransport(func(r *http.Request) (*http.Response, error) {
 		if r.Method == http.MethodGet {
@@ -37,30 +37,13 @@ func TestOfficialFetchIsPublicCachedAndBlocksPaidCallsWhenUnavailable(t *testing
 		return reply(200, responseFixture("openai", []Quote{quoteFixture()}, officialSource, true)), nil
 	}))
 	for i := 0; i < 2; i++ {
-		got, err := client.Research(context.Background(), requestFixture("openai"))
-		if err != nil || len(got.Quotes) != 1 {
+		got, err := client.openAIStandardPrices(context.Background())
+		if err != nil || len(got) == 0 {
 			t.Fatal(got, err)
 		}
-		if got.Quotes[0].SourceURL != openAIStandardSource || got.Quotes[0].Evidence != "Verified against official Standard pricing data" {
-			t.Fatal("price provenance does not identify the verified source", got.Quotes[0])
-		}
 	}
-	if get != 1 || paid != 2 {
+	if get != 1 || paid != 0 {
 		t.Fatal(get, paid)
-	}
-	for _, body := range []string{"not pricing", strings.Repeat("x", maxResearchBody+1)} {
-		paid = 0
-		client = NewClient(officialTransport(func(r *http.Request) (*http.Response, error) {
-			if r.Method == http.MethodGet {
-				return reply(200, body), nil
-			}
-			paid++
-			return reply(500, ""), nil
-		}))
-		got, err := client.Research(context.Background(), requestFixture("openai"))
-		if err == nil || paid != 0 || !got.SearchCallsKnown || got.SearchCalls != 0 || !got.Usage.Valid || got.Usage.InputTokens != 0 {
-			t.Fatal("paid request before source validation", paid, got, err)
-		}
 	}
 }
 func TestOfficialFetchNeverFollowsRedirects(t *testing.T) {

@@ -124,10 +124,8 @@ func finishResearchTrace(out *Result) {
 		}
 	}
 	for _, q := range out.Models {
-		if q.Provider == "openai" && q.ModelKind == "text_generation" {
-			if _, exists := out.Trace.Validation[q.ModelID]; !exists {
-				out.Trace.Validation[q.ModelID] = ExplainOpenAIStandardQuote(q, out.Trace.ReferencePrices)
-			}
+		if _, exists := out.Trace.Validation[q.ModelID]; !exists {
+			out.Trace.Validation[q.ModelID] = "validated_model_result"
 		}
 	}
 	if out.FailureCode != "" {

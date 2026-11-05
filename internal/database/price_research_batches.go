@@ -124,7 +124,7 @@ func finishResearchItem(ctx context.Context, tx pgx.Tx, lease priceresearch.Leas
 				sources = priceresearch.OfficialSearchSources(append(sources, q.SourceURL), provider)
 			}
 		}
-		if code == "" && result.SearchCalls >= 1 && result.SearchCalls <= 3 && len(sources) > 0 {
+		if code == "" && len(sources) > 0 {
 			if modelKind == "non_text" {
 				kind = "non_text"
 			}

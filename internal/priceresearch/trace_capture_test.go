@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestResearchTraceCapturesActualBodiesReferencesAndRejection(t *testing.T) {
+func TestResearchTraceCapturesActualBodiesAndValidationWithoutInjectedPrices(t *testing.T) {
 	req := requestFixture("openai")
 	req.Key = []byte("secret-for-trace-test")
 	q := quoteFixture()
@@ -20,7 +20,7 @@ func TestResearchTraceCapturesActualBodiesReferencesAndRejection(t *testing.T) {
 		t.Fatal("missing trace", err)
 	}
 	trace := got.Trace
-	if trace.Response != raw || !json.Valid(trace.Request) || trace.ReferencePrices[q.ModelID].InputPerMillion != "2.5" || trace.Validation[q.ModelID] != "verified_official_context" {
+	if trace.Response != raw || !json.Valid(trace.Request) || len(trace.ReferencePrices) != 0 || trace.Validation[q.ModelID] != "verified" {
 		t.Fatalf("trace does not explain rejected quote: %+v", trace)
 	}
 	if strings.Contains(string(trace.Request), string(req.Key)) || strings.Contains(string(trace.Request), "Authorization") {

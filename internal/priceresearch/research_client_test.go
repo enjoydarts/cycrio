@@ -16,9 +16,6 @@ import (
 type researchTransport func(*http.Request) (*http.Response, error)
 
 func (f researchTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.Method == http.MethodGet && r.URL.String() == "https://developers.openai.com/api/docs/pricing.md" {
-		return reply(200, officialTestMarkdown()), nil
-	}
 	return f(r)
 }
 func officialTestMarkdown() string {
@@ -39,7 +36,7 @@ func TestResearchHeaderDeadlineAllowsTheFullInferenceBudget(t *testing.T) {
 	}
 }
 
-func TestResearchUsesAPICapabilitiesToBoundAnthropicThinking(t *testing.T) {
+func TestResearchLeavesAnthropicThinkingAtProviderDefaults(t *testing.T) {
 	for _, tc := range []struct {
 		name, caps, thinking string
 		low                  bool
@@ -55,21 +52,8 @@ func TestResearchUsesAPICapabilitiesToBoundAnthropicThinking(t *testing.T) {
 			client := NewClient(researchTransport(func(req *http.Request) (*http.Response, error) {
 				var payload map[string]any
 				_ = json.NewDecoder(req.Body).Decode(&payload)
-				if tc.thinking != "" {
-					config, ok := payload["thinking"].(map[string]any)
-					if !ok || config["type"] != tc.thinking {
-						t.Fatal("API-supported thinking mode missing", payload["thinking"])
-					}
-				} else if payload["thinking"] != nil {
-					t.Fatal("unsupported thinking mode sent")
-				}
-				if tc.low {
-					config, ok := payload["output_config"].(map[string]any)
-					if !ok || config["effort"] != "low" {
-						t.Fatal("API-supported low effort missing")
-					}
-				} else if payload["output_config"] != nil {
-					t.Fatal("unsupported effort sent")
+				if payload["thinking"] != nil || payload["output_config"] != nil {
+					t.Fatal("provider defaults overridden")
 				}
 				return reply(200, responseFixture("anthropic", []Quote{}, officialSource, true)), nil
 			}))
@@ -127,7 +111,7 @@ func TestResearchClassificationDoesNotRequirePricesButRequiresOfficialIdentity(t
 		{"text_without_prices", "text_generation", "example-model", officialSource, true, true},
 		{"wrong_model", "non_text", "other-model", officialSource, true, false},
 		{"unofficial_quote", "non_text", "example-model", "https://attacker.example/pricing", true, false},
-		{"no_search", "non_text", "example-model", officialSource, false, false},
+		{"no_search", "non_text", "example-model", officialSource, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			q := Quote{ModelKind: tc.kind, ModelID: tc.model, Provider: "openai", SourceURL: tc.source}
@@ -197,11 +181,11 @@ func TestResearchProviderWireAndVerifiedEvidence(t *testing.T) {
 					if r.URL.String() != "https://api.openai.com/v1/responses" || r.Header.Get("Authorization") != "Bearer SECRET" || payload["store"] != false || tool["type"] != "web_search" || !strings.Contains(string(b), "web_search_call.action.sources") {
 						t.Fatalf("bad request %s", b)
 					}
-					if tool["filters"] == nil {
-						t.Fatal("missing domain filters")
+					if tool["filters"] != nil {
+						t.Fatal("unexpected domain filters")
 					}
 				} else {
-					if r.URL.String() != "https://api.anthropic.com/v1/messages" || r.Header.Get("x-api-key") != "SECRET" || r.Header.Get("anthropic-version") != "2023-06-01" || tool["type"] != "web_search_20250305" || tool["max_uses"] != float64(1) || tool["allowed_domains"] == nil {
+					if r.URL.String() != "https://api.anthropic.com/v1/messages" || r.Header.Get("x-api-key") != "SECRET" || r.Header.Get("anthropic-version") != "2023-06-01" || tool["type"] != "web_search_20250305" || tool["max_uses"] != nil || tool["allowed_domains"] != nil {
 						t.Fatalf("bad request %s", b)
 					}
 				}
@@ -331,6 +315,15 @@ func TestResearchStrictJSONAndSearchEvidence(t *testing.T) {
 				return reply(200, string(body)), nil
 			}))
 			got, err := c.Research(context.Background(), requestFixture("openai"))
+			if name == "failed_search" || name == "uncited_search" {
+				if err != nil || len(got.Quotes) != 1 || !got.Usage.Valid || got.Trace == nil {
+					t.Fatalf("valid official answer lost: %+v %v", got, err)
+				}
+				if name == "failed_search" && got.SearchCallsKnown {
+					t.Fatal("failed search must retain unknown usage")
+				}
+				return
+			}
 			if len(got.Quotes) != 0 || !got.Usage.Valid {
 				t.Fatalf("accepted result %#v error %v", got, err)
 			}

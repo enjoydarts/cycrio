@@ -48,15 +48,15 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	apply := flags.Bool("apply", false, "apply research maintenance changes; default is dry run")
 	runID := flags.String("run-id", "", "completed manual research run ID")
 	probeModels := flags.String("model-ids", "", "1 to 16 exact OpenAI model IDs for one research call")
-	probeMaxUSD := flags.String("max-usd", "", "explicit per-call USD reservation, 0.60 to 1.00; session spending must be tracked separately")
+	probePaid := flags.Bool("confirm-paid", false, "confirm a paid research call without a per-call spending cap")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid command options")
 	}
-	if *apply && command != "recalculate-research-costs" && command != "repair-research-prices" || *runID != "" && command != "repair-research-prices" || command != "probe-research" && (*probeModels != "" || *probeMaxUSD != "") {
+	if *apply && command != "recalculate-research-costs" && command != "repair-research-prices" || *runID != "" && command != "repair-research-prices" || command != "probe-research" && (*probeModels != "" || *probePaid) {
 		return errors.New("invalid command options")
 	}
 	if command == "probe-research" {
-		ids, err := researchProbeOptions(*probeModels, *probeMaxUSD)
+		ids, err := researchProbeOptions(*probeModels, *probePaid)
 		if err != nil || *subject != "" {
 			return errors.New("invalid research probe options")
 		}

@@ -5,22 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"math/big"
 	"strings"
 
-	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-func researchProbeOptions(models, maxUSD string) ([]string, error) {
-	amount, err := ai.NormalizeAmount(maxUSD)
-	if err != nil {
-		return nil, errors.New("invalid research probe options")
-	}
-	budget, ok := new(big.Rat).SetString(amount)
-	if !ok || budget.Cmp(big.NewRat(3, 5)) < 0 || budget.Cmp(big.NewRat(1, 1)) > 0 {
+func researchProbeOptions(models string, confirmed bool) ([]string, error) {
+	if !confirmed {
 		return nil, errors.New("invalid research probe options")
 	}
 	ids := strings.Split(models, ",")
@@ -38,8 +31,8 @@ func researchProbeOptions(models, maxUSD string) ([]string, error) {
 }
 
 // probeResearch queues exactly one frozen group for the ordinary Worker. It
-// neither changes research settings nor contacts an inference provider. The
-// reservation bounds this call only; the operator tracks the session total.
+// neither changes research settings nor contacts an inference provider. Worker
+// execution incurs provider charges without a per-call spending guarantee.
 func probeResearch(ctx context.Context, dsn string, ids []string, out io.Writer) error {
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -63,6 +56,5 @@ func probeResearch(ctx context.Context, dsn string, ids []string, out io.Writer)
 		RunID       string `json:"run_id"`
 		State       string `json:"state"`
 		TargetCount int    `json:"target_count"`
-		ReservedUSD string `json:"reserved_usd"`
-	}{run.ID, run.State, run.TargetCount, "0.60"})
+	}{run.ID, run.State, run.TargetCount})
 }

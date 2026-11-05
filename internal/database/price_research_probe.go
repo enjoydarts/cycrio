@@ -116,11 +116,8 @@ func (r *PriceResearchRepository) ProbeAdministrator(ctx context.Context) (strin
 	return ids[0], nil
 }
 
-// Versioned conservative reserve: GPT-6 Luna's documented 1,050,000 context,
-// most expensive long-context input/cache rate $0.50/M, output $0.75/M,
-// 4096 output tokens and two $0.01 searches total under $0.60. Missing context
-// metadata uses that documented model-specific bound; larger metadata fails.
-// CLI operators must independently track cumulative session spending.
+// Limit the management probe to its intended researcher and known USD token
+// rates. These model checks do not cap searches, tokens or execution spending.
 func probeResearchModel(m modelcatalog.Model) bool {
 	if m.Provider != "openai" || m.ModelID != "gpt-6-luna" || !m.Enabled || !m.Available || m.DeletedAt != nil || m.ContextLength != nil && (*m.ContextLength < 1 || *m.ContextLength > 1050000) {
 		return false

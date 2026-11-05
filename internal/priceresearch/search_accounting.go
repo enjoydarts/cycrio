@@ -63,8 +63,6 @@ func InspectOpenAISearchUsage(raw json.RawMessage, limit int) (observed int, kno
 		}
 		if len(actions) < 32 {
 			actions = append(actions, evidence)
-		} else {
-			invalid = true
 		}
 		if !duplicate && evidence.Action != "unknown" && evidence.Status == "completed" {
 			completedBuiltins++

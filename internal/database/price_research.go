@@ -544,7 +544,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if run.Kind == "test" {
 			unresolved = 0
 			sources = priceresearch.OfficialSearchSources(result.Sources, run.TargetProvider)
-			if result.SearchCalls < 1 || result.SearchCalls > 3 || len(sources) == 0 {
+			if result.SearchCalls < 1 || len(sources) == 0 {
 				code = "search_unverified"
 				if run.CallID != nil {
 					if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='failed',outcome='invalid_output' WHERE id=$1`, run.CallID); err != nil {

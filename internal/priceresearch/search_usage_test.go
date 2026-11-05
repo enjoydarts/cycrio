@@ -30,10 +30,22 @@ func TestResearchExcessSearchUsageIsRetainedWithoutRetry(t *testing.T) {
 				return reply(200, string(raw)), nil
 			}))
 			got, err := client.Research(context.Background(), requestFixture(provider))
-			if err == nil || calls != 1 || !got.SearchCallsKnown || got.SearchCalls != wantSearches || !got.Usage.Valid || len(got.Quotes) != 0 {
+			if err != nil || calls != 1 || !got.SearchCallsKnown || got.SearchCalls != wantSearches || !got.Usage.Valid || len(got.Quotes) != 1 {
 				t.Fatalf("excess historical usage lost or request retried: %+v calls=%d err=%v", got, calls, err)
 			}
 		})
+	}
+}
+
+func TestResearchRetainsLargeProviderReportedSearchCount(t *testing.T) {
+	var envelope map[string]any
+	_ = json.Unmarshal([]byte(responseFixture("anthropic", []Quote{quoteFixture()}, officialSource, true)), &envelope)
+	envelope["usage"].(map[string]any)["server_tool_use"].(map[string]any)["web_search_requests"] = 1234
+	raw, _ := json.Marshal(envelope)
+	client := NewClient(researchTransport(func(*http.Request) (*http.Response, error) { return reply(200, string(raw)), nil }))
+	got, err := client.Research(context.Background(), requestFixture("anthropic"))
+	if err != nil || !got.SearchCallsKnown || got.SearchCalls != 1234 {
+		t.Fatalf("reported search count capped: %+v %v", got, err)
 	}
 }
 

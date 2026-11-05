@@ -58,19 +58,19 @@ func TestResearchBatchUsesOneBoundedRequestAndKeepsPerModelEvidence(t *testing.T
 				var prompt string
 				if provider == "openai" {
 					prompt = p["input"].(string)
-					if p["max_tool_calls"] != float64(ResearchToolCallLimit) || tool["search_context_size"] != "low" || p["max_output_tokens"] != float64(4096) || p["reasoning"].(map[string]any)["effort"] != "low" || p["text"].(map[string]any)["verbosity"] != "low" {
+					if p["max_tool_calls"] != nil || tool["search_context_size"] != nil || p["max_output_tokens"] != float64(16000) || p["reasoning"] != nil || p["text"].(map[string]any)["verbosity"] != nil {
 						t.Fatalf("unbounded OpenAI request: %+v", p)
 					}
 				} else {
 					prompt = p["messages"].([]any)[0].(map[string]any)["content"].(string)
-					if tool["max_uses"] != float64(1) || p["max_tokens"] != float64(4096) {
+					if tool["max_uses"] != nil || p["max_tokens"] != float64(16000) {
 						t.Fatalf("unbounded Anthropic request: %+v", p)
 					}
 				}
 				if len(prompt) > 4000 || strings.Contains(prompt, "DO NOT INCLUDE") {
 					t.Fatalf("verbose prompt (%d bytes): %s", len(prompt), prompt)
 				}
-				if !strings.Contains(prompt, "official model documentation") || !strings.Contains(prompt, "legacy") || strings.Contains(prompt, "this model family") {
+				if !strings.Contains(prompt, "official documentation") || strings.Contains(prompt, "this model family") {
 					t.Fatal("research misses model-specific and legacy sources", prompt)
 				}
 				t.Logf("16-target prompt: %d bytes", len(prompt))

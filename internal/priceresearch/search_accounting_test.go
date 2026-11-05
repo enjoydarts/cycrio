@@ -51,8 +51,8 @@ func TestInspectOpenAISearchUsage(t *testing.T) {
 func TestInspectOpenAISearchUsageBoundsEvidence(t *testing.T) {
 	raw := `[` + strings.Repeat(`{"type":"web_search_call","status":"completed","action":{"type":"search"}},`, 32) + `{"type":"web_search_call","status":"completed","action":{"type":"search"}}]`
 	count, known, actions := InspectOpenAISearchUsage(json.RawMessage(raw), 32)
-	if count != 33 || known || len(actions) != 32 {
-		t.Fatalf("got count=%d known=%v evidence=%d; want retained count=33, unknown and bounded evidence=32", count, known, len(actions))
+	if count != 33 || !known || len(actions) != 32 {
+		t.Fatalf("got count=%d known=%v evidence=%d; want retained count=33, known and bounded evidence=32", count, known, len(actions))
 	}
 }
 

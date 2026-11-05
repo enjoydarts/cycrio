@@ -113,7 +113,11 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		Capabilities json.RawMessage `json:"capabilities"`
 	}
 	_ = json.Unmarshal(e.Model.RawMetadata, &metadata)
-	request := Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: 4096}
+	outputTokens := 16000
+	if limit := e.Model.MaxOutputTokens; limit != nil && *limit > 0 && *limit < int64(outputTokens) {
+		outputTokens = int(*limit)
+	}
+	request := Request{TestOnly: e.Run.Kind == "test", Capabilities: metadata.Capabilities, Provider: e.Model.Provider, ModelID: e.Model.ModelID, WorkspaceID: e.WorkspaceID, Key: key, Targets: e.Targets, MaxOutputTokens: outputTokens}
 	if recorder, ok := s.repository.(CallRecorder); ok && e.Run.Kind == "update" {
 		indices := make([]int, len(request.Targets))
 		for i := range indices {
@@ -162,7 +166,6 @@ type CallRecorder interface {
 // BatchRepository selects pending items from a persisted, frozen target list.
 // The original target index remains the per-call accounting/deduplication key.
 const ResearchBatchSize = 16
-const ResearchToolCallLimit = 2
 
 // GroupCallRecorder reserves a single paid request for several frozen targets.
 type GroupCallRecorder interface {
