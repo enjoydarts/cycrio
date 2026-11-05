@@ -6,18 +6,26 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"time"
 )
 
-type PriceResearchRepository struct{ pool *pgxpool.Pool }
+type PriceResearchRepository struct {
+	pool    *pgxpool.Pool
+	keyring *secretstore.Keyring
+}
 
 var _ priceresearch.Repository = (*PriceResearchRepository)(nil)
 
-func NewPriceResearchRepository(p *pgxpool.Pool) *PriceResearchRepository {
-	return &PriceResearchRepository{p}
+func NewPriceResearchRepository(p *pgxpool.Pool, keys ...*secretstore.Keyring) *PriceResearchRepository {
+	r := &PriceResearchRepository{pool: p}
+	if len(keys) > 0 {
+		r.keyring = keys[0]
+	}
+	return r
 }
 func researchError(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -181,6 +189,9 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 	defer tx.Rollback(ctx)
 	s, err := researchState(ctx, tx, true)
 	if err != nil {
+		return nil, err
+	}
+	if err = pruneResearchTraces(ctx, tx); err != nil {
 		return nil, err
 	}
 	// An uncertain external call is never resent automatically.
@@ -434,7 +445,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if err != nil {
 			return priceresearch.ErrUnavailable
 		}
-		if err = recordResearchCost(ctx, tx, c, result); err != nil {
+		if err = recordResearchCost(ctx, tx, c, result, r.keyring); err != nil {
 			return priceresearch.ErrUnavailable
 		}
 		status, outcome := researchFailureOutcome(code, result.FailureCode)

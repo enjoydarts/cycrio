@@ -17,6 +17,11 @@ type PriceResearchService interface {
 	Run(context.Context, string) (priceresearch.Run, error)
 }
 
+type priceResearchTraceService interface {
+	TraceCalls(context.Context, string, string) ([]priceresearch.TraceSummary, error)
+	Trace(context.Context, string, string, string) (priceresearch.TraceView, error)
+}
+
 func WithPriceResearch(s PriceResearchService) Option {
 	return func(o *handlerOptions) { o.priceResearch = s }
 }
@@ -75,5 +80,27 @@ func registerPriceResearch(mux *http.ServeMux, s PriceResearchService, protect p
 	})
 	register("GET "+base+"/runs/{id}", 200, func(_ http.ResponseWriter, r *http.Request, _ database.Principal) (any, error) {
 		return s.Run(r.Context(), r.PathValue("id"))
+	})
+	register("GET "+base+"/runs/{id}/calls", 200, func(w http.ResponseWriter, r *http.Request, p database.Principal) (any, error) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		traces, ok := s.(priceResearchTraceService)
+		if !ok {
+			return nil, priceresearch.ErrNotFound
+		}
+		calls, err := traces.TraceCalls(r.Context(), p.ID, r.PathValue("id"))
+		if calls == nil {
+			calls = []priceresearch.TraceSummary{}
+		}
+		return calls, err
+	})
+	register("GET "+base+"/runs/{id}/calls/{call_id}/trace", 200, func(w http.ResponseWriter, r *http.Request, p database.Principal) (any, error) {
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		traces, ok := s.(priceResearchTraceService)
+		if !ok {
+			return nil, priceresearch.ErrNotFound
+		}
+		return traces.Trace(r.Context(), p.ID, r.PathValue("id"), r.PathValue("call_id"))
 	})
 }

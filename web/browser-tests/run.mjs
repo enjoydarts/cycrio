@@ -210,6 +210,90 @@ try {
     );
     await layout();
     await screenshot(`${width}-price-research`);
+    assert.equal(
+      await js(
+        'return window.browserTest.requests.some(r=>r.url.endsWith("/trace"))',
+      ),
+      false,
+    );
+    await click(button('呼び出し履歴を取得'));
+    await wait(
+      'document.querySelector("#research-trace-call")?.options.length===3',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.requests.some(r=>r.url.endsWith("/trace"))',
+      ),
+      false,
+      'metadata must not fetch decrypted documents',
+    );
+    assert.equal(
+      await js(
+        'return document.querySelector("#research-trace-call").options[2].disabled',
+      ),
+      true,
+      'legacy trace is unavailable',
+    );
+    await click(button('選択した送信・応答を表示'));
+    await wait(
+      'document.querySelector("dialog[open]")?.textContent.includes("synthetic-response")',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.requests.some(r=>r.url.endsWith("/trace"))',
+      ),
+      true,
+    );
+    assert.equal(
+      await js(
+        'return document.querySelectorAll("dialog[open] script,dialog[open] img").length',
+      ),
+      0,
+      'provider markup must remain escaped text',
+    );
+    assert.match(
+      await js('return document.querySelector("dialog[open]").textContent'),
+      /<script>synthetic-response<\/script>/,
+    );
+    assert.match(
+      await js('return document.querySelector("dialog[open]").textContent'),
+      /synthetic-prompt/,
+    );
+    assert.match(
+      await js('return document.querySelector("dialog[open]").textContent'),
+      /公式基準/,
+    );
+    assert.match(
+      await js('return document.querySelector("dialog[open]").textContent'),
+      /検証理由/,
+    );
+    if (width === 390) {
+      await api('POST', session + '/goog/cdp/execute', {
+        cmd: 'Emulation.setDeviceMetricsOverride',
+        params: { width, height: 844, deviceScaleFactor: 1, mobile: false },
+      });
+    }
+    await layout();
+    if (width !== 320)
+      await screenshot(
+        `research-trace-${width === 390 ? 'mobile' : 'desktop'}`,
+      );
+    await click(
+      'document.querySelector(\'dialog[open] button[aria-label="閉じる"]\')',
+    );
+    await wait('document.querySelector("dialog[open]")===null');
+    assert.equal(
+      await js(
+        'return document.body.textContent.includes("synthetic-response")',
+      ),
+      false,
+      'close purges decrypted document from DOM',
+    );
+    if (width === 390)
+      await api('POST', session + '/goog/cdp/execute', {
+        cmd: 'Emulation.setDeviceMetricsOverride',
+        params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
+      });
     await visit('integration-profile', width);
     await wait(
       `${button('本人へのテスト')} && !${button('本人へのテスト')}.disabled`,
@@ -831,6 +915,7 @@ try {
         await wait(
           'window.browserTest.requests.some(r=>r.url.includes("notifications?")&&r.url.includes("offset=20"))',
         );
+        await wait(`${button('前へ')} && !${button('前へ')}.disabled`);
         await click(button('前へ'));
         await wait(
           'document.querySelector("dialog[open]").textContent.includes("値上げ候補")',
@@ -973,6 +1058,7 @@ try {
       width,
       cases: [
         'price-research',
+        'research-trace',
         'integration-profile',
         'budget',
         'budget-conflict',

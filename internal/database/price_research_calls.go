@@ -118,7 +118,7 @@ func (r *PriceResearchRepository) FinishCall(ctx context.Context, lease priceres
 	if err != nil {
 		return researchError(err)
 	}
-	if err = recordResearchCost(ctx, tx, call, result); err != nil {
+	if err = recordResearchCost(ctx, tx, call, result, r.keyring); err != nil {
 		return researchError(err)
 	}
 	status, outcome := researchFailureOutcome(code, result.FailureCode)

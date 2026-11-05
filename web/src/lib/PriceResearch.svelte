@@ -19,6 +19,7 @@
   import Button from './Button.svelte';
   import ActionLink from './ActionLink.svelte';
   import ActionGroup from './ActionGroup.svelte';
+  import ResearchTraces from './ResearchTraces.svelte';
   let {
     catalog,
     token,
@@ -39,6 +40,7 @@
     api?: PriceResearchAPI;
   } = $props();
   let view = $state(emptyPriceResearchView());
+  const researchAPI = $derived(api ?? createPriceResearchAPI(apiBase));
   let controller: ReturnType<typeof createPriceResearchController> | undefined;
   let provider = $state<ResearchProvider>('openai'),
     search = $state(''),
@@ -68,7 +70,7 @@
   $effect(() => onBusy(view.status === 'saving' || view.uncertain));
   onMount(() => {
     controller = createPriceResearchController(
-      api ?? createPriceResearchAPI(apiBase),
+      researchAPI,
       catalog,
       token,
       (next) => {
@@ -358,6 +360,12 @@
       <p class="muted">
         未確認のモデルは価格を推測して保存しません。検索の利用料金が未確定の場合、原価の合計も不明として記録します。
       </p>
+      {#key run.id}<ResearchTraces
+          api={researchAPI}
+          {token}
+          runID={run.id}
+          {onDenied}
+        />{/key}
     </section>
   {/if}
 </section>

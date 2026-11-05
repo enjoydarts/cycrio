@@ -36,7 +36,7 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	}
 	command := args[0]
 	switch command {
-	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user", "recalculate-research-costs", "repair-research-prices":
+	case "configure-auth", "migrate", "init-keyring", "allow-user", "grant-admin", "revoke-admin", "disable-user", "recalculate-research-costs", "repair-research-prices", "probe-research":
 	default:
 		return errors.New("unknown management command")
 	}
@@ -47,11 +47,24 @@ func run(ctx context.Context, args []string, in io.Reader, out io.Writer) error 
 	subject := flags.String("user-id", "", "Clerk user ID")
 	apply := flags.Bool("apply", false, "apply research maintenance changes; default is dry run")
 	runID := flags.String("run-id", "", "completed manual research run ID")
+	probeModels := flags.String("model-ids", "", "1 to 16 exact OpenAI model IDs for one research call")
+	probeMaxUSD := flags.String("max-usd", "", "explicit per-call USD reservation, 0.60 to 1.00; session spending must be tracked separately")
 	if err := flags.Parse(args[1:]); err != nil || flags.NArg() != 0 {
 		return errors.New("invalid command options")
 	}
-	if *apply && command != "recalculate-research-costs" && command != "repair-research-prices" || *runID != "" && command != "repair-research-prices" {
+	if *apply && command != "recalculate-research-costs" && command != "repair-research-prices" || *runID != "" && command != "repair-research-prices" || command != "probe-research" && (*probeModels != "" || *probeMaxUSD != "") {
 		return errors.New("invalid command options")
+	}
+	if command == "probe-research" {
+		ids, err := researchProbeOptions(*probeModels, *probeMaxUSD)
+		if err != nil || *subject != "" {
+			return errors.New("invalid research probe options")
+		}
+		dsn := os.Getenv("DATABASE_URL")
+		if dsn == "" {
+			return errors.New("database connection is required")
+		}
+		return probeResearch(ctx, dsn, ids, out)
 	}
 	if command == "repair-research-prices" {
 		if _, err := uuid.Parse(*runID); err != nil {

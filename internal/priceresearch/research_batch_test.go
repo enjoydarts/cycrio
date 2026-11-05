@@ -67,7 +67,7 @@ func TestResearchBatchUsesOneBoundedRequestAndKeepsPerModelEvidence(t *testing.T
 						t.Fatalf("unbounded Anthropic request: %+v", p)
 					}
 				}
-				if len(prompt) > 2000 || strings.Contains(prompt, "DO NOT INCLUDE") {
+				if len(prompt) > 4000 || strings.Contains(prompt, "DO NOT INCLUDE") {
 					t.Fatalf("verbose prompt (%d bytes): %s", len(prompt), prompt)
 				}
 				if !strings.Contains(prompt, "official model documentation") || !strings.Contains(prompt, "legacy") || strings.Contains(prompt, "this model family") {

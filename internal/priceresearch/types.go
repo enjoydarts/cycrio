@@ -36,6 +36,7 @@ type Target struct {
 	DisplayName string
 }
 type Result struct {
+	Trace            *TraceDocument `json:"-"`
 	ToolCallLimit    int
 	ToolActions      []SearchAction
 	ResponseState    string

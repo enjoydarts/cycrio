@@ -122,9 +122,7 @@ func TestResearchDiagnosticsMigrationPreservesLegacyResults(t *testing.T) {
 	researchTestReady(t, r, actor, m)
 	p := automationMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 42)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 43 || down[0].Direction != "down" {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 43)
 	if _, err = r.pool.Exec(ctx, `INSERT INTO price_research_items(run_id,target_index,target_id,state,classification,call_id,search_calls,error_code,sources) SELECT id,0,$1,'succeeded','unknown',call_id,1,'','["https://openai.com/api/pricing/"]' FROM price_research_runs WHERE kind='test'`, m.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +132,7 @@ func TestResearchDiagnosticsMigrationPreservesLegacyResults(t *testing.T) {
 		t.Fatal(err)
 	}
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 43, 43)
+	assertMigrationRange(t, up, err, 43, latestMigrationVersion)
 	if err = r.pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("migration changed old results", err)
 	}

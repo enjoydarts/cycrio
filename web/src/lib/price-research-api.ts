@@ -34,6 +34,26 @@ export type ResearchInput = Pick<
   ResearchState,
   'model_id' | 'automatic_enabled' | 'interval_hours'
 > & { expected_version: number };
+export type ResearchTraceSummary = {
+  call_id: string;
+  attempt_no: number;
+  status: string;
+  available: boolean;
+  captured_at: string | null;
+  expires_at: string | null;
+};
+export type ResearchTrace = {
+  call_id: string;
+  captured_at: string;
+  expires_at: string;
+  document: {
+    request: unknown;
+    response: string;
+    response_truncated: boolean;
+    reference_prices: Record<string, unknown> | null;
+    validation: Record<string, unknown> | null;
+  };
+};
 const invalid = (): never => {
   throw new ApiError('dependency_unavailable');
 };
@@ -141,6 +161,36 @@ export function parseResearchState(value: unknown): ResearchState {
     latest_run: nullable(v.latest_run, parseResearchRun),
   };
 }
+export function parseResearchTraceSummary(
+  value: unknown,
+): ResearchTraceSummary {
+  const v = record(value);
+  return {
+    call_id: uuid(v.call_id),
+    attempt_no: integer(v.attempt_no),
+    status: string(v.status),
+    available: boolean(v.available),
+    captured_at: nullable(v.captured_at, timestamp),
+    expires_at: nullable(v.expires_at, timestamp),
+  };
+}
+export function parseResearchTrace(value: unknown): ResearchTrace {
+  const v = record(value),
+    d = record(v.document);
+  if (!Object.hasOwn(d, 'request')) return invalid();
+  return {
+    call_id: uuid(v.call_id),
+    captured_at: timestamp(v.captured_at),
+    expires_at: timestamp(v.expires_at),
+    document: {
+      request: d.request,
+      response: string(d.response),
+      response_truncated: boolean(d.response_truncated),
+      reference_prices: nullable(d.reference_prices, record),
+      validation: nullable(d.validation, record),
+    },
+  };
+}
 export function createPriceResearchAPI(
   base: string,
   fetcher: typeof fetch = fetch,
@@ -231,6 +281,32 @@ export function createPriceResearchAPI(
     run: async (id: string, token: TokenProvider, signal?: AbortSignal) =>
       parseResearchRun(
         await request(`/runs/${encodeURIComponent(id)}`, token, signal),
+      ),
+    traceCalls: async (
+      id: string,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) => {
+      const value = await request(
+        `/runs/${encodeURIComponent(id)}/calls`,
+        token,
+        signal,
+      );
+      if (!Array.isArray(value)) return invalid();
+      return value.map(parseResearchTraceSummary);
+    },
+    trace: async (
+      id: string,
+      callID: string,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) =>
+      parseResearchTrace(
+        await request(
+          `/runs/${encodeURIComponent(id)}/calls/${encodeURIComponent(callID)}/trace`,
+          token,
+          signal,
+        ),
       ),
   };
 }

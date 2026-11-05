@@ -212,17 +212,54 @@ func sameStandardPrice(a, b Quote) bool {
 // MatchOpenAIStandardQuote requires exact identity, context and ordinary pricing.
 // Optional cache prices may be omitted but may never contradict the table.
 func MatchOpenAIStandardQuote(q Quote, official map[string]Quote) bool {
+	return ExplainOpenAIStandardQuote(q, official) == "verified"
+}
+
+// VerifyOpenAIStandardQuote takes tier metadata from the same authoritative
+// row whose token rates match. A model's context window is not a pricing tier.
+func VerifyOpenAIStandardQuote(q Quote, official map[string]Quote) (Quote, string) {
 	ref, ok := official[q.ModelID]
-	if !ok || q.Provider != "openai" || q.ModelKind != "text_generation" || q.Currency != "USD" || q.Conditions != "standard_global" || !sameStandardBound(q.MaxInputTokens, ref.MaxInputTokens) || !sameStandardDecimal(q.InputPerMillion, ref.InputPerMillion) || !sameStandardDecimal(q.OutputPerMillion, ref.OutputPerMillion) {
-		return false
+	if !ok {
+		return Quote{}, "not_in_official_table"
+	}
+	observedBound := q.MaxInputTokens
+	q.MaxInputTokens = ref.MaxInputTokens
+	if reason := ExplainOpenAIStandardQuote(q, official); reason != "verified" {
+		return Quote{}, reason
+	}
+	ref.InputPerMillion, ref.OutputPerMillion = q.InputPerMillion, q.OutputPerMillion
+	ref.Evidence = "Verified against official Standard pricing data"
+	if !sameStandardBound(observedBound, ref.MaxInputTokens) {
+		return ref, "verified_official_context"
+	}
+	return ref, "verified"
+}
+
+// ExplainOpenAIStandardQuote exposes fixed diagnostic codes, never response text.
+func ExplainOpenAIStandardQuote(q Quote, official map[string]Quote) string {
+	ref, ok := official[q.ModelID]
+	if !ok {
+		return "not_in_official_table"
+	}
+	if q.Provider != "openai" || q.ModelKind != "text_generation" || q.Currency != "USD" || q.Conditions != "standard_global" {
+		return "pricing_conditions_mismatch"
 	}
 	if _, ok := officialURL(q.SourceURL, "openai"); !ok {
-		return false
+		return "unverified_source"
 	}
-	for _, values := range [][2]*string{{q.CacheReadPerMillion, ref.CacheReadPerMillion}, {q.CacheWritePerMillion, ref.CacheWritePerMillion}, {q.CacheWrite30mPerMillion, ref.CacheWrite30mPerMillion}, {q.CacheWrite1hPerMillion, ref.CacheWrite1hPerMillion}, {q.CacheWrite12hPerMillion, ref.CacheWrite12hPerMillion}} {
+	if !sameStandardBound(q.MaxInputTokens, ref.MaxInputTokens) {
+		return "context_mismatch"
+	}
+	if !sameStandardDecimal(q.InputPerMillion, ref.InputPerMillion) {
+		return "input_price_mismatch"
+	}
+	if !sameStandardDecimal(q.OutputPerMillion, ref.OutputPerMillion) {
+		return "output_price_mismatch"
+	}
+	for i, values := range [][2]*string{{q.CacheReadPerMillion, ref.CacheReadPerMillion}, {q.CacheWritePerMillion, ref.CacheWritePerMillion}, {q.CacheWrite30mPerMillion, ref.CacheWrite30mPerMillion}, {q.CacheWrite1hPerMillion, ref.CacheWrite1hPerMillion}, {q.CacheWrite12hPerMillion, ref.CacheWrite12hPerMillion}} {
 		if values[0] != nil && (values[1] == nil || !sameStandardDecimal(*values[0], *values[1])) {
-			return false
+			return []string{"cache_read_mismatch", "cache_write_mismatch", "cache_write_30m_mismatch", "cache_write_1h_mismatch", "cache_write_12h_mismatch"}[i]
 		}
 	}
-	return true
+	return "verified"
 }

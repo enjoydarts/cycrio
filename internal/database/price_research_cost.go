@@ -9,6 +9,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
+	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -113,7 +114,7 @@ func saveAdoptedResearchCostDetail(ctx context.Context, tx pgx.Tx, id string, d 
 	return saveResearchCostDetail(ctx, tx, id, d)
 }
 
-func recordResearchCost(ctx context.Context, tx pgx.Tx, c airuntime.Call, result priceresearch.Result) error {
+func recordResearchCost(ctx context.Context, tx pgx.Tx, c airuntime.Call, result priceresearch.Result, keys ...*secretstore.Keyring) error {
 	u, err := runtimeNormalizeUsage(result.Usage)
 	if err != nil {
 		u = ai.Usage{}
@@ -135,7 +136,14 @@ func recordResearchCost(ctx context.Context, tx pgx.Tx, c airuntime.Call, result
 	if err = saveAdoptedResearchCostDetail(ctx, tx, c.ID, d, adopted); err != nil {
 		return err
 	}
-	return saveResearchResponseEvidence(ctx, tx, c.ID, result)
+	if err = saveResearchResponseEvidence(ctx, tx, c.ID, result); err != nil {
+		return err
+	}
+	var keyring *secretstore.Keyring
+	if len(keys) > 0 {
+		keyring = keys[0]
+	}
+	return saveResearchTrace(ctx, tx, c.ID, result.Trace, keyring)
 }
 
 // ResearchCostRecalculation contains aggregates only; no identifiers or response data.

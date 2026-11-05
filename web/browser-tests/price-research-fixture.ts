@@ -1,6 +1,10 @@
 import { modelFixture } from '../src/lib/catalog-test-fixtures.ts';
 
 export function priceResearchFixture() {
+  const runID = '22222222-2222-4222-8222-222222222222';
+  const callID = '33333333-3333-4333-8333-333333333333';
+  const captured = '2026-11-05T00:00:00Z';
+  const expires = '2026-11-12T00:00:00Z';
   const models = Array.from({ length: 121 }, (_, index) => ({
     ...modelFixture(),
     id: `11111111-1111-4111-8111-${String(index).padStart(12, '0')}`,
@@ -9,6 +13,52 @@ export function priceResearchFixture() {
     display_name: `Research Model ${index}`,
   }));
   return (url: URL) => {
+    if (url.pathname.endsWith(`/runs/${runID}/calls`)) {
+      return Response.json([
+        {
+          call_id: callID,
+          attempt_no: 1,
+          status: 'completed',
+          available: true,
+          captured_at: captured,
+          expires_at: expires,
+        },
+        {
+          call_id: '44444444-4444-4444-8444-444444444444',
+          attempt_no: 2,
+          status: 'completed',
+          available: false,
+          captured_at: null,
+          expires_at: null,
+        },
+      ]);
+    }
+    if (url.pathname.endsWith(`/runs/${runID}/calls/${callID}/trace`)) {
+      return Response.json({
+        call_id: callID,
+        captured_at: captured,
+        expires_at: expires,
+        document: {
+          request: {
+            model: 'synthetic-model',
+            input: [
+              {
+                role: 'user',
+                content: '<img src=x onerror=alert(1)>synthetic-prompt',
+                reference: `https://openai.com/${'long-reference-'.repeat(30)}`,
+              },
+            ],
+          },
+          response:
+            '<script>synthetic-response</script>\n{"model":"synthetic-model","input":"unknown"}',
+          response_truncated: false,
+          reference_prices: {
+            'synthetic-model': { input_per_million: '1.25', currency: 'USD' },
+          },
+          validation: { 'synthetic-model': 'official_price_mismatch' },
+        },
+      });
+    }
     if (url.pathname.endsWith('/catalog')) {
       if (url.searchParams.get('limit') !== '100')
         throw Error('Expected all-candidate page size');
