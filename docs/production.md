@@ -12,6 +12,14 @@ Webは`https://cycrio.com`、APIは`https://api.cycrio.com`で公開します。
 
 作成後、psqlの`\password cycrio`と`\password cycrio_migrator`で別々のランダムパスワードを設定します。SQL・シェル履歴に平文を記載しません。パスワードを含む接続URLを作る際は、ユーザー名とパスワードをURLエンコードしてください。
 
+画面用の一覧・集計SQLでJITコンパイル時間が応答を遅くしないよう、初期化SQLは実行用ロールの専用DB接続に限り`jit=off`を設定します。既存環境へ適用する場合は、管理者が次を実行します。
+
+```sql
+ALTER ROLE cycrio IN DATABASE cycrio SET jit TO off;
+```
+
+ロール設定は新しいPostgreSQL接続から有効です。PgBouncer経由では、管理コンソールを利用できる場合は`RECONNECT cycrio;`で専用プールの接続を更新します。現在のトランザクション完了後に更新されるため、PostgreSQLやPgBouncer全体の再起動は不要です。管理コンソールを利用できない場合は、実行中ジョブがないことを確認してCycrioのAPI・Workerを停止し、`cycrio` DBの`cycrio`ロールの接続だけを更新してから再開します。他のDB・ロールや、migration用ロールの設定は変更しません。反映後は通常処理の接続で`SHOW jit`が`off`になることを確認します。ロール設定の仕様は[PostgreSQLのALTER ROLE](https://www.postgresql.org/docs/16/sql-alterrole.html)、再接続の仕様は[PgBouncerの管理コマンド](https://www.pgbouncer.org/usage.html#reconnect-db)を参照してください。
+
 PgBouncerに専用DBと実行用ユーザーを登録します。既存のDBマッピング・認証方式・HBA・TLS設定を確認し、既存ユーザーの接続条件を変更せず追加します。reload後、既存アプリとCycrioの両方で接続を確認します。通常処理のURL例:
 
 ```text

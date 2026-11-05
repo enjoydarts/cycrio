@@ -17,6 +17,8 @@ REVOKE CREATE ON SCHEMA public FROM PUBLIC;
 CREATE SCHEMA cycrio AUTHORIZATION cycrio_migrator;
 GRANT USAGE ON SCHEMA cycrio TO cycrio;
 ALTER ROLE cycrio IN DATABASE cycrio SET search_path TO cycrio, public;
+-- Interactive reads should not pay JIT compilation cost on each request.
+ALTER ROLE cycrio IN DATABASE cycrio SET jit TO off;
 ALTER ROLE cycrio_migrator IN DATABASE cycrio SET search_path TO cycrio, public;
 ALTER DEFAULT PRIVILEGES FOR ROLE cycrio_migrator IN SCHEMA cycrio
   GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO cycrio;
