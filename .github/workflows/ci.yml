@@ -35,12 +35,15 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose -f compose.production.yaml config --quiet
+          CYCRIO_SECRETS_DIR=/tmp/cycrio-config-check docker compose -f compose.coolify.yaml config --quiet
       - name: Build development toolchains
         run: docker compose build api web
       - name: Go and Web checks
         run: make check
       - name: Build production Go runtime
         run: docker compose -f compose.production.yaml build
+      - name: Build production static Web
+        run: docker compose run --rm --no-deps -v /app/.svelte-kit -e PUBLIC_API_BASE_URL=https://api.cycrio.com web npm run build
 
   integration:
     runs-on: ubuntu-latest
@@ -80,3 +83,12 @@ jobs:
       - name: Stop project
         if: always()
         run: docker compose down --volumes
+
+  postgres16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Production PostgreSQL compatibility
+        run: make test-postgres16

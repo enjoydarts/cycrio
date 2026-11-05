@@ -82,6 +82,10 @@ test-recovery:
 	sh deploy/local/recover-test.sh
 	sh deploy/local/recover-cleanup-test.sh
 
+.PHONY: test-postgres16
+test-postgres16:
+	sh deploy/test/postgres16.sh
+
 # Default is dry-run. Paid external evaluation requires explicit EVAL_ARGS.
 .PHONY: prompt-evaluation
 prompt-evaluation:

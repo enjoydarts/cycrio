@@ -65,6 +65,8 @@ PostgreSQL 16の既存開発環境から移す場合は、[開発DBの移行手�
 
 ## 本番向け構成
 
+既存Coolifyと別ホストのPostgreSQLへ公開する場合は、[Coolifyへの本番デプロイ](production.md)を参照してください。専用構成は`compose.coolify.yaml`です。以下は汎用の本番Composeの説明です。
+
 [compose.production.yaml](../compose.production.yaml)はAPI・Workerとmigration用サービスを定義します。Web、PostgreSQL、Hatchetは含みません。
 
 - GoプロセスはUID/GID `10001`、読み取り専用ファイルシステムで実行します。

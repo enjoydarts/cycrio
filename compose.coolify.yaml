@@ -1,0 +1,72 @@
+# Coolify: Git repository / Docker Compose build pack.
+# Provision the persistent secret files before deploying this definition.
+x-runtime: &runtime
+  build:
+    context: .
+    dockerfile: deploy/docker/go.Dockerfile
+    target: runtime
+  init: true
+  restart: unless-stopped
+  read_only: true
+  tmpfs:
+    - /tmp:uid=10001,gid=10001,mode=1777
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  stop_grace_period: 30s
+  environment:
+    DATABASE_URL_FILE: /run/secrets/database_url
+    HATCHET_CLIENT_TOKEN_FILE: /run/secrets/hatchet_token
+    HATCHET_CLIENT_TLS_STRATEGY: tls
+  secrets:
+    - database_url
+    - hatchet_token
+    - bootstrap
+    - keyring
+  healthcheck:
+    test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:8080/readyz]
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 60s
+
+services:
+  api:
+    <<: *runtime
+    command: [api, -bootstrap-file, /run/secrets/bootstrap, -keyring-file, /run/secrets/keyring]
+    expose: ["8080"]
+
+  worker:
+    <<: *runtime
+    command: [worker, -bootstrap-file, /run/secrets/bootstrap, -keyring-file, /run/secrets/keyring]
+
+  manage:
+    <<: *runtime
+    profiles: [tools]
+    command: [manage]
+    restart: "no"
+    healthcheck:
+      disable: true
+
+  migrate:
+    <<: *runtime
+    profiles: [tools]
+    command: [manage, migrate]
+    restart: "no"
+    environment:
+      DATABASE_URL_FILE: /run/secrets/migration_database_url
+    secrets:
+      - migration_database_url
+    healthcheck:
+      disable: true
+
+secrets:
+  database_url:
+    file: ${CYCRIO_SECRETS_DIR:?Set the persistent secret directory}/database_url
+  migration_database_url:
+    file: ${CYCRIO_SECRETS_DIR:?Set the persistent secret directory}/migration_database_url
+  bootstrap:
+    file: ${CYCRIO_SECRETS_DIR:?Set the persistent secret directory}/bootstrap.json
+  keyring:
+    file: ${CYCRIO_SECRETS_DIR:?Set the persistent secret directory}/keyring.json
+  hatchet_token:
+    file: ${CYCRIO_SECRETS_DIR:?Set the persistent secret directory}/hatchet_token

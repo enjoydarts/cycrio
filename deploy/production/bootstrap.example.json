@@ -1,0 +1,4 @@
+{
+  "clerk_publishable_key": "pk_live_REPLACE_WITH_PRODUCTION_PUBLISHABLE_KEY",
+  "allowed_origins": ["https://cycrio.com"]
+}
