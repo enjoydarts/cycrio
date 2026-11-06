@@ -93,7 +93,7 @@ func run() (result error) {
 	researchTask := client.NewStandaloneTask(priceResearchTaskName, func(ctx hatchet.Context, input priceresearch.Lease) (PriceResearchOutput, error) {
 		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_price_research", "research", input.RunID, func() (PriceResearchOutput, error) {
 			if err := research.Execute(ctx, input); err != nil {
-				return PriceResearchOutput{Status: "failed"}, errors.New("price research unavailable")
+				return PriceResearchOutput{Status: "failed"}, hideWorkerCause("price research unavailable", err)
 			}
 			return PriceResearchOutput{Status: "recorded"}, nil
 		})
@@ -105,7 +105,7 @@ func run() (result error) {
 				if errors.Is(err, airuntime.ErrConflict) {
 					return AITestOutput{Status: "ignored"}, nil
 				}
-				return AITestOutput{Status: "failed"}, errors.New("AI connection test unavailable")
+				return AITestOutput{Status: "failed"}, hideWorkerCause("AI connection test unavailable", err)
 			}
 			return AITestOutput{Status: "recorded"}, nil
 		})
@@ -114,7 +114,7 @@ func run() (result error) {
 	mailTask := client.NewStandaloneTask(mailProbeTaskName, func(ctx hatchet.Context, input mailaccounts.Lease) (MailProbeOutput, error) {
 		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_probe", "probe", input.ProbeID, func() (MailProbeOutput, error) {
 			if err := database.WithMailOperation(ctx, pool, "probe", input.ProbeID, func(ctx context.Context) error { return mail.Run(ctx, input) }); err != nil {
-				return MailProbeOutput{Status: "failed"}, errors.New("mail connection check unavailable")
+				return MailProbeOutput{Status: "failed"}, hideWorkerCause("mail connection check unavailable", err)
 			}
 			return MailProbeOutput{Status: "handled"}, nil
 		})

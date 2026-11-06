@@ -18,15 +18,16 @@ export function startBrowserTelemetry(apiBase: string) {
       new Set(
         performance
           .getEntriesByType('resource')
-          .filter(
-            (entry) =>
-              (entry as PerformanceResourceTiming).initiatorType === 'script',
+          .filter((entry) =>
+            ['script', 'link', 'other'].includes(
+              (entry as PerformanceResourceTiming).initiatorType,
+            ),
           )
           .flatMap((entry) => {
             try {
               const url = new URL(entry.name);
               return url.origin === window.location.origin
-                ? [url.pathname]
+                ? [url.origin + url.pathname]
                 : [];
             } catch {
               return [];
@@ -67,11 +68,8 @@ export function startBrowserTelemetry(apiBase: string) {
         initialize: (token, config) => {
           const instance = new PostHog().init(token, config);
           return {
-            capture: (_event, properties) =>
-              instance.captureException(
-                new Error('Unhandled application error'),
-                properties,
-              ),
+            captureException: (error, properties) =>
+              instance.captureException(error, properties),
             reset: () => instance.reset(),
             // opt_out_capturing persists consent independently of persistence:'memory'.
             disable: () => instance.set_config({ before_send: () => null }),

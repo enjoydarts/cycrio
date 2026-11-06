@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -36,7 +39,7 @@ func TestCapturedTaskSanitizesPanicAndOutcomeFailure(t *testing.T) {
 		return database.JobTelemetryOutcome{}, errors.New("PRIVATE")
 	}
 	_, err := captureWorkerTask(ctx, read, "worker_mail_probe", "probe", "run", func() (int, error) { panic("PRIVATE") })
-	if err == nil || err.Error() != "worker task unavailable" || len(r.events) != 1 || r.events[0].owner != "cycrio-system" || r.events[0].kind != "outcome_unavailable" {
+	if err == nil || err.Error() != "worker task unavailable" || len(r.events) != 2 || r.events[0].owner != "cycrio-system" || r.events[0].kind != "outcome_unavailable" || r.events[1].kind != "task_panic" {
 		t.Fatalf("unexpected capture: %v %v", r.events, err)
 	}
 }
@@ -181,5 +184,105 @@ func TestWorkerReadinessRejectsFailureDuringDependencyCheck(t *testing.T) {
 	})
 	if err := ready(context.Background()); err != errWorkerPollerFailed {
 		t.Fatalf("worker became ready after poller failure: %v", err)
+	}
+}
+
+type detailedFailureRecorder struct {
+	failureRecorder
+	values []any
+}
+
+func (r *detailedFailureRecorder) ReportException(owner, operation, kind string, value any) {
+	r.Report(owner, operation, kind)
+	r.values = append(r.values, value)
+}
+
+func TestWorkerTelemetryPreservesTaskErrorPanicAndStoredReason(t *testing.T) {
+	for _, mode := range []string{"error", "panic", "stored"} {
+		t.Run(mode, func(t *testing.T) {
+			r := &detailedFailureRecorder{}
+			ctx := withWorkerTelemetry(context.Background(), r)
+			original := errors.New("database transaction serialization failure")
+			var read jobOutcomeReader
+			if mode == "stored" {
+				read = func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
+					return database.JobTelemetryOutcome{State: "failed", Code: "invalid_json"}, nil
+				}
+			}
+			_, _ = captureWorkerTask(ctx, read, "worker_mail_processing", "processing", "run", func() (int, error) {
+				if mode == "panic" {
+					panic(original)
+				}
+				if mode == "error" {
+					return 0, original
+				}
+				return 0, nil
+			})
+			if len(r.values) != 1 {
+				t.Fatalf("detail missing: %+v", r.events)
+			}
+			if mode == "stored" {
+				if r.values[0] != "invalid_json" {
+					t.Fatalf("stored reason lost: %v", r.values)
+				}
+			} else if r.values[0] != original {
+				t.Fatalf("original cause lost: %v", r.values)
+			}
+		})
+	}
+}
+
+func TestWorkerTelemetryPreservesPollerErrorAndPanic(t *testing.T) {
+	for _, panics := range []bool{false, true} {
+		r := &detailedFailureRecorder{}
+		ctx, cancel := context.WithCancel(withWorkerTelemetry(context.Background(), r))
+		original := errors.New("scheduler database unavailable")
+		dispatchSubscriptionAutomation(ctx, func(context.Context, int) (int, error) {
+			cancel()
+			if panics {
+				panic(original)
+			}
+			return 0, original
+		}, time.Hour)
+		if len(r.values) != 1 || r.values[0] != original {
+			t.Fatalf("poller cause lost: %+v %v", r.events, r.values)
+		}
+	}
+}
+
+func TestPrivateWorkerCauseStaysOutOfFormattingAndFrameworkReturn(t *testing.T) {
+	cause := errors.New("database connection refused private@example.com")
+	err := hideWorkerCause("mail discovery unavailable", cause)
+	if errors.Unwrap(err) != cause {
+		t.Fatal("telemetry cause lost")
+	}
+	for _, format := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
+		if got := fmt.Sprintf(format, err); strings.Contains(got, "private") || strings.Contains(got, "database connection refused") {
+			t.Fatalf("cause leaked via %s: %s", format, got)
+		}
+	}
+	encoded, _ := json.Marshal(err)
+	if strings.Contains(string(encoded), "private") {
+		t.Fatal("cause leaked in JSON")
+	}
+	r := &detailedFailureRecorder{}
+	_, returned := captureWorkerTask(withWorkerTelemetry(context.Background(), r), nil, "worker_mail_discovery", "", "", func() (int, error) { return 0, err })
+	if returned.Error() != "mail discovery unavailable" || errors.Unwrap(returned) != nil {
+		t.Fatal("framework received private cause")
+	}
+	if len(r.values) != 1 || errors.Unwrap(r.values[0].(error)) != cause {
+		t.Fatal("telemetry did not receive cause")
+	}
+}
+
+func TestWorkerTelemetryRetainsOriginalFailureWhenOutcomeReadFails(t *testing.T) {
+	r := &detailedFailureRecorder{}
+	original := errors.New("upstream TLS handshake failed")
+	read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
+		return database.JobTelemetryOutcome{}, errors.New("outcome database connection refused")
+	}
+	_, _ = captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, original })
+	if len(r.values) != 2 || r.values[1] != original || r.events[1].kind != "task_failed" {
+		t.Fatalf("original failure was replaced by outcome read: %+v %v", r.events, r.values)
 	}
 }

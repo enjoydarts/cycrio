@@ -29,12 +29,12 @@ func dispatchAITests(ctx context.Context, claim func(context.Context) ([]airunti
 				sendCtx, sendCancel := context.WithTimeout(ctx, 15*time.Second)
 				// Failed delivery remains leased and can be recovered without repeating inference.
 				if err := submit(sendCtx, lease); err != nil {
-					reportWorkerFailure(ctx, "", "worker_ai_test", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_ai_test", "submit_failed", err)
 				}
 				sendCancel()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_ai_test", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_ai_test", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():

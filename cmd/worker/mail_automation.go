@@ -24,7 +24,7 @@ func dispatchMailAutomation(ctx context.Context, tick func(context.Context, int)
 		if err == nil {
 			wakeMailWork(dispatchWakes...)
 		} else {
-			reportWorkerFailure(ctx, "", "", "poller_failed")
+			reportWorkerFailure(ctx, "", "", "poller_failed", err)
 		}
 		select {
 		case <-ctx.Done():

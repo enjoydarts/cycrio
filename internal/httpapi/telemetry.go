@@ -45,25 +45,32 @@ func (w *telemetryResponse) Write(data []byte) (int, error) {
 }
 func (w *telemetryResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
-// Only fixed classifications and the server-resolved internal UUID cross this boundary.
+// Exception reporters sanitize technical details immediately; request data and
+// headers never cross this boundary.
 func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		scope := &telemetryScope{}
 		r = r.WithContext(context.WithValue(r.Context(), telemetryContextKey{}, scope))
 		response := &telemetryResponse{ResponseWriter: w}
-		report := func(kind string) {
+		report := func(kind string, value any) {
 			if service == nil {
 				return
 			}
 			defer func() { _ = recover() }()
-			service.Report(scope.owner, "api_request", kind)
+			if detailed, ok := service.(interface {
+				ReportException(string, string, string, any)
+			}); ok && value != nil {
+				detailed.ReportException(scope.owner, "api_request", kind, value)
+			} else {
+				service.Report(scope.owner, "api_request", kind)
+			}
 		}
 		defer func() {
 			if value := recover(); value != nil {
 				if value == http.ErrAbortHandler {
 					panic(value)
 				}
-				report("api_panic")
+				report("api_panic", value)
 				if response.status != 0 {
 					panic(http.ErrAbortHandler)
 				}
@@ -71,7 +78,7 @@ func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 				return
 			}
 			if response.status >= 500 && r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
-				report("api_server_error")
+				report("api_server_error", nil)
 			}
 		}()
 		next.ServeHTTP(response, r)

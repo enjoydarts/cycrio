@@ -14,7 +14,7 @@ func dispatchSubscriptionAutomation(ctx context.Context, register func(context.C
 	for ctx.Err() == nil {
 		batch, cancel := context.WithTimeout(ctx, 5*time.Second)
 		if _, err := register(batch, 20); err != nil {
-			reportWorkerFailure(ctx, "", "", "poller_failed")
+			reportWorkerFailure(ctx, "", "", "poller_failed", err)
 		}
 		cancel()
 		select {

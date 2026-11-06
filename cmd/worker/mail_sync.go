@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailsync"
@@ -17,7 +16,7 @@ type MailDiscoverOutput struct {
 func executeMailDiscovery(ctx context.Context, input mailsync.Lease, execute func(context.Context, mailsync.Lease) error, wakes ...chan<- struct{}) (MailDiscoverOutput, error) {
 	defer wakeMailWork(wakes...)
 	if err := execute(ctx, input); err != nil {
-		return MailDiscoverOutput{Status: "failed"}, errors.New("mail discovery unavailable")
+		return MailDiscoverOutput{Status: "failed"}, hideWorkerCause("mail discovery unavailable", err)
 	}
 	return MailDiscoverOutput{Status: "handled"}, nil
 }
@@ -40,12 +39,12 @@ func dispatchMailDiscovery(ctx context.Context, claim func(context.Context) ([]m
 				}
 				sendCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 				if err := submit(sendCtx, lease); err != nil {
-					reportWorkerFailure(ctx, "", "worker_mail_discovery", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_mail_discovery", "submit_failed", err)
 				}
 				stop()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_mail_discovery", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_mail_discovery", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():

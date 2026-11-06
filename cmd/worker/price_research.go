@@ -25,12 +25,12 @@ func dispatchPriceResearch(ctx context.Context, claim func(context.Context) ([]p
 				}
 				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 				if err := submit(sendCtx, l); err != nil {
-					reportWorkerFailure(ctx, "", "worker_price_research", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_price_research", "submit_failed", err)
 				}
 				cancel()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_price_research", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_price_research", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():

@@ -29,6 +29,7 @@ type event struct {
 	owner, operation, kind string
 	version                uint64
 	frames                 []posthog.StackFrame
+	exceptions             []posthog.ExceptionItem
 }
 
 // Reporter isolates telemetry failures and delivery from application operations.
@@ -118,8 +119,19 @@ func (r *Reporter) PublicConfig(_ context.Context) Config {
 	return r.config
 }
 
-// Report accepts fixed classifications only; request bodies and error messages cannot enter it.
+// Report preserves the fixed-metadata fallback for callers without an error.
 func (r *Reporter) Report(ownerID, operation, kind string) {
+	r.report(ownerID, operation, kind, nil)
+}
+
+// ReportException immediately sanitizes technical error details. No original
+// error, panic value, request, headers or body are retained in the queue.
+func (r *Reporter) ReportException(ownerID, operation, kind string, value any) {
+	defer containPanic()
+	r.report(ownerID, operation, kind, value)
+}
+
+func (r *Reporter) report(ownerID, operation, kind string, value any) {
 	if r == nil || !r.production || !allowedOperation(operation) || !allowedKind(kind) {
 		return
 	}
@@ -138,6 +150,9 @@ func (r *Reporter) Report(ownerID, operation, kind string) {
 		return
 	}
 	e := event{owner: ownerID, operation: operation, kind: kind, version: r.version, frames: safeFrames()}
+	if value != nil {
+		e.exceptions = sanitizeExceptions(value, kind)
+	}
 	select {
 	case r.queue <- e:
 	default:
@@ -152,7 +167,7 @@ func (r *Reporter) Recover(ownerID, operation string) func() {
 			if r != nil && r.runtime == "api" {
 				kind = "api_panic"
 			}
-			r.Report(ownerID, operation, kind)
+			r.ReportException(ownerID, operation, kind, value)
 			panic(value)
 		}
 	}
@@ -175,7 +190,7 @@ func allowedKind(value string) bool {
 }
 
 func safeFrames() []posthog.StackFrame {
-	pcs := make([]uintptr, 32)
+	pcs := make([]uintptr, 64)
 	n := runtime.Callers(3, pcs)
 	frames := runtime.CallersFrames(pcs[:n])
 	result := make([]posthog.StackFrame, 0, n)
@@ -216,9 +231,27 @@ func safeFrame(f runtime.Frame) (posthog.StackFrame, bool) {
 		}
 		fn = dir + "." + strings.TrimPrefix(f.Function, "main.")
 	default:
-		return posthog.StackFrame{}, false
+		// Derive the package from its compiled symbol rather than preserving
+		// machine-specific GOROOT, module-cache or home directory prefixes.
+		lastSlash := strings.LastIndex(f.Function, "/")
+		packageEnd := strings.Index(f.Function[lastSlash+1:], ".")
+		if packageEnd < 0 || strings.HasPrefix(f.Function, "main.") {
+			return posthog.StackFrame{}, false
+		}
+		packageName := f.Function[:lastSlash+1+packageEnd]
+		if packageName == "" || strings.Contains(packageName, "..") || strings.ContainsAny(packageName, "\\ \t\n@") {
+			return posthog.StackFrame{}, false
+		}
+		filename = packageName + "/" + path.Base(f.File)
+		fn = f.Function
 	}
-	return posthog.StackFrame{Filename: filename, LineNo: f.Line, Function: fn, InApp: true, Platform: "go", Lang: "go"}, true
+	inApp := strings.HasPrefix(f.Function, module) || strings.HasPrefix(filename, "cmd/")
+	// Keep the complete stack, but distinguish instrumentation from the
+	// business code whose failure the exception is intended to diagnose.
+	if strings.HasPrefix(filename, "internal/telemetry/") || filename == "internal/httpapi/telemetry.go" || filename == "cmd/worker/telemetry.go" {
+		inApp = false
+	}
+	return posthog.StackFrame{Filename: filename, LineNo: f.Line, Function: fn, InApp: inApp, Platform: "go", Lang: "go"}, true
 }
 
 type eventHistory map[[sha256.Size]byte]time.Time
@@ -233,7 +266,15 @@ func (h eventHistory) expire(now time.Time) {
 
 func (h eventHistory) admit(e event, now time.Time) bool {
 	h.expire(now)
-	key := sha256.Sum256([]byte(e.owner + "/" + e.operation + "/" + e.kind))
+	fingerprint := e.owner + "/" + e.operation + "/" + e.kind
+	if len(e.exceptions) > 0 {
+		details, _ := json.Marshal(struct {
+			Items  []posthog.ExceptionItem
+			Frames []posthog.StackFrame
+		}{e.exceptions, e.frames})
+		fingerprint += "/" + string(details)
+	}
+	key := sha256.Sum256([]byte(fingerprint))
 	if at, exists := h[key]; exists && now.Sub(at) < time.Minute {
 		return false
 	}
@@ -293,13 +334,16 @@ func (r *Reporter) send(e event) {
 	defer func() { _ = client.Close() }()
 	exception := posthog.NewDefaultException(time.Now().UTC(), e.owner, e.kind, e.kind)
 	exception.DebugImages = nil
-	item := posthog.ExceptionItem{Type: e.kind, Value: e.kind}
+	items := e.exceptions
+	if len(items) == 0 {
+		items = []posthog.ExceptionItem{{Type: e.kind, Value: e.kind}}
+	}
 	// Empty stack slices become null during SDK cloning; PostHog requires an
 	// array whenever stacktrace is present. A frameless exception remains valid.
 	if len(e.frames) > 0 {
-		item.Stacktrace = &posthog.ExceptionStacktrace{Type: "raw", Frames: e.frames}
+		items[0].Stacktrace = &posthog.ExceptionStacktrace{Type: "raw", Frames: e.frames}
 	}
-	exception.ExceptionList = []posthog.ExceptionItem{item}
+	exception.ExceptionList = items
 	_ = client.Enqueue(exception)
 }
 

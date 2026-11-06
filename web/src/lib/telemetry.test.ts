@@ -25,9 +25,15 @@ function fixture(production = true) {
   let token = config.project_token;
   let fail = false;
   const sdk = {
-    capture(event: string, properties: Record<string, unknown>) {
+    captureException(error: Error, properties: Record<string, unknown>) {
       if (fail) throw new Error('private');
-      calls.push({ event, properties });
+      calls.push({
+        event: '$exception',
+        properties: {
+          ...properties,
+          $exception_list: [sanitizeException(error)],
+        },
+      });
     },
     reset() {
       resets.push(true);
@@ -159,7 +165,7 @@ test('disabled or failed configuration stops capture and capture errors do not e
     },
     loadSDK: async () => ({
       initialize: () => ({
-        capture() {
+        captureException() {
           throw new Error('should not escape');
         },
         reset() {},
@@ -199,27 +205,24 @@ test('late configuration and SDK completion cannot initialize after disposal', a
   assert.equal(loads, 0);
 });
 
-test('raw errors are replaced and only safe static asset frames survive', () => {
+test('secrets are removed while technical function and public asset frames survive', () => {
   const e = new Error('private@example.com');
   e.stack =
-    'Error: private\n at privateFunction (https://app.test/_app/immutable/chunks/ABC-123.js?email=private:14:7)\n at secret (https://app.test/subscriptions/private-id:1:2)\n at https://external.test/_app/immutable/chunks/other.js:1:2';
+    'Error: private@example.com\n at loadSubscription (https://app.test/_app/immutable/chunks/ABC-123.js?email=private:14:7)\n at secret (https://app.test/subscriptions/private-id:1:2)\n at https://external.test/_app/immutable/chunks/other.js:1:2';
   const result = sanitizeException(
     e,
     'https://app.test',
     new Set(['/_app/immutable/chunks/ABC-123.js']),
   );
-  assert.doesNotMatch(
-    JSON.stringify(result),
-    /private|external|https?:|email|secret|Function/,
-  );
+  assert.doesNotMatch(JSON.stringify(result), /private|external|email|secret/);
   assert.equal(result.type, 'Error');
-  assert.equal(result.value, 'Unhandled application error');
+  assert.equal(result.value, '[redacted]');
   assert.equal(result.stacktrace?.type, 'raw');
   assert.deepEqual(result.stacktrace?.frames, [
     {
       platform: 'web:javascript',
-      filename: '/_app/immutable/chunks/ABC-123.js',
-      function: '<redacted>',
+      filename: 'https://app.test/_app/immutable/chunks/ABC-123.js',
+      function: 'loadSubscription',
       in_app: true,
       lineno: 14,
       colno: 7,
@@ -263,7 +266,7 @@ test('final exception allowlist reconstructs the SDK raw stacktrace schema', () 
                   filename,
                   lineno: 14,
                   colno: 7,
-                  function: 'privateFunction',
+                  function: 'loadSubscription',
                   vars: { secret: 'private' },
                 },
               ],
@@ -273,6 +276,7 @@ test('final exception allowlist reconstructs the SDK raw stacktrace schema', () 
       },
     },
     new Set([filename]),
+    'https://app.test',
   );
   assert.deepEqual(result?.properties.$exception_list, [
     {
@@ -283,8 +287,8 @@ test('final exception allowlist reconstructs the SDK raw stacktrace schema', () 
         frames: [
           {
             platform: 'web:javascript',
-            filename,
-            function: '<redacted>',
+            filename: 'https://app.test' + filename,
+            function: 'loadSubscription',
             in_app: true,
             lineno: 14,
             colno: 7,

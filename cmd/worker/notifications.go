@@ -26,12 +26,12 @@ func dispatchNotifications(ctx context.Context, claim func(context.Context) ([]n
 				// Only abandoned preparations can be reclaimed by the repository.
 				// Ambiguous submissions are not retried by this dispatcher.
 				if err := submit(submitCtx, task); err != nil {
-					reportWorkerFailure(ctx, "", "worker_notification_delivery", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_notification_delivery", "submit_failed", err)
 				}
 				cancel()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_notification_delivery", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_notification_delivery", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():

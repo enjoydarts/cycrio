@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
@@ -26,7 +25,7 @@ func executeMailProcessing(ctx context.Context, input mailprocessing.Lease, exec
 		}
 	}()
 	if err := execute(ctx, input); err != nil {
-		return MailProcessingOutput{Status: "failed"}, errors.New("mail processing unavailable")
+		return MailProcessingOutput{Status: "failed"}, hideWorkerCause("mail processing unavailable", err)
 	}
 	return MailProcessingOutput{Status: "handled"}, nil
 }
@@ -46,12 +45,12 @@ func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]
 				}
 				sendCtx, stop := context.WithTimeout(ctx, 15*time.Second)
 				if err := submit(sendCtx, lease); err != nil {
-					reportWorkerFailure(ctx, "", "worker_mail_processing", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_mail_processing", "submit_failed", err)
 				}
 				stop()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_mail_processing", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_mail_processing", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():

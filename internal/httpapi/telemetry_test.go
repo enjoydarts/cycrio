@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,4 +105,25 @@ func TestTelemetryPartialPanicAbortsResponse(t *testing.T) {
 		}
 	}()
 	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/v1/example", nil))
+}
+
+type detailedTelemetryFixture struct {
+	telemetryFixture
+	values []any
+}
+
+func (f *detailedTelemetryFixture) ReportException(owner, operation, kind string, value any) {
+	f.Report(owner, operation, kind)
+	f.values = append(f.values, value)
+}
+
+func TestTelemetryBoundaryPreservesOriginalPanicForSanitizingReporter(t *testing.T) {
+	f := &detailedTelemetryFixture{}
+	original := errors.New("database transaction serialization failure")
+	h := telemetryBoundary(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { panic(original) }), f)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/example", nil))
+	if w.Code != 500 || len(f.values) != 1 || f.values[0] != original || strings.Contains(w.Body.String(), original.Error()) {
+		t.Fatalf("panic detail not preserved safely: values=%v body=%s", f.values, w.Body.String())
+	}
 }

@@ -14,7 +14,7 @@ func dispatchClerkErasure(ctx context.Context, drain func(context.Context, int) 
 	for ctx.Err() == nil {
 		batch, cancel := context.WithTimeout(ctx, 20*time.Second)
 		if _, err := drain(batch, 1); err != nil {
-			reportWorkerFailure(ctx, "", "", "poller_failed")
+			reportWorkerFailure(ctx, "", "", "poller_failed", err)
 		}
 		cancel()
 		select {

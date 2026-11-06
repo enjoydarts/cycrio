@@ -7,6 +7,8 @@ on:
         required: true
       CLOUDFLARE_API_TOKEN:
         required: true
+      POSTHOG_CLI_API_KEY:
+        required: true
 
 permissions:
   contents: read
@@ -15,7 +17,7 @@ jobs:
   prepare:
     name: 本番準備
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     environment: production
     steps:
       - name: Verify deployment configuration
@@ -25,12 +27,30 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
         run: |
-          for name in COOLIFY_API_URL COOLIFY_APPLICATION_UUID COOLIFY_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+          for name in COOLIFY_API_URL COOLIFY_APPLICATION_UUID COOLIFY_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN POSTHOG_CLI_API_KEY; do
             if [ -z "${!name}" ]; then echo "Missing production configuration: $name" >&2; exit 1; fi
           done
           test "$GITHUB_EVENT_NAME" = push
           test "$GITHUB_REF" = refs/heads/main
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Build source map upload toolchain
+        run: docker compose build web
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: production-web-${{ github.sha }}
+          path: web/build/
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: production-sourcemaps-${{ github.sha }}
+          path: web/.wrangler/posthog-sourcemaps/
+      - name: Upload private source maps before changing production
+        env:
+          POSTHOG_CLI_API_KEY: ${{ secrets.POSTHOG_CLI_API_KEY }}
+        run: |
+          docker compose run --rm --no-deps -e GITHUB_SHA -e POSTHOG_CLI_API_KEY web npm run sourcemaps:upload
 
   backend:
     name: DB migration・API/Worker更新
@@ -76,12 +96,17 @@ jobs:
         with:
           name: production-web-${{ github.sha }}
           path: web/build/
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: production-sourcemaps-${{ github.sha }}
+          path: web/.wrangler/posthog-sourcemaps/
       - name: Publish tested Web assets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           test "$(cat web/build/release.txt)" = "$GITHUB_SHA"
+          docker compose run --rm --no-deps -e GITHUB_SHA web npm run sourcemaps:verify
           docker compose run --rm --no-deps \
             -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
             web npm exec wrangler deploy -- --config wrangler.production.jsonc --tag "$GITHUB_SHA" --message "main $GITHUB_SHA" --keep-vars

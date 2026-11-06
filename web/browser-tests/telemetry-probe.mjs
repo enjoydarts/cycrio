@@ -21,6 +21,14 @@ export async function browserTelemetryProbe(options = {}) {
   const requests = [];
   const events = [];
   const statuses = [];
+  const oldChunkIds = window._posthogChunkIds;
+  const syntheticAsset =
+    location.origin + '/_app/immutable/chunks/synthetic.js';
+  const syntheticChunkId = '11111111-2222-4333-8444-555555555555';
+  window._posthogChunkIds = {
+    ...oldChunkIds,
+    [`Error\n at injectChunk (${syntheticAsset}:1:1)`]: syntheticChunkId,
+  };
   const token = options.projectToken ?? 'phc_synthetic_browser_token';
   const host = options.host ?? 'https://us.i.posthog.com';
   let controller;
@@ -51,7 +59,7 @@ export async function browserTelemetryProbe(options = {}) {
       production: true,
       target: window,
       origin: location.origin,
-      getAssetPaths: () => new Set(['/_app/immutable/chunks/synthetic.js']),
+      getAssetPaths: () => new Set([syntheticAsset]),
       getConfiguration: async () => ({
         enabled: true,
         project_token: token,
@@ -73,11 +81,8 @@ export async function browserTelemetryProbe(options = {}) {
             before_send: beforeSend,
           });
           return {
-            capture: (_event, properties) =>
-              sdk.captureException(
-                new Error('Unhandled application error'),
-                properties,
-              ),
+            captureException: (error, properties) =>
+              sdk.captureException(error, properties),
             reset: () => sdk.reset(),
             disable: () => sdk.set_config({ before_send: () => null }),
           };
@@ -103,8 +108,10 @@ export async function browserTelemetryProbe(options = {}) {
     sdk.set_config({ before_send: beforeSend });
     const owner = '11111111-1111-4111-8111-111111111111';
     controller.setUser(owner);
-    const error = new Error('private@example.test secret-token');
-    error.stack = `Error: private@example.test\n at privateFunction (${location.origin}/_app/immutable/chunks/synthetic.js?email=private:42:7)\n at private (${location.origin}/subscriptions/private-identifier:4:2)`;
+    const error = new TypeError(
+      "Cannot read properties of undefined (reading 'foo') private@example.test Bearer synthetic-secret-token",
+    );
+    error.stack = `TypeError: ${error.message}\n at loadSubscription (${syntheticAsset}?email=private:42:7)\n at private (${location.origin}/subscriptions/private-identifier:4:2)`;
     window.dispatchEvent(
       new ErrorEvent('error', {
         error,
@@ -145,6 +152,7 @@ export async function browserTelemetryProbe(options = {}) {
       })),
       statuses,
       nativeFrameFields,
+      asset: syntheticAsset,
       fixtureErrors: window.browserTest?.errors ?? [],
       cookieUnchanged: document.cookie === beforeCookie,
       localUnchanged:
@@ -158,6 +166,8 @@ export async function browserTelemetryProbe(options = {}) {
     controller?.dispose();
     window.fetch = originalFetch;
     transportFrame?.remove();
+    if (oldChunkIds === undefined) delete window._posthogChunkIds;
+    else window._posthogChunkIds = oldChunkIds;
   }
 }
 
@@ -182,19 +192,24 @@ export async function runTelemetryProbe(api, session, options = {}) {
   if (options.live) assert.deepEqual(result.statuses, [200, 200]);
   for (const event of result.events) {
     assert.equal(event.event, '$exception');
-    assert.deepEqual(
-      Object.keys(event.properties).sort(),
-      [
-        '$exception_list',
-        '$process_person_profile',
-        '$geoip_disable',
-        'runtime',
-        '$lib',
-        '$lib_version',
-        'distinct_id',
-        'token',
-      ].sort(),
-    );
+    const allowed = new Set([
+      '$exception_list',
+      '$process_person_profile',
+      '$geoip_disable',
+      'runtime',
+      '$lib',
+      '$lib_version',
+      'distinct_id',
+      'token',
+      '$exception_level',
+      '$browser',
+      '$browser_version',
+      '$os',
+      '$os_version',
+      '$device_type',
+    ]);
+    for (const key of Object.keys(event.properties))
+      assert.ok(allowed.has(key), key);
   }
   assert.equal(
     result.events[0].properties.distinct_id,
@@ -205,15 +220,28 @@ export async function runTelemetryProbe(api, session, options = {}) {
     'cycrio-browser-anonymous',
   );
   const stacktrace = result.events[0].properties.$exception_list[0].stacktrace;
+  assert.equal(
+    result.events[0].properties.$exception_list[0].type,
+    'TypeError',
+  );
+  assert.match(
+    result.events[0].properties.$exception_list[0].value,
+    /Cannot read properties of undefined \(reading 'foo'\)/,
+  );
+  assert.equal(
+    result.events[0].properties.$exception_list[0].mechanism.type,
+    'generic',
+  );
   assert.equal(stacktrace.type, 'raw');
   assert.deepEqual(stacktrace.frames, [
     {
       platform: 'web:javascript',
-      filename: '/_app/immutable/chunks/synthetic.js',
-      function: '<redacted>',
+      filename: result.asset,
+      function: 'loadSubscription',
       in_app: true,
       lineno: 42,
       colno: 7,
+      chunk_id: '11111111-2222-4333-8444-555555555555',
     },
   ]);
   assert.deepEqual(
@@ -229,18 +257,9 @@ export async function runTelemetryProbe(api, session, options = {}) {
     const payload = JSON.parse(request.body);
     const data = payload.batch?.[0] ?? payload;
     assert.equal(data.event, '$exception', JSON.stringify(payload));
-    assert.deepEqual(
-      Object.keys(data.properties).sort(),
-      [
-        '$exception_list',
-        '$process_person_profile',
-        '$geoip_disable',
-        'runtime',
-        '$lib',
-        '$lib_version',
-        'distinct_id',
-        'token',
-      ].sort(),
+    assert.doesNotMatch(
+      JSON.stringify(data),
+      /private@example|private-identifier|synthetic-secret-token|\$current_url|\$referrer|\$device_id|\$session_id/,
     );
     assert.equal(data.properties.$geoip_disable, true);
   }

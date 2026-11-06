@@ -1,5 +1,8 @@
 import type { PostHogConfig } from 'posthog-js';
 import type { ErrorTracking } from '@posthog/core';
+import { createDefaultStackParser } from '@posthog/core/error-tracking';
+import { scrubText } from './telemetry-redaction.ts';
+export { scrubText } from './telemetry-redaction.ts';
 
 // This boundary exposes errors only. Analytics needs a separately reviewed policy.
 export type TelemetryConfiguration =
@@ -12,18 +15,19 @@ type SafeFrame = Required<
   >
 > & {
   platform: 'web:javascript';
-  function: '<redacted>';
   in_app: true;
+  chunk_id?: string;
 };
 type SafeException = {
-  type: 'Error';
-  value: 'Unhandled application error';
+  type: string;
+  value: string;
+  mechanism?: ErrorTracking.Mechanism;
   stacktrace?: NonNullable<ErrorTracking.Exception['stacktrace']> & {
     frames: SafeFrame[];
   };
 };
 export type TelemetrySDK = {
-  capture: (event: string, properties: Properties) => unknown;
+  captureException: (error: Error, properties: Properties) => unknown;
   reset: () => unknown;
   disable: () => unknown;
 };
@@ -35,15 +39,80 @@ const uuidPattern =
 const assetPattern =
   /^\/_app\/immutable\/(?:chunks|entry|nodes)\/[A-Za-z0-9_.-]+\.js$/;
 const anonymousIdentity = 'cycrio-browser-anonymous';
-function safeFrame(filename: string, lineno: number, colno: number): SafeFrame {
-  return {
+const parseStack = createDefaultStackParser();
+function exceptionType(value: unknown): string {
+  if (typeof value !== 'string' || !/^[$A-Z_a-z][$\w.-]{0,127}$/.test(value))
+    return 'Error';
+  return scrubText(value) === value ? value : 'Error';
+}
+function assetURL(
+  value: unknown,
+  origin?: string,
+  assets?: ReadonlySet<string>,
+): string | null {
+  if (typeof value !== 'string' || !assets || !origin) return null;
+  try {
+    const url = new URL(value, origin);
+    if (
+      url.origin !== origin ||
+      url.username ||
+      url.password ||
+      !assetPattern.test(url.pathname)
+    )
+      return null;
+    const normalized = url.origin + url.pathname;
+    return assets.has(normalized) || assets.has(url.pathname)
+      ? normalized
+      : null;
+  } catch {
+    return null;
+  }
+}
+function safeFrame(
+  source: ErrorTracking.StackFrame,
+  origin?: string,
+  assets?: ReadonlySet<string>,
+): SafeFrame | null {
+  const filename = assetURL(source.filename, origin, assets);
+  if (
+    !filename ||
+    !Number.isSafeInteger(source.lineno) ||
+    source.lineno! <= 0 ||
+    !Number.isSafeInteger(source.colno) ||
+    source.colno! <= 0
+  )
+    return null;
+  const frame: SafeFrame = {
     platform: 'web:javascript',
     filename,
-    function: '<redacted>',
+    function:
+      typeof source.function === 'string'
+        ? scrubText(source.function)
+            .replace(/https?:\/\/\S+/g, '[redacted]')
+            .replace(/[\r\n]+/g, ' ')
+            .slice(0, 256) || '?'
+        : '?',
     in_app: true,
-    lineno,
-    colno,
+    lineno: source.lineno!,
+    colno: source.colno!,
   };
+  if (typeof source.chunk_id === 'string' && uuidPattern.test(source.chunk_id))
+    frame.chunk_id = source.chunk_id;
+  return frame;
+}
+function safeMechanism(source: unknown): ErrorTracking.Mechanism | undefined {
+  if (!source || typeof source !== 'object') return undefined;
+  const values = source as Record<string, unknown>;
+  const result: ErrorTracking.Mechanism = {};
+  for (const key of ['type', 'source'] as const)
+    if (typeof values[key] === 'string')
+      result[key] = scrubText(values[key]).slice(0, 128);
+  for (const key of ['handled', 'synthetic'] as const)
+    if (typeof values[key] === 'boolean') result[key] = values[key];
+  for (const key of ['exception_id', 'parent_id'] as const)
+    if (Number.isSafeInteger(values[key]) && (values[key] as number) >= 0)
+      result[key] = values[key] as number;
+  return Object.keys(result).length ? result : undefined;
 }
 export function validPostHogConfiguration(
   projectToken: unknown,
@@ -63,82 +132,177 @@ export function sanitizeException(
 ): SafeException {
   const exception: SafeException = {
     type: 'Error',
-    value: 'Unhandled application error',
+    value:
+      typeof error === 'string'
+        ? scrubText(error)
+        : 'Unhandled non-Error rejection',
   };
   try {
-    if (!origin || !(error instanceof Error) || typeof error.stack !== 'string')
-      return exception;
-    const frames: SafeFrame[] = [];
-    for (const line of error.stack.slice(0, 32_768).split('\n').slice(1, 31)) {
-      const match = /(https?:\/\/[^\s)]+):(\d+):(\d+)\)?$/.exec(line);
-      if (!match) continue;
-      const url = new URL(match[1]);
-      const lineno = Number(match[2]),
-        colno = Number(match[3]);
-      if (
-        url.origin === origin &&
-        !url.username &&
-        !url.password &&
-        assetPattern.test(url.pathname) &&
-        assetPaths?.has(url.pathname) &&
-        Number.isSafeInteger(lineno) &&
-        lineno > 0 &&
-        Number.isSafeInteger(colno) &&
-        colno > 0
-      )
-        frames.push(safeFrame(url.pathname, lineno, colno));
-    }
+    if (!(error instanceof Error)) return exception;
+    const originalName = typeof error.name === 'string' ? error.name : 'Error';
+    const originalMessage =
+      typeof error.message === 'string' ? error.message : '';
+    exception.type = exceptionType(originalName);
+    exception.value = scrubText(originalMessage);
+    if (!origin || typeof error.stack !== 'string') return exception;
+    let stack = error.stack.slice(0, 65_536);
+    const header = `${originalName}${originalMessage ? ': ' + originalMessage : ''}`;
+    // V8 includes the entire multiline message before the real stack. Remove
+    // that exact prefix, so a message cannot inject an allowlisted fake frame.
+    if (stack.startsWith(header)) stack = stack.slice(header.length);
+    else if (originalMessage && stack.startsWith(originalMessage))
+      stack = stack.slice(originalMessage.length);
+    else if (stack.startsWith(originalName + ':')) return exception;
+    const frames = parseStack(stack)
+      .flatMap((frame) => {
+        const safe = safeFrame(frame, origin, assetPaths);
+        return safe ? [safe] : [];
+      })
+      .slice(0, 30);
     if (frames.length) exception.stacktrace = { type: 'raw', frames };
   } catch {
     /* Hostile Error subclasses must never break the application. */
   }
   return exception;
 }
-// Reconstruct, rather than redact, SDK events. No URLs, super-properties,
-// person/device/session metadata, raw stack strings or custom fields survive.
+export function sanitizeError(
+  error: unknown,
+  origin?: string,
+  assets?: ReadonlySet<string>,
+): Error {
+  return safeErrorTree(error, origin, assets, new WeakSet(), 0, {
+    remaining: 16,
+  });
+}
+function safeErrorTree(
+  error: unknown,
+  origin: string | undefined,
+  assets: ReadonlySet<string> | undefined,
+  seen: WeakSet<object>,
+  depth: number,
+  budget: { remaining: number },
+): Error {
+  budget.remaining--;
+  const exception = sanitizeException(error, origin, assets);
+  let children: Error[] | undefined;
+  let cause: Error | undefined;
+  try {
+    if (error instanceof Error && !seen.has(error) && depth < 4) {
+      seen.add(error);
+      if (
+        error.cause !== undefined &&
+        budget.remaining > 0 &&
+        !(
+          typeof error.cause === 'object' &&
+          error.cause !== null &&
+          seen.has(error.cause)
+        )
+      )
+        cause = safeErrorTree(
+          error.cause,
+          origin,
+          assets,
+          seen,
+          depth + 1,
+          budget,
+        );
+      if (error instanceof AggregateError && Array.isArray(error.errors)) {
+        children = [];
+        for (const child of error.errors.slice(0, 4)) {
+          if (budget.remaining <= 0) break;
+          children.push(
+            safeErrorTree(child, origin, assets, seen, depth + 1, budget),
+          );
+        }
+      }
+    }
+  } catch {
+    /* Do not inspect arbitrary cause/rejection object fields or throwing getters. */
+  }
+  const safe = children
+    ? new AggregateError(children, exception.value)
+    : new Error(exception.value);
+  if (cause) safe.cause = cause;
+  safe.name = exception.type;
+  const lines =
+    exception.stacktrace?.frames
+      .slice()
+      .reverse()
+      .map(
+        (frame) =>
+          `    at ${frame.function} (${frame.filename}:${frame.lineno}:${frame.colno})`,
+      ) ?? [];
+  safe.stack = `${safe.name}: ${safe.message}${lines.length ? '\n' + lines.join('\n') : ''}`;
+  return safe;
+}
+// Keep native exception diagnostics and code-asset URLs. Request payloads,
+// person/device/session metadata and unrelated custom fields are never copied.
 export function filterTelemetryEvent(
   event: {
     event: string;
     properties: Properties;
   },
   assetPaths?: ReadonlySet<string>,
+  origin?: string,
 ): { event: '$exception'; properties: Properties } | null {
   try {
     if (event.event !== '$exception') return null;
     const source = event.properties.$exception_list;
-    if (!Array.isArray(source) || source.length !== 1) return null;
-    const item = source[0];
-    if (item?.type !== 'Error' || item?.value !== 'Unhandled application error')
-      return null;
-    const exception: SafeException = {
-      type: 'Error',
-      value: 'Unhandled application error',
-    };
-    const sourceFrames = item.stacktrace?.frames;
-    if (Array.isArray(sourceFrames)) {
-      const frames: SafeFrame[] = sourceFrames
-        .slice(0, 30)
-        .filter(
-          (frame) =>
-            typeof frame?.filename === 'string' &&
-            assetPattern.test(frame.filename) &&
-            assetPaths?.has(frame.filename) &&
-            Number.isSafeInteger(frame.lineno) &&
-            frame.lineno > 0 &&
-            Number.isSafeInteger(frame.colno) &&
-            frame.colno > 0,
-        )
-        .map((frame) => safeFrame(frame.filename, frame.lineno, frame.colno));
-      if (frames.length) exception.stacktrace = { type: 'raw', frames };
+    if (!Array.isArray(source) || !source.length) return null;
+    const exceptions: SafeException[] = [];
+    for (const item of source.slice(0, 16)) {
+      if (
+        !item ||
+        typeof item.type !== 'string' ||
+        typeof item.value !== 'string'
+      )
+        return null;
+      const exception: SafeException = {
+        type: exceptionType(item.type),
+        value: scrubText(item.value),
+      };
+      const mechanism = safeMechanism(item.mechanism);
+      if (mechanism) exception.mechanism = mechanism;
+      const sourceFrames = item.stacktrace?.frames;
+      if (Array.isArray(sourceFrames)) {
+        const frames: SafeFrame[] = sourceFrames
+          .slice(0, 30)
+          .flatMap((frame) => {
+            if (!frame || typeof frame !== 'object') return [];
+            const safe = safeFrame(frame, origin, assetPaths);
+            return safe ? [safe] : [];
+          });
+        if (frames.length) exception.stacktrace = { type: 'raw', frames };
+      }
+      exceptions.push(exception);
     }
     const properties: Properties = {
-      $exception_list: [exception],
+      $exception_list: exceptions,
       $process_person_profile: false,
       $geoip_disable: true,
       runtime: 'browser',
       $lib: 'web',
       $lib_version: '1.447.2',
     };
+    for (const key of [
+      '$browser',
+      '$browser_version',
+      '$os',
+      '$os_version',
+      '$device_type',
+    ] as const) {
+      const value = event.properties[key];
+      if (typeof value === 'string')
+        properties[key] = scrubText(value).slice(0, 128);
+      else if (typeof value === 'number' && Number.isFinite(value))
+        properties[key] = value;
+    }
+    if (
+      ['fatal', 'error', 'warning', 'log', 'info', 'debug'].includes(
+        String(event.properties.$exception_level),
+      )
+    )
+      properties.$exception_level = event.properties.$exception_level;
     const distinctId = event.properties.distinct_id;
     if (
       typeof distinctId === 'string' &&
@@ -247,6 +411,7 @@ export function createTelemetryController(options: {
           const filtered = filterTelemetryEvent(
             event,
             options.getAssetPaths?.(),
+            options.origin,
           );
           if (!filtered) return null;
           filtered.properties.distinct_id = user ?? anonymousIdentity;
@@ -273,12 +438,14 @@ export function createTelemetryController(options: {
         seen.add(error);
       }
       const properties: Properties = {
-        $exception_list: [
-          sanitizeException(error, options.origin, options.getAssetPaths?.()),
-        ],
         distinct_id: user ?? anonymousIdentity,
       };
-      safely(() => sdk?.capture('$exception', properties));
+      const safe = sanitizeError(
+        error,
+        options.origin,
+        options.getAssetPaths?.(),
+      );
+      safely(() => sdk?.captureException(safe, properties));
     } catch {
       /* Window errors and arbitrary rejection values are untrusted. */
     }

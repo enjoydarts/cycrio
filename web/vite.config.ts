@@ -3,8 +3,18 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [sveltekit({ adapter: adapter({ fallback: 'index.html' }) })],
+  plugins: [
+    sveltekit({ adapter: adapter({ fallback: 'index.html' }) }),
+    {
+      name: 'cycrio-private-source-map-protocol',
+      apply: 'build',
+      // Start a new immutable-cache namespace when adding post-build chunk IDs.
+      // Bump this salt whenever the pinned injector changes its output protocol.
+      augmentChunkHash: () => 'cycrio-posthog-cli-0.19.0-v1',
+    },
+  ],
   build: {
+    sourcemap: 'hidden',
     // Clerk ships a prebuilt ~1.5 MiB SDK, loaded only after auth is configured.
     chunkSizeWarningLimit: 1600,
     rolldownOptions: {

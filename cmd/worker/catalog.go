@@ -25,7 +25,7 @@ func executeCatalogSync(ctx context.Context, input CatalogSyncInput, sync func(c
 		return CatalogSyncOutput{Status: "credentials_required"}, nil
 	}
 	if err != nil {
-		return CatalogSyncOutput{Status: "failed"}, errors.New("catalog synchronization failed")
+		return CatalogSyncOutput{Status: "failed"}, hideWorkerCause("catalog synchronization failed", err)
 	}
 	return CatalogSyncOutput{Status: "ok"}, nil
 }
@@ -45,12 +45,12 @@ func dispatchCatalog(ctx context.Context, claim func(context.Context) ([]modelca
 				// Submission/processing failures remain bounded by the DB lease;
 				// never log SDK errors that might contain upstream data.
 				if err := submit(runCtx, CatalogSyncInput{Provider: lease.Provider, LeaseID: lease.LeaseID}); err != nil {
-					reportWorkerFailure(ctx, "", "worker_catalog_sync", "submit_failed")
+					reportWorkerFailure(ctx, "", "worker_catalog_sync", "submit_failed", err)
 				}
 				cancel()
 			}
 		} else {
-			reportWorkerFailure(ctx, "", "worker_catalog_sync", "claim_failed")
+			reportWorkerFailure(ctx, "", "worker_catalog_sync", "claim_failed", err)
 		}
 		select {
 		case <-ctx.Done():
