@@ -19,6 +19,7 @@ func withWorkerOperation(ctx context.Context, operation string) context.Context 
 	return context.WithValue(ctx, workerOperationKey{}, operation)
 }
 func reportWorkerFailure(ctx context.Context, owner, operation, kind string) {
+	defer func() { _ = recover() }()
 	if operation == "" {
 		operation, _ = ctx.Value(workerOperationKey{}).(string)
 	}
@@ -32,6 +33,9 @@ func reportWorkerFailure(ctx context.Context, owner, operation, kind string) {
 func capturePollerPanic(ctx context.Context) {
 	if recover() != nil {
 		reportWorkerFailure(ctx, "", "", "poller_panic")
+		if cancel, ok := ctx.Value(workerShutdownKey{}).(context.CancelCauseFunc); ok {
+			cancel(errWorkerPollerFailed)
+		}
 	}
 }
 

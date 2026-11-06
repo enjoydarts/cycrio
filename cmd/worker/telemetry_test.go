@@ -108,3 +108,78 @@ func TestPollerPanicReportsOnceAndStops(t *testing.T) {
 		t.Fatalf("unexpected panic capture: %d %v", calls, r.events)
 	}
 }
+
+type panickingFailureReporter struct{}
+
+func (panickingFailureReporter) Report(string, string, string) { panic("PRIVATE reporter failure") }
+
+func TestPollerPanicCancelsWorkerEvenWhenReportingPanics(t *testing.T) {
+	for _, reporter := range []workerFailureReporter{&failureRecorder{}, panickingFailureReporter{}} {
+		ctx, cancel := withWorkerShutdown(context.Background())
+		defer cancel(nil)
+		ctx = withWorkerOperation(withWorkerTelemetry(ctx, reporter), "worker_billing_record")
+		calls := 0
+		dispatchSubscriptionAutomation(ctx, func(context.Context, int) (int, error) {
+			calls++
+			panic("PRIVATE poller failure")
+		}, time.Hour)
+		if calls != 1 || ctx.Err() == nil || !errors.Is(context.Cause(ctx), errWorkerPollerFailed) {
+			t.Fatalf("poller panic did not cancel worker: calls=%d cause=%v", calls, context.Cause(ctx))
+		}
+		if err := workerShutdownError(ctx); err != errWorkerPollerFailed || err.Error() != "worker poller failed" {
+			t.Fatalf("worker must exit with a fixed failure: %v", err)
+		}
+	}
+}
+
+func TestReporterPanicDoesNotCancelHealthyWorker(t *testing.T) {
+	ctx, cancel := withWorkerShutdown(context.Background())
+	defer cancel(nil)
+	ctx = withWorkerTelemetry(ctx, panickingFailureReporter{})
+	value, err := captureWorkerTask(ctx, nil, "worker_catalog_sync", "", "", func() (int, error) {
+		return 7, errors.New("task failure")
+	})
+	if value != 7 || err == nil || err.Error() != "task failure" || ctx.Err() != nil {
+		t.Fatalf("reporter panic changed task/lifecycle: value=%d err=%v cause=%v", value, err, context.Cause(ctx))
+	}
+}
+
+func TestWorkerReadinessStopsImmediatelyAfterPollerPanic(t *testing.T) {
+	ctx, cancel := withWorkerShutdown(context.Background())
+	defer cancel(nil)
+	checks := 0
+	ready := workerReadiness(ctx, func(context.Context) error { checks++; return nil })
+	if err := ready(context.Background()); err != nil || checks != 1 {
+		t.Fatalf("healthy readiness failed: checks=%d err=%v", checks, err)
+	}
+	dispatchSubscriptionAutomation(ctx, func(context.Context, int) (int, error) { panic("PRIVATE") }, time.Hour)
+	if err := ready(context.Background()); err != errWorkerPollerFailed || checks != 1 {
+		t.Fatalf("dead poller remained ready: checks=%d err=%v", checks, err)
+	}
+}
+
+func TestSignalShutdownIsNotWorkerFailure(t *testing.T) {
+	signalCtx, signalStop := context.WithCancel(context.Background())
+	ctx, cancel := withWorkerShutdown(signalCtx)
+	defer cancel(nil)
+	signalStop()
+	if ctx.Err() == nil || workerShutdownError(ctx) != nil {
+		t.Fatalf("normal cancellation became worker failure: %v", context.Cause(ctx))
+	}
+	ready := workerReadiness(ctx, func(context.Context) error { t.Fatal("dependency checked during shutdown"); return nil })
+	if ready(context.Background()) == nil {
+		t.Fatal("shutting down worker stayed ready")
+	}
+}
+
+func TestWorkerReadinessRejectsFailureDuringDependencyCheck(t *testing.T) {
+	ctx, cancel := withWorkerShutdown(context.Background())
+	defer cancel(nil)
+	ready := workerReadiness(ctx, func(context.Context) error {
+		cancel(errWorkerPollerFailed)
+		return nil
+	})
+	if err := ready(context.Background()); err != errWorkerPollerFailed {
+		t.Fatalf("worker became ready after poller failure: %v", err)
+	}
+}

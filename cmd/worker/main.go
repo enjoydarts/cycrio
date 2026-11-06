@@ -58,6 +58,8 @@ func run() (result error) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
+	ctx, cancelWorker := withWorkerShutdown(ctx)
+	defer cancelWorker(nil)
 	if os.Getenv("DATABASE_URL") == "" {
 		return errors.New("DATABASE_URL is required")
 	}
@@ -197,7 +199,7 @@ func run() (result error) {
 		_, err := processingTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second, processingWake)
-	ready := func(ctx context.Context) error {
+	ready := workerReadiness(ctx, func(ctx context.Context) error {
 		if err := pool.Ping(ctx); err != nil {
 			return errors.New("database unavailable")
 		}
@@ -206,7 +208,7 @@ func run() (result error) {
 			return errors.New("worker unavailable")
 		}
 		return nil
-	}
+	})
 	heartbeatCredentials := credentials.NewService(database.NewCredentialRepository(pool), keyring)
 	heartbeat := healthchecks.NewService(database.NewHealthchecksRepository(pool), heartbeatCredentials.Resolve, healthchecks.NewClient(nil), ready, healthchecks.NewAPIProbe(nil))
 	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_heartbeat"), func(ctx context.Context, _ int) (int, error) { return 0, heartbeat.Tick(ctx) }, 10*time.Second)
@@ -230,5 +232,5 @@ func run() (result error) {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		return errors.New("HTTP shutdown failed")
 	}
-	return nil
+	return workerShutdownError(ctx)
 }
