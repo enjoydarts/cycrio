@@ -7,10 +7,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/posthog/posthog-go"
 )
 
 type transportFunc func(*http.Request) (*http.Response, error)
@@ -95,6 +98,65 @@ func TestReporterWirePrivacyAndGuard(t *testing.T) {
 	case <-wire:
 		t.Fatal("duplicate sent")
 	case <-time.After(30 * time.Millisecond):
+	}
+}
+
+func TestReporterWireOmitsStacktraceWithoutFrames(t *testing.T) {
+	for _, frames := range [][]posthog.StackFrame{nil, {}} {
+		wire := make(chan []byte, 1)
+		r := newReporter(context.Background(), true, func(context.Context) (Config, error) { return testConfig, nil }, nil, "worker", transportFunc(func(req *http.Request) (*http.Response, error) {
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Error(err)
+			}
+			wire <- body
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+		}), time.Hour)
+		waitConfig(t, r)
+		r.mu.RLock()
+		version := r.version
+		r.mu.RUnlock()
+		r.send(event{owner: "cycrio-system", operation: "worker_check", kind: "task_failed", version: version, frames: frames})
+		r.Close()
+		select {
+		case body := <-wire:
+			var envelope struct {
+				Batch []struct {
+					Properties struct {
+						Exceptions []map[string]json.RawMessage `json:"$exception_list"`
+					} `json:"properties"`
+				} `json:"batch"`
+			}
+			if err := json.Unmarshal(body, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			if len(envelope.Batch) != 1 || len(envelope.Batch[0].Properties.Exceptions) != 1 {
+				t.Fatalf("invalid exception: %s", body)
+			}
+			item := envelope.Batch[0].Properties.Exceptions[0]
+			if _, ok := item["stacktrace"]; ok {
+				t.Fatalf("frameless exception must omit stacktrace: %s", body)
+			}
+			if string(item["type"]) != `"task_failed"` || string(item["value"]) != `"task_failed"` {
+				t.Fatalf("classification missing: %s", body)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("frameless event was not sent")
+		}
+	}
+}
+
+func TestSafeFrameRecognizesTrimmedMainAndRejectsExternalPaths(t *testing.T) {
+	for _, command := range []string{"api", "worker"} {
+		frame, ok := safeFrame(runtime.Frame{Function: "main.capturePollerPanic", File: "github.com/enjoydarts/cycrio/cmd/" + command + "/telemetry.go", Line: 37})
+		if !ok || frame.Filename != "cmd/"+command+"/telemetry.go" || frame.Function != "cmd/"+command+".capturePollerPanic" || frame.LineNo != 37 {
+			t.Fatalf("trimpath main frame missing: %+v %v", frame, ok)
+		}
+	}
+	for _, file := range []string{"/Users/private/cmd/worker/main.go", "other.example/cmd/worker/main.go", "github.com/enjoydarts/cycrio/cmd/unknown/main.go", "github.com/enjoydarts/cycrio/cmd/worker/../../private.go"} {
+		if _, ok := safeFrame(runtime.Frame{Function: "main.main", File: file, Line: 1}); ok {
+			t.Fatalf("untrusted main source accepted: %s", file)
+		}
 	}
 }
 

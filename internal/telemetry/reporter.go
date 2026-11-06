@@ -179,15 +179,10 @@ func safeFrames() []posthog.StackFrame {
 	n := runtime.Callers(3, pcs)
 	frames := runtime.CallersFrames(pcs[:n])
 	result := make([]posthog.StackFrame, 0, n)
-	const module = "github.com/enjoydarts/cycrio/"
 	for {
 		f, more := frames.Next()
-		if strings.HasPrefix(f.Function, module) {
-			fn := strings.TrimPrefix(f.Function, module)
-			dir := strings.SplitN(fn, ".", 2)[0]
-			if (strings.HasPrefix(dir, "internal/") || strings.HasPrefix(dir, "cmd/")) && !strings.Contains(dir, "..") {
-				result = append(result, posthog.StackFrame{Filename: dir + "/" + path.Base(f.File), LineNo: f.Line, Function: fn, InApp: true, Platform: "go", Lang: "go"})
-			}
+		if frame, ok := safeFrame(f); ok {
+			result = append(result, frame)
 		}
 		if !more {
 			break
@@ -198,6 +193,32 @@ func safeFrames() []posthog.StackFrame {
 		result[i], result[j] = result[j], result[i]
 	}
 	return result
+}
+
+func safeFrame(f runtime.Frame) (posthog.StackFrame, bool) {
+	const module = "github.com/enjoydarts/cycrio/"
+	var filename, fn string
+	switch {
+	case strings.HasPrefix(f.Function, module):
+		fn = strings.TrimPrefix(f.Function, module)
+		dir := strings.SplitN(fn, ".", 2)[0]
+		if !(strings.HasPrefix(dir, "internal/") || strings.HasPrefix(dir, "cmd/")) || strings.Contains(dir, "..") {
+			return posthog.StackFrame{}, false
+		}
+		filename = dir + "/" + path.Base(f.File)
+	case strings.HasPrefix(f.Function, "main.") && strings.HasPrefix(f.File, module):
+		// Executable symbols are named main.*, even with -trimpath. Accept
+		// only source paths emitted by our two production command packages.
+		filename = strings.TrimPrefix(f.File, module)
+		dir := path.Dir(filename)
+		if (dir != "cmd/api" && dir != "cmd/worker") || path.Clean(filename) != filename || !strings.HasSuffix(filename, ".go") {
+			return posthog.StackFrame{}, false
+		}
+		fn = dir + "." + strings.TrimPrefix(f.Function, "main.")
+	default:
+		return posthog.StackFrame{}, false
+	}
+	return posthog.StackFrame{Filename: filename, LineNo: f.Line, Function: fn, InApp: true, Platform: "go", Lang: "go"}, true
 }
 
 type eventHistory map[[sha256.Size]byte]time.Time
@@ -272,7 +293,13 @@ func (r *Reporter) send(e event) {
 	defer func() { _ = client.Close() }()
 	exception := posthog.NewDefaultException(time.Now().UTC(), e.owner, e.kind, e.kind)
 	exception.DebugImages = nil
-	exception.ExceptionList = []posthog.ExceptionItem{{Type: e.kind, Value: e.kind, Stacktrace: &posthog.ExceptionStacktrace{Type: "raw", Frames: e.frames}}}
+	item := posthog.ExceptionItem{Type: e.kind, Value: e.kind}
+	// Empty stack slices become null during SDK cloning; PostHog requires an
+	// array whenever stacktrace is present. A frameless exception remains valid.
+	if len(e.frames) > 0 {
+		item.Stacktrace = &posthog.ExceptionStacktrace{Type: "raw", Frames: e.frames}
+	}
+	exception.ExceptionList = []posthog.ExceptionItem{item}
 	_ = client.Enqueue(exception)
 }
 
