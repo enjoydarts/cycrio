@@ -18,6 +18,7 @@
   import { ApiError } from './api.ts';
   import ImportExecutionsPanel from './ImportExecutionsPanel.svelte';
   import ImportExecutionDetail from './ImportExecutionDetail.svelte';
+  import ImportLastActivity from './ImportLastActivity.svelte';
   import AnalysisStart from './AnalysisStart.svelte';
   import MailAutomation from './MailAutomation.svelte';
   import LibraryPanel from './LibraryPanel.svelte';
@@ -221,6 +222,12 @@
         ><Button wrap disabled={busy} onclick={refresh}>更新</Button>
       </ActionGroup>
     </div>
+    {#if view.page}<div class="library-content">
+        <ImportLastActivity
+          syncStartedAt={view.page.last_sync_started_at}
+          analysisStartedAt={view.page.last_analysis_started_at}
+        />
+      </div>{/if}
     {#if accepted}<p class="notice library-content" role="status">
         {count(accepted.accepted_count)} 通の再試行を受け付けました。{#if accepted.skipped_count}取得対象外の
           {count(accepted.skipped_count)} 通はスキップしました。{/if}

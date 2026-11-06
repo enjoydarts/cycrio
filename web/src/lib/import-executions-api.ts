@@ -38,6 +38,8 @@ export type ImportExecutionFilter = {
   offset: number;
 };
 export type ImportExecutionPage = {
+  last_sync_started_at?: string | null;
+  last_analysis_started_at?: string | null;
   history: ImportExecution[];
   total: number;
   limit: number;
@@ -109,6 +111,19 @@ export function createImportExecutionsAPI(
       const v = record(await request(path, token, signal));
       return {
         ...pagination(v),
+        ...(v.last_sync_started_at === undefined
+          ? {}
+          : {
+              last_sync_started_at: nullable(v.last_sync_started_at, timestamp),
+            }),
+        ...(v.last_analysis_started_at === undefined
+          ? {}
+          : {
+              last_analysis_started_at: nullable(
+                v.last_analysis_started_at,
+                timestamp,
+              ),
+            }),
         history: array(v.history, parseImportExecution),
       };
     },

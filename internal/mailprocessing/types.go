@@ -116,10 +116,12 @@ type ImportHistory struct {
 	UnknownCount    int       `json:"unknown_count"`
 }
 type ImportHistoryPage struct {
-	History []ImportHistory `json:"history"`
-	Total   int             `json:"total"`
-	Limit   int             `json:"limit"`
-	Offset  int             `json:"offset"`
+	LastSyncStartedAt     *time.Time      `json:"last_sync_started_at"`
+	LastAnalysisStartedAt *time.Time      `json:"last_analysis_started_at"`
+	History               []ImportHistory `json:"history"`
+	Total                 int             `json:"total"`
+	Limit                 int             `json:"limit"`
+	Offset                int             `json:"offset"`
 }
 type RetryInput struct {
 	Input

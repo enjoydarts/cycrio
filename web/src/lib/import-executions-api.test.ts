@@ -66,3 +66,53 @@ test('history cannot be loaded without one specific account', async () => {
   );
   assert.equal(calls, 0);
 });
+
+test('history retains account execution times independently of an empty page', async () => {
+  const activity = {
+    last_sync_started_at: '2026-11-03T14:59:58Z',
+    last_analysis_started_at: '2026-11-03T15:00:01Z',
+  };
+  const api = createImportExecutionsAPI('', async () =>
+    Response.json({
+      history: [],
+      total: 123,
+      limit: 20,
+      offset: 200,
+      ...activity,
+    }),
+  );
+  const page = await api.list(
+    { account_id: ids.account, limit: 20, offset: 200 },
+    async () => 't',
+  );
+  for (const [key, value] of Object.entries(activity))
+    assert.equal((page as unknown as Record<string, unknown>)[key], value);
+});
+
+test('history rejects malformed execution timestamps while accepting null and older responses', async () => {
+  for (const value of [
+    null,
+    undefined,
+    '2026-02-30T00:00:00Z',
+    'not-a-date',
+    42,
+  ]) {
+    const api = createImportExecutionsAPI('', async () =>
+      Response.json({
+        history: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+        last_sync_started_at: value,
+        last_analysis_started_at: value,
+      }),
+    );
+    const load = () =>
+      api.list(
+        { account_id: ids.account, limit: 20, offset: 0 },
+        async () => 't',
+      );
+    if (value === null || value === undefined) await load();
+    else await assert.rejects(load());
+  }
+});

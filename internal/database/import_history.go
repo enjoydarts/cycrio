@@ -42,6 +42,14 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
 		return out, e
 	}
 	defer tx.Rollback(ctx)
+	// These timestamps cover the account's entire execution history, including
+	// manual work, automatic work and retries. Queued requests never count as
+	// executions, and pagination must not change the account's latest activity.
+	if e = tx.QueryRow(ctx, `SELECT
+ (SELECT max(started_at) FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2),
+ (SELECT max(started_at) FROM mail_processing_runs WHERE owner_id=$1 AND account_id=$2)`, owner, account).Scan(&out.LastSyncStartedAt, &out.LastAnalysisStartedAt); e != nil {
+		return out, processingError(e)
+	}
 	if e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM histories`, owner, account).Scan(&out.Total); e != nil {
 		return out, processingError(e)
 	}

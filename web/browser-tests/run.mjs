@@ -173,6 +173,17 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    await visit('import-activity', width);
+    await wait('document.querySelectorAll(".last-activity time").length===2');
+    assert.deepEqual(
+      await js(
+        'return Array.from(document.querySelectorAll(".last-activity time"), e=>e.textContent)',
+      ),
+      ['2026/11/03 23:59:58', '2026/11/04 00:00:01'],
+    );
+    await layout();
+    await screenshot(`import-activity-${width}`);
+    results.push({ scenario: `import-activity-${width}`, passed: true });
     await visit('price-research', width);
     await wait(
       'document.querySelector("#research-model").options.length===122',

@@ -25,6 +25,8 @@
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
   import AnalysisInbox from '../src/lib/AnalysisInbox.svelte';
+  import ImportLastActivity from '../src/lib/ImportLastActivity.svelte';
+  import LibraryPanel from '../src/lib/LibraryPanel.svelte';
   import { createNotificationsAPI } from '../src/lib/notifications-api.ts';
   import { account as mailAccount } from '../src/lib/mail-test-fixtures.ts';
   import { page as fixturePage, goto as fixtureGoto } from './router.svelte.ts';
@@ -210,7 +212,19 @@
   }}
 />
 
-{#if mode === 'price-research'}
+{#if mode === 'import-activity'}
+  <main class="daily library-page">
+    <LibraryPanel>
+      <div class="library-toolbar"><strong>合成接続の取り込み履歴</strong></div>
+      <div class="library-content">
+        <ImportLastActivity
+          syncStartedAt="2026-11-03T14:59:58Z"
+          analysisStartedAt="2026-11-03T15:00:01Z"
+        />
+      </div>
+    </LibraryPanel>
+  </main>
+{:else if mode === 'price-research'}
   <main>
     <PriceResearch
       catalog={createCatalogAPI('/synthetic')}
