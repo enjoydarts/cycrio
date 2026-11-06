@@ -92,7 +92,10 @@ function releaseArgs(release) {
     '--release-version',
     release,
     '--release-mode',
-    'symbol-set',
+    // Keep maps release-independent: unchanged chunks share their content ID
+    // across commits. Binding a release here changes the uploaded map content
+    // under that same ID and makes the next deployment fail with a conflict.
+    'event',
   ];
 }
 
@@ -105,7 +108,7 @@ export async function prepareSourceMaps(input = {}) {
   for (const path of maps)
     validateMap(JSON.parse(await readFile(path, 'utf8')));
   // Release lookup requires an authenticated API call. Inject independently;
-  // the later upload attaches these exact symbol sets to the commit release.
+  // the later upload keeps these exact symbol sets independent of releases.
   await run(['sourcemap', 'inject', '--directory', buildDir], {
     // CLI 0.19 validates the token before selecting even the offline inject
     // command. This public dummy satisfies that parser; it cannot upload.

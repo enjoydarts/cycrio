@@ -76,6 +76,8 @@ test('upload fails closed without PAT and never re-injects or changes deployed b
       assert.deepEqual(args.slice(0, 2), ['sourcemap', 'upload']);
       assert.ok(args.includes(options.privateDir));
       assert.ok(args.includes(release));
+      assert.equal(args[args.indexOf('--release-mode') + 1], 'event');
+      assert.ok(!args.includes('--skip-on-conflict'));
       assert.equal(env.POSTHOG_CLI_PROJECT_ID, '714781');
       assert.equal(env.POSTHOG_CLI_HOST, 'https://us.posthog.com');
       assert.equal(env.POSTHOG_CLI_API_KEY, 'private-test-token');
