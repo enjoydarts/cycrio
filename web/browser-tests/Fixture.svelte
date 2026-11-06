@@ -25,6 +25,8 @@
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
   import AnalysisInbox from '../src/lib/AnalysisInbox.svelte';
+  import SubscriptionChangeReview from '../src/lib/SubscriptionChangeReview.svelte';
+  import ScheduledChanges from '../src/lib/ScheduledChanges.svelte';
   import ImportLastActivity from '../src/lib/ImportLastActivity.svelte';
   import LibraryPanel from '../src/lib/LibraryPanel.svelte';
   import { createNotificationsAPI } from '../src/lib/notifications-api.ts';
@@ -63,6 +65,7 @@
   let current = $state({ ...initial, display_name: null as string | null });
   let nameOpen = $state(true);
   let withdrawn = $state(false);
+  let scheduledSaved = $state(false);
   const event = {
     service: 'Example Mail',
     plan: null,
@@ -212,7 +215,35 @@
   }}
 />
 
-{#if mode === 'import-activity'}
+{#if mode.startsWith('scheduled-')}
+  <main class="daily library-page">
+    <LibraryPanel
+      ><div class="library-content">
+        {#if mode === 'scheduled-list'}<ScheduledChanges
+            id={initial.id}
+            onFrozen={() => {}}
+            onChanged={() => {}}
+          />
+        {:else}<SubscriptionChangeReview
+            subscription={initial}
+            source={{ source_result_id: resultID, source_event_index: 0 }}
+            onSaved={(outcome) => {
+              window.browserTest.saved =
+                outcome.current ??
+                ('receipt' in outcome
+                  ? outcome.receipt.after
+                  : outcome.schedule.preview.subscription);
+              scheduledSaved = true;
+            }}
+            onBackToResults={() => {}}
+          />{/if}
+        {#if scheduledSaved}<p role="status" data-scheduled-saved>
+            予約を保存しました。現在の契約料金は変更していません。
+          </p>{/if}
+      </div></LibraryPanel
+    >
+  </main>
+{:else if mode === 'import-activity'}
   <main class="daily library-page">
     <LibraryPanel>
       <div class="library-toolbar"><strong>合成接続の取り込み履歴</strong></div>

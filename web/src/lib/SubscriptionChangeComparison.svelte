@@ -19,6 +19,8 @@
     confirmed = false,
     locked = false,
     conflict = false,
+    confirmationDisabled = false,
+    deferred = false,
     onselect,
     onconfirm,
   }: {
@@ -27,6 +29,8 @@
     confirmed?: boolean;
     locked?: boolean;
     conflict?: boolean;
+    confirmationDisabled?: boolean;
+    deferred?: boolean;
     onselect: (key: ChangeKey, value: boolean) => void;
     onconfirm: (value: boolean) => void;
   } = $props();
@@ -72,12 +76,15 @@
 {#if selected.includes('next_billing_date')}<p class="notice">
     次回請求日を反映すると、日付の設定は手動指定になります。
   </p>{/if}
-{#if selected.includes('interval') && !selected.includes('next_billing_date') && !p.warnings.some((warning) => warning.code === 'derived_billing_date_requires_lifecycle_review') && p.subscription.next_billing_mode === 'automatic'}<p
-    class="notice"
-  >
-    変更後の次回請求日（推定）：{p.derived_next_billing_date ??
-      '条件不足のため不明'}
-  </p>{/if}
+{#if selected.includes('interval') && !selected.includes('next_billing_date') && !p.warnings.some((warning) => warning.code === 'derived_billing_date_requires_lifecycle_review') && p.subscription.next_billing_mode === 'automatic'}
+  {#if deferred}<p class="notice">
+      次回請求日の推定は、予約の反映時に再計算します。
+    </p>
+  {:else}<p class="notice">
+      変更後の次回請求日（推定）：{p.derived_next_billing_date ??
+        '条件不足のため不明'}
+    </p>{/if}
+{/if}
 <details>
   <summary>元の抽出情報を確認</summary>
   {#each [p.source, ...p.additional_evidence] as evidence}<section
@@ -97,7 +104,7 @@
   ><input
     type="checkbox"
     checked={confirmed}
-    disabled={locked || conflict || !valid}
+    disabled={locked || conflict || !valid || confirmationDisabled}
     onchange={(e) => onconfirm(e.currentTarget.checked)}
   /><span>選択した変更と元の抽出情報を確認しました</span></label
 >

@@ -203,11 +203,9 @@ func TestResearchTraceMigrationAndKeyringGuard(t *testing.T) {
 	ctx := context.Background()
 	p := automationMigrationProvider(t, r.pool)
 	down, err := p.DownTo(ctx, 43)
-	if err != nil || len(down) != 1 || down[0].Source.Version != 44 || down[0].Direction != "down" {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 44)
 	up, err := p.Up(ctx)
-	assertMigrationRange(t, up, err, 44, 44)
+	assertMigrationRange(t, up, err, 44, latestMigrationVersion)
 	if err = r.FinishCall(ctx, lease, call, traceResult(), ""); err != nil {
 		t.Fatal(err)
 	}

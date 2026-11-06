@@ -65,6 +65,9 @@ func (r *SubscriptionRepository) ChangePreview(ctx context.Context, owner, id st
 }
 
 func subscriptionChangePreview(ctx context.Context, tx pgx.Tx, owner, id string, in subscriptions.ChangePreviewInput, today string) (subscriptions.ChangePreview, error) {
+	return subscriptionChangePreviewMode(ctx, tx, owner, id, in, today, false)
+}
+func subscriptionChangePreviewMode(ctx context.Context, tx pgx.Tx, owner, id string, in subscriptions.ChangePreviewInput, today string, scheduled bool) (subscriptions.ChangePreview, error) {
 	s, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
 	if e != nil {
 		return subscriptions.ChangePreview{}, e
@@ -104,6 +107,9 @@ func subscriptionChangePreview(ctx context.Context, tx pgx.Tx, owner, id string,
 		}
 	}
 	p := subscriptions.BuildChangePreview(s, evidence[0], evidence[1:], today)
+	if scheduled {
+		p = subscriptions.BuildScheduledChangePreview(s, evidence[0], evidence[1:], today).ChangePreview
+	}
 	for i := range p.Fields {
 		field := &p.Fields[i]
 		if field.Key == "contract_kind" && field.Proposed == "fixed_term" && storedManualDate != nil {
@@ -270,16 +276,25 @@ func (r *SubscriptionRepository) ApplyChange(ctx context.Context, owner, id stri
 	// Field order has no semantic significance; all other submitted facts bind retries.
 	in.SelectedFields = append([]string{}, in.SelectedFields...)
 	slices.Sort(in.SelectedFields)
-	raw, _ := json.Marshal(in)
 	tx, e := r.begin(ctx, owner)
 	if e != nil {
 		return out, e
 	}
 	defer tx.Rollback(ctx)
+	out, e = applySubscriptionChangeTx(ctx, tx, owner, id, in, changeToday())
+	if e != nil {
+		return out, e
+	}
+	return out, subscriptionError(tx.Commit(ctx))
+}
+
+func applySubscriptionChangeTx(ctx context.Context, tx pgx.Tx, owner, id string, in subscriptions.ChangeInput, today string) (subscriptions.ChangeResult, error) {
+	out := subscriptions.ChangeResult{}
+	raw, _ := json.Marshal(in)
 	var target string
 	var same bool
 	var receiptJSON []byte
-	e = tx.QueryRow(ctx, `SELECT subscription_id,request_doc=$3::jsonb,receipt_doc FROM subscription_change_requests WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&target, &same, &receiptJSON)
+	e := tx.QueryRow(ctx, `SELECT subscription_id,request_doc=$3::jsonb,receipt_doc FROM subscription_change_requests WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID, raw).Scan(&target, &same, &receiptJSON)
 	if e == nil {
 		if !same || !strings.EqualFold(target, id) {
 			return out, subscriptions.ErrConflict
@@ -306,7 +321,7 @@ func (r *SubscriptionRepository) ApplyChange(ctx context.Context, owner, id stri
 	if e = lockSubscription(ctx, tx, owner, id, in.ExpectedVersion); e != nil {
 		return out, e
 	}
-	p, e := subscriptionChangePreview(ctx, tx, owner, id, in.ChangePreviewInput, changeToday())
+	p, e := subscriptionChangePreview(ctx, tx, owner, id, in.ChangePreviewInput, today)
 	if e != nil {
 		return out, e
 	}
@@ -370,7 +385,7 @@ func (r *SubscriptionRepository) ApplyChange(ctx context.Context, owner, id stri
 	if e != nil {
 		return out, subscriptionError(e)
 	}
-	if _, e = completeSubscription(ctx, tx, owner, id, "change_applied"); e != nil {
+	if e = scheduledChangeAudit(ctx, tx, owner, id, after.Version, "change_applied"); e != nil {
 		return subscriptions.ChangeResult{}, e
 	}
 	out.Current = &after

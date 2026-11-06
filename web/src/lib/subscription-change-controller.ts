@@ -43,14 +43,20 @@ export function validChangeSelection(
       : preview.subscription[key];
   return (value('amount') === null) === (value('currency') === null);
 }
-export function createSubscriptionChange(
-  api: Pick<SubscriptionChangesAPI, 'preview' | 'apply'> &
-    Pick<SubscriptionsAPI, 'get'>,
+export function createSubscriptionChange<Result = ChangeResult>(
+  api: Pick<SubscriptionChangesAPI, 'preview'> & {
+    apply: (
+      id: string,
+      input: ChangeInput,
+      token: TokenProvider,
+      signal?: AbortSignal,
+    ) => Promise<Result>;
+  } & Pick<SubscriptionsAPI, 'get'>,
   token: TokenProvider,
   initial: Subscription,
   originalSource: ChangeSource,
   changed: (view: ChangeView) => void,
-  done: (result: ChangeResult) => void,
+  done: (result: Result) => void,
   denied: () => void,
   requestID: () => string,
 ) {

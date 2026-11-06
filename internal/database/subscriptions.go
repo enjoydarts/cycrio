@@ -108,6 +108,13 @@ func (r *SubscriptionRepository) Get(ctx context.Context, owner, id string) (sub
 	return s, e
 }
 func validateCandidateSource(ctx context.Context, tx pgx.Tx, owner, result string, index int) error {
+	reserved, reservationErr := reservedScheduledSource(ctx, tx, owner, result, index)
+	if reservationErr != nil {
+		return reservationErr
+	}
+	if reserved {
+		return subscriptions.ErrConflict
+	}
 	var protected bool
 	if e := tx.QueryRow(ctx, `SELECT `+reanalysisPriorDecision+` FROM mail_processing_items i WHERE i.owner_id=$1 AND i.id=$2`, owner, result).Scan(&protected); e != nil {
 		return subscriptionError(e)

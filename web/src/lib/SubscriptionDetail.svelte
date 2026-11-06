@@ -38,6 +38,7 @@
   import ServiceAvatar from './ServiceAvatar.svelte';
   import SubscriptionNameModal from './SubscriptionNameModal.svelte';
   import SubscriptionChangeHistory from './SubscriptionChangeHistory.svelte';
+  import ScheduledChanges from './ScheduledChanges.svelte';
   import { subscriptionTitle } from './subscription-title.ts';
   import { lifecycleLabels } from './subscription-lifecycle.ts';
   import LibraryHeader from './LibraryHeader.svelte';
@@ -269,6 +270,7 @@
           wrap
           variant="tab"
           href={`/subscriptions/${id}${sourceQuery}`}
+          disabled={frozen || childFrozen || deleteView.locked}
           aria-current={page.url.searchParams.get('tab') !== 'history'
             ? 'page'
             : undefined}>概要</ActionLink
@@ -276,6 +278,7 @@
           wrap
           variant="tab"
           href={`/subscriptions/${id}?tab=history${sourceQuery ? `&${sourceQuery.slice(1)}` : ''}`}
+          disabled={frozen || childFrozen || deleteView.locked}
           aria-current={page.url.searchParams.get('tab') === 'history'
             ? 'page'
             : undefined}>請求・支払い履歴</ActionLink
@@ -402,9 +405,14 @@
         </div>
       </dl>
     {/if}
-    {#if tab === 'overview'}{#key `${s.id}/${s.version}`}<SubscriptionChangeHistory
+    {#if tab === 'overview'}{#key `${s.id}/${s.version}`}<ScheduledChanges
           id={s.id}
-        />{/key}{/if}
+          onFrozen={childState}
+          onChanged={() => {
+            onSaved();
+            void workspace?.refresh();
+          }}
+        /><SubscriptionChangeHistory id={s.id} />{/key}{/if}
     {#if tab === 'sources' || (!embedded && tab !== 'history')}
       <h2>元の AI 抽出情報</h2>
       <p class="muted">
@@ -430,7 +438,12 @@
     {/if}
     {#if embedded}<a
         class="full-link"
-        href={`/subscriptions/${id}${sourceQuery}`}>詳細ページを開く →</a
+        href={frozen || childFrozen || deleteView.locked
+          ? undefined
+          : `/subscriptions/${id}${sourceQuery}`}
+        aria-disabled={frozen || childFrozen || deleteView.locked || undefined}
+        tabindex={frozen || childFrozen || deleteView.locked ? -1 : undefined}
+        >詳細ページを開く →</a
       >{/if}
     {#if editing && !embedded}<Modal
         open={editing && !embedded}
@@ -475,6 +488,7 @@
         <ActionLink
           wrap
           class={['button']}
+          disabled={frozen || childFrozen || deleteView.locked}
           href={`/subscriptions${sourceQuery}`}>← サブスク一覧</ActionLink
         >
         {#if view.status === 'ready' && view.page}<Button
@@ -549,6 +563,7 @@
     過去の支払い・返金履歴は残ります。サブスク一覧と今後の請求予定からは表示されなくなります。
   </p>
   <p>このサブスクの未保存編集は破棄されます。</p>
+  <p>予約中の契約変更も取り消します。</p>
   {#if deleteView.error}<p class="notice" role="alert">
       {processingErrors[deleteView.error]}
     </p>{/if}

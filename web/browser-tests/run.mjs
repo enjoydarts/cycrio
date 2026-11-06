@@ -173,6 +173,81 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    for (const mode of ['scheduled-review', 'scheduled-uncertain']) {
+      await visit(mode, width);
+      await wait(`${button('効力日に予約する')}!==undefined`);
+      await click(button('効力日に予約する'));
+      await wait(
+        `${button('選択した変更を予約')}!==undefined && document.body.innerText.includes('2040-12-01')`,
+      );
+      assert.equal(
+        await js(`return ${button('選択した変更を予約')}.disabled`),
+        true,
+      );
+      await click(field('通常継続料金', 'input'));
+      assert.equal(
+        await js(
+          `return ${field('選択した変更と元の抽出情報を確認しました', 'input')}.disabled`,
+        ),
+        true,
+      );
+      assert.equal(
+        await js(`return ${button('選択した変更を予約')}.disabled`),
+        true,
+        'Date approval is separately required',
+      );
+      assert.equal(
+        await js(
+          `return window.browserTest.requests.filter(r=>r.method==='POST'&&r.url.endsWith('/scheduled-changes')).length`,
+        ),
+        0,
+      );
+      await click(field('効力日 2040-12-01', 'input'));
+      await wait(
+        `!${field('選択した変更と元の抽出情報を確認しました', 'input')}.disabled`,
+      );
+      await click(field('選択した変更と元の抽出情報を確認しました', 'input'));
+      await layout();
+      await screenshot(`${mode}-${width}`);
+      await click(button('選択した変更を予約'));
+      if (mode === 'scheduled-uncertain') {
+        await wait(`${button('同じ要求で予約を確認')}!==undefined`);
+        await layout();
+        await click(button('同じ要求で予約を確認'));
+      }
+      await wait('document.querySelector("[data-scheduled-saved]")!==null');
+      assert.equal(
+        await js('return window.browserTest.saved.amount'),
+        '9',
+        'Reservation must leave current contract unchanged',
+      );
+      await layout();
+    }
+    await visit('scheduled-list', width);
+    await wait('document.querySelector("details summary")!==null');
+    await click('document.querySelector("details summary")');
+    await wait(`${button('予約を取り消す')}.getClientRects().length>0`);
+    await layout();
+    await screenshot(`scheduled-list-${width}`);
+    await click(button('予約を取り消す'));
+    await wait('document.querySelector("dialog[open]")!==null');
+    assert.equal(
+      await js(
+        `return window.browserTest.requests.filter(r=>r.url.endsWith('/cancel')).length`,
+      ),
+      0,
+    );
+    await layout();
+    await click(button('この予約を取り消す'));
+    await wait(
+      'document.querySelector("dialog[open]")===null && document.body.innerText.includes("取消済み")',
+    );
+    await layout();
+    results.push({
+      width,
+      cases: ['scheduled-review', 'scheduled-uncertain', 'scheduled-list'],
+      status: 'pass',
+    });
     await visit('import-activity', width);
     await wait('document.querySelectorAll(".last-activity time").length===3');
     assert.deepEqual(

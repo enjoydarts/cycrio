@@ -35,6 +35,9 @@ func (r *SubscriptionRepository) Delete(ctx context.Context, owner, id string, i
 	if _, e = tx.Exec(ctx, `UPDATE subscriptions SET deleted_at=clock_timestamp(),deleted_expected_version=version,version=version+1,updated_at=clock_timestamp() WHERE owner_id=$1 AND id=$2`, owner, id); e != nil {
 		return subscriptionError(e)
 	}
+	if e = cancelActiveScheduledChangeTx(ctx, tx, owner, id, version+1); e != nil {
+		return e
+	}
 	if _, e = tx.Exec(ctx, `INSERT INTO subscription_audit(id,owner_id,actor_id,subscription_id,version,action) VALUES($1,$2,$2,$3,$4,'deleted')`, uuid.NewString(), owner, id, version+1); e != nil {
 		return subscriptionError(e)
 	}

@@ -127,7 +127,7 @@ func purgeErasure(ctx context.Context, tx pgx.Tx, request, owner string) (bool, 
 	}
 	for _, table := range []string{
 		"notification_deliveries", "notification_events", "notification_import_episodes", "notification_generation_state", "notification_preferences_audit", "notification_preferences",
-		"billing_schedule_audit", "billing_schedule_requests", "billing_schedule_settings", "subscription_change_requests",
+		"billing_schedule_audit", "billing_schedule_requests", "billing_schedule_settings", "subscription_change_requests", "subscription_scheduled_change_sources", "subscription_scheduled_changes",
 		"billing_automation_events", "billing_automation_work", "billing_source_detachments", "billing_event_audit", "billing_event_revisions", "billing_event_sources", "billing_events",
 		"subscription_automation_events", "subscription_automation_results", "subscription_automation_preference_audit", "subscription_automation_preferences", "subscription_candidate_dismissals", "subscription_audit", "subscription_sources", "subscriptions",
 		"mail_processing_retry_batches", "mail_processing_audit", "mail_processing_items", "mail_processing_runs",

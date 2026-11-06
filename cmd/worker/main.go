@@ -140,6 +140,7 @@ func run() (result error) {
 		workerNames = append(workerNames, group.name)
 	}
 	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).ApplyScheduledChangesDue, 2*time.Second)
 	go dispatchPriceResearch(ctx, research.ClaimDue, func(ctx context.Context, l priceresearch.Lease) error {
 		_, err := researchTask.RunNoWait(ctx, l)
 		return err

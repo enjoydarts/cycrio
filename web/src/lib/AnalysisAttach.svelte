@@ -289,7 +289,13 @@
             ? { additional_sources: additionalSources }
             : {}),
         }}
-        onSaved={(outcome) => onSaved(outcome.current ?? outcome.receipt.after)}
+        onSaved={(outcome) =>
+          onSaved(
+            outcome.current ??
+              ('receipt' in outcome
+                ? outcome.receipt.after
+                : outcome.schedule.preview.subscription),
+          )}
         onBusyChange={(value) => {
           changeFrozen = value;
           onBusyChange(value);

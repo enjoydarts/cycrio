@@ -14,6 +14,7 @@ type subscriptionChangeService interface {
 }
 
 func registerSubscriptionChanges(mux *http.ServeMux, base SubscriptionService, protect protectFunc) {
+	registerScheduledSubscriptionChanges(mux, base, protect)
 	service, _ := base.(subscriptionChangeService)
 	register := func(pattern string, callback func(http.ResponseWriter, *http.Request, string) (any, error)) {
 		mux.HandleFunc(pattern, protect(false, func(w http.ResponseWriter, r *http.Request, p database.Principal) {

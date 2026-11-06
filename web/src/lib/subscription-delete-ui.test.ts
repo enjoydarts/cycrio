@@ -10,6 +10,8 @@ test('detail offers a central delete confirmation and protects drafts and naviga
   assert.match(source, /title="Cycrioから削除"/);
   assert.match(source, /サービス自体の解約は行いません/);
   assert.match(source, /過去の支払い・返金履歴は残ります/);
+  const confirmation = source.slice(source.indexOf('title="Cycrioから削除"'));
+  assert.match(confirmation, /予約中の契約変更も取り消します/);
   assert.match(source, /busy=\{deleteView.locked\}/);
   assert.match(source, /同じ要求で削除を確認/);
   assert.match(source, /onDeleted/);

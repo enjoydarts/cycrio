@@ -15,7 +15,7 @@ export const changeLabels: Record<ChangeKey, string> = {
 };
 const reasons: Record<string, string> = {
   future_effective:
-    '将来の効力日が指定されています。効力日を迎えてから内容を再確認してください。',
+    '将来の効力日が指定されています。「効力日に予約する」から、変更する項目と日付を確認して予約できます。',
   unknown_source_date:
     '元メールの受信日時が不明のため、自動で変更候補を選べません。',
   older_source:

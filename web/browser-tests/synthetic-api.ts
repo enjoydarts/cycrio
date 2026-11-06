@@ -4,6 +4,7 @@ import { priceResearchFixture } from './price-research-fixture.ts';
 import { notificationFixture } from './notification-fixture.ts';
 import { erasureFixture } from './erasure-fixture.ts';
 import { integrationProfileFixture } from './integration-profile-fixture.ts';
+import { scheduledChangesFixture } from './scheduled-changes-fixture.ts';
 import { changeEvidence } from '../src/lib/subscription-changes-fixtures.ts';
 
 type Trace = {
@@ -44,6 +45,9 @@ const response = (body: unknown) =>
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
   const research = mode === 'price-research' ? priceResearchFixture() : null;
+  const scheduled = mode.startsWith('scheduled-')
+    ? scheduledChangesFixture(mode, initial)
+    : null;
   const integration =
     mode === 'integration-profile' ? integrationProfileFixture() : null;
   const erasure = mode.startsWith('erasure') ? erasureFixture(mode) : null;
@@ -77,6 +81,8 @@ export function installAPI(mode: string, initial: Subscription) {
       )
         fail('Unexpected authorization');
       if (research && url.origin === location.origin) return research(url);
+      if (scheduled && url.origin === location.origin)
+        return scheduled(url, method, body);
       if (erasure && url.origin === location.origin)
         return erasure(url, method, body);
       if (integration && url.origin === location.origin)

@@ -22,6 +22,7 @@ const candidateCTE = `WITH current_items AS (
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(i.events) WITH ORDINALITY earlier(event,n) WHERE earlier.n<e.ordinality AND earlier.event=e.event)
  AND NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=i.owner_id AND s.result_id=i.id AND i.events->s.event_index=e.event)
  AND NOT EXISTS(SELECT 1 FROM subscription_candidate_dismissals d WHERE d.owner_id=i.owner_id AND d.result_id=i.id AND i.events->d.event_index=e.event)
+ AND NOT EXISTS(SELECT 1 FROM subscription_scheduled_change_sources reserved WHERE reserved.owner_id=i.owner_id AND reserved.result_id=i.id AND i.events->reserved.event_index=e.event)
 ), candidate_counts AS (
  SELECT group_key,count(DISTINCT message_id)::integer AS mail_count,count(*)::integer AS related_count FROM candidates GROUP BY group_key
 ), candidate_groups AS (

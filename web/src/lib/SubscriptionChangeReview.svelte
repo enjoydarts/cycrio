@@ -19,6 +19,9 @@
   import { subscriptionTitle } from './subscription-title.ts';
   import { processingErrors } from './mail-processing-text.ts';
   import SubscriptionChangeComparison from './SubscriptionChangeComparison.svelte';
+  import ScheduledChangeReview from './ScheduledChangeReview.svelte';
+  import { canSchedulePreview } from './scheduled-change-controller.ts';
+  import type { ScheduledChangeResult } from './subscription-scheduled-changes-api.ts';
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   let {
@@ -31,12 +34,14 @@
   }: {
     subscription: Subscription;
     source: ChangeSource;
-    onSaved: (result: ChangeResult) => void;
+    onSaved: (result: ChangeResult | ScheduledChangeResult) => void;
     onBusyChange?: (busy: boolean) => void;
     onFrozen?: (frozen: boolean) => void;
     onBackToResults: () => void;
   } = $props();
   const session = getAppSession();
+  let scheduling = $state(false);
+  let scheduledTarget = $state<Subscription | null>(null);
   let view = $state<ChangeView>({
     preview: null,
     selected: [],
@@ -79,65 +84,88 @@
   });
 </script>
 
-<section class="change-review" aria-label="契約の変更を確認">
-  <h3>契約の変更を確認</h3>
-  <p>
-    「{subscriptionTitle(
-      subscription,
-    )}」の現在の内容と、メールから抽出された通常継続情報を比較します。反映する項目は自分で選択してください。
-  </p>
-  {#if view.busy && !view.preview}<p role="status">
-      変更候補を読み込んでいます…
-    </p>{/if}
-  {#if view.preview}
-    <SubscriptionChangeComparison
-      preview={view.preview}
-      selected={view.selected}
-      confirmed={view.confirmed}
-      {locked}
-      conflict={view.conflict}
-      onselect={(key, value) => controller?.select(key, value)}
-      onconfirm={(value) => controller?.confirm(value)}
-    />
-  {/if}
-  {#if view.error}<p role="alert" class="notice">
-      {processingErrors[view.error]}
-    </p>{/if}
-  {#if view.conflict}<p class="notice">
-      契約または抽出結果が更新されました。最新の差分を読み直し、反映する項目を選び直してください。抽出結果が更新された場合は一覧に戻って確認してください。
-    </p>{/if}
-  {#if view.uncertain}<p role="status" class="notice">
-      変更の受付状況が不明です。入力を保持しています。同じ要求で再確認してください。
-    </p>{/if}
-  <ActionGroup>
-    {#if view.conflict}<Button
-        type="button"
-        wrap
-        disabled={locked}
-        onclick={onBackToResults}>一覧に戻って最新の抽出結果を確認</Button
-      >{/if}
-    {#if view.uncertain}<Button
-        type="button"
-        wrap
-        disabled={view.busy}
-        onclick={() => controller?.retry()}>同じ要求で変更を確認</Button
-      >
-    {:else if view.conflict || (!view.preview && view.error)}<Button
-        type="button"
-        wrap
-        disabled={locked || view.denied}
-        onclick={() => controller?.preview()}>最新の差分を確認し直す</Button
-      >
-    {:else}<Button
-        type="button"
-        wrap
-        variant="primary"
-        disabled={locked || !valid || !view.confirmed || view.denied}
-        onclick={() => controller?.apply()}
-        >{view.busy ? '反映中…' : '選択した変更を反映'}</Button
-      >{/if}
-  </ActionGroup>
-</section>
+{#if scheduling}<ScheduledChangeReview
+    subscription={scheduledTarget ?? subscription}
+    {source}
+    {onSaved}
+    {onBusyChange}
+    {onFrozen}
+    {onBackToResults}
+    onBack={() => {
+      scheduling = false;
+      void controller?.preview();
+    }}
+  />{:else}
+  <section class="change-review" aria-label="契約の変更を確認">
+    <h3>契約の変更を確認</h3>
+    <p>
+      「{subscriptionTitle(
+        subscription,
+      )}」の現在の内容と、メールから抽出された通常継続情報を比較します。反映する項目は自分で選択してください。
+    </p>
+    {#if view.busy && !view.preview}<p role="status">
+        変更候補を読み込んでいます…
+      </p>{/if}
+    {#if view.preview}
+      <SubscriptionChangeComparison
+        preview={view.preview}
+        selected={view.selected}
+        confirmed={view.confirmed}
+        {locked}
+        conflict={view.conflict}
+        onselect={(key, value) => controller?.select(key, value)}
+        onconfirm={(value) => controller?.confirm(value)}
+      />
+    {/if}
+    {#if view.error}<p role="alert" class="notice">
+        {processingErrors[view.error]}
+      </p>{/if}
+    {#if view.conflict}<p class="notice">
+        契約または抽出結果が更新されました。最新の差分を読み直し、反映する項目を選び直してください。抽出結果が更新された場合は一覧に戻って確認してください。
+      </p>{/if}
+    {#if view.uncertain}<p role="status" class="notice">
+        変更の受付状況が不明です。入力を保持しています。同じ要求で再確認してください。
+      </p>{/if}
+    <ActionGroup>
+      {#if canSchedulePreview(view.preview)}<Button
+          type="button"
+          wrap
+          disabled={locked || view.denied || view.conflict}
+          onclick={() => {
+            scheduledTarget = view.preview!.subscription;
+            controller?.reset(scheduledTarget, source);
+            scheduling = true;
+          }}>効力日に予約する</Button
+        >{/if}
+      {#if view.conflict}<Button
+          type="button"
+          wrap
+          disabled={locked}
+          onclick={onBackToResults}>一覧に戻って最新の抽出結果を確認</Button
+        >{/if}
+      {#if view.uncertain}<Button
+          type="button"
+          wrap
+          disabled={view.busy}
+          onclick={() => controller?.retry()}>同じ要求で変更を確認</Button
+        >
+      {:else if view.conflict || (!view.preview && view.error)}<Button
+          type="button"
+          wrap
+          disabled={locked || view.denied}
+          onclick={() => controller?.preview()}>最新の差分を確認し直す</Button
+        >
+      {:else}<Button
+          type="button"
+          wrap
+          variant="primary"
+          disabled={locked || !valid || !view.confirmed || view.denied}
+          onclick={() => controller?.apply()}
+          >{view.busy ? '反映中…' : '選択した変更を反映'}</Button
+        >{/if}
+    </ActionGroup>
+  </section>
+{/if}
 
 <style>
   .change-review {

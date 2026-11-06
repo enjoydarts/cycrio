@@ -123,6 +123,9 @@ func sameAmount(a, b any) bool {
 // BuildChangePreview never fills missing regular facts from transaction amounts.
 // Additional sources are retained as evidence, never merged into the proposal.
 func BuildChangePreview(s Subscription, source ChangeEvidence, additional []ChangeEvidence, today string) ChangePreview {
+	return buildChangePreview(s, source, additional, today, false)
+}
+func buildChangePreview(s Subscription, source ChangeEvidence, additional []ChangeEvidence, today string, scheduled bool) ChangePreview {
 	p := ChangePreview{Subscription: s, Source: source, AdditionalEvidence: additional, AsOf: today, Timezone: "Asia/Tokyo", AlgorithmVersion: ChangeAlgorithmVersion, Fields: []ChangeField{}, Warnings: []ChangeWarning{}}
 	if p.AdditionalEvidence == nil {
 		p.AdditionalEvidence = []ChangeEvidence{}
@@ -132,7 +135,7 @@ func BuildChangePreview(s Subscription, source ChangeEvidence, additional []Chan
 	if source.ReceivedAt == nil {
 		reason = "unknown_source_date"
 	}
-	if e.EffectiveDate != nil && *e.EffectiveDate > today {
+	if !scheduled && e.EffectiveDate != nil && *e.EffectiveDate > today {
 		reason = "future_effective"
 	}
 	if reason != "" {
