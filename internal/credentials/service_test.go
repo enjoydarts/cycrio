@@ -84,6 +84,36 @@ func TestServiceEncryptsAndBindsMetadata(t *testing.T) {
 	}
 }
 
+func TestHealthchecksPingURLIsValidatedEncryptedAndNeverReturned(t *testing.T) {
+	s, r := testService(t)
+	ctx := context.Background()
+	actor := uuid.NewString()
+	secret := "https://hc-ping.com/11111111-1111-4111-8111-111111111111"
+	for _, bad := range []string{"https://example.com/secret", secret + "/fail", secret + "?token=x", "http://localhost/secret"} {
+		if _, e := s.Put(ctx, actor, "healthchecks", 0, bad); !errors.Is(e, ErrInvalid) {
+			t.Fatal("unsafe monitoring URL accepted", e)
+		}
+	}
+	if r.calls != 0 {
+		t.Fatal("invalid URL reached storage")
+	}
+	summary, e := s.Put(ctx, actor, "healthchecks", 0, secret)
+	if e != nil || summary.Provider != "healthchecks" {
+		t.Fatal(summary, e)
+	}
+	if bytes.Contains(r.version.Envelope.Ciphertext, []byte(secret)) {
+		t.Fatal("plaintext URL stored")
+	}
+	raw, _ := json.Marshal(summary)
+	if bytes.Contains(raw, []byte(secret)) {
+		t.Fatal("Ping URL exposed")
+	}
+	plain, e := s.Resolve(ctx, r.version.ID)
+	if e != nil || string(plain) != secret {
+		t.Fatal("cannot resolve internal Ping URL", e)
+	}
+}
+
 func TestClerkBackendSecretUsesEncryptedCredentialLifecycle(t *testing.T) {
 	s, r := testService(t)
 	ctx := context.Background()

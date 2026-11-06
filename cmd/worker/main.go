@@ -16,8 +16,10 @@ import (
 	"github.com/enjoydarts/cycrio/internal/bootstrap"
 	"github.com/enjoydarts/cycrio/internal/catalogruntime"
 	"github.com/enjoydarts/cycrio/internal/clerkdelete"
+	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/health"
+	"github.com/enjoydarts/cycrio/internal/healthchecks"
 	"github.com/enjoydarts/cycrio/internal/infrastructure"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
@@ -185,6 +187,9 @@ func run() (result error) {
 		}
 		return nil
 	}
+	heartbeatCredentials := credentials.NewService(database.NewCredentialRepository(pool), keyring)
+	heartbeat := healthchecks.NewService(database.NewHealthchecksRepository(pool), heartbeatCredentials.Resolve, healthchecks.NewClient(nil), ready, healthchecks.NewAPIProbe(nil))
+	go dispatchSubscriptionAutomation(ctx, func(ctx context.Context, _ int) (int, error) { return 0, heartbeat.Tick(ctx) }, 10*time.Second)
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"

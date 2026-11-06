@@ -173,6 +173,55 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    await visit('healthchecks', width);
+    const healthchecksService =
+      "Array.from(document.querySelectorAll('button.service-row')).find(e=>e.textContent.includes('Healthchecks.io'))";
+    await wait(`${healthchecksService}!==undefined`);
+    await click(healthchecksService);
+    await wait("document.querySelector('#secret-healthchecks')!==null");
+    await layout();
+    await screenshot(`healthchecks-${width}`);
+    await input(
+      "document.querySelector('#secret-healthchecks')",
+      'https://hc-ping.com/11111111-1111-4111-8111-111111111111',
+    );
+    await click(button('保存して監視を開始'));
+    await wait(
+      "document.body.innerText.includes('監視用Ping URLを保存しました。')",
+    );
+    assert.equal(
+      await js("return document.querySelector('#secret-healthchecks').value"),
+      '',
+    );
+    assert.equal(
+      await js("return document.querySelector('#secret-healthchecks').type"),
+      'password',
+    );
+    assert.equal(
+      await js(
+        "return window.browserTest.requests.filter(r=>r.method==='PUT').length",
+      ),
+      1,
+    );
+    await click(button('Healthchecks.io を無効化する'));
+    assert.equal(
+      await js(
+        "return window.browserTest.requests.filter(r=>r.method==='DELETE').length",
+      ),
+      0,
+    );
+    await click(button('無効化を確定する'));
+    await wait(
+      "document.body.innerText.includes('監視通知の送信を停止しました。')",
+    );
+    assert.equal(
+      await js(
+        "return window.browserTest.requests.filter(r=>r.method==='DELETE').length",
+      ),
+      1,
+    );
+    await layout();
+    results.push({ width, scenario: 'healthchecks', status: 'pass' });
     for (const mode of ['scheduled-review', 'scheduled-uncertain']) {
       await visit(mode, width);
       await wait(`${button('効力日に予約する')}!==undefined`);

@@ -120,6 +120,7 @@ compose.production.yaml      本番向けAPI・Worker構成
 | [初期設定](docs/setup.md)                                 | Clerk・利用許可、メールOAuth、AI設定、取り込みの開始   |
 | [開発・検証](docs/development.md)                         | Makeコマンド、テスト、合成評価、ログとトラブルシュート |
 | [運用・復元](docs/operations.md)                          | 永続データ、暗号化鍵、復元訓練、本番向け構成、Webhook  |
+| [Healthchecks.io監視](docs/healthchecks.md)               | アプリからの定期heartbeat送信、Ping URL設定、停止時の扱い |
 | [本番デプロイ](docs/production.md)                       | Coolify、専用DB、初回設定、更新・切り戻し             |
 | [本番環境の構成](docs/production-architecture.md)        | 配置図、公開先、DB接続・権限分離、初期設定の範囲     |
 | [通知](docs/notifications.md)                            | 通知設定、配信管理、再送防止、Webhookによる配信確認    |

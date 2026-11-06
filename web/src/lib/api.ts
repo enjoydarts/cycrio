@@ -16,6 +16,7 @@ export const credentialProviders = [
   'resend_webhook',
   'gmail_oauth',
   'outlook_oauth',
+  'healthchecks',
 ] as const;
 export type CredentialProvider = (typeof credentialProviders)[number];
 export type CredentialSummary = {

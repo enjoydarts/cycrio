@@ -19,6 +19,7 @@ const rows = [
   'resend_webhook',
   'gmail_oauth',
   'outlook_oauth',
+  'healthchecks',
 ].map((provider) => ({
   provider,
   state: 'not_configured',
@@ -98,7 +99,7 @@ test('load publishes metadata and audit only, without storing secret inputs', as
   const f = fixture();
   await f.controller.load();
   assert.equal(f.controller.state.status, 'ready');
-  assert.equal(f.controller.state.credentials.length, 10);
+  assert.equal(f.controller.state.credentials.length, rows.length);
   assert.deepEqual(f.controller.state.events, []);
   await f.controller.put('openai', 'invalid', 0);
   assert.equal(f.controller.state.error, 'invalid_request');
@@ -158,7 +159,7 @@ test('conflict reloads current metadata and requires a new explicit submit', asy
   await f.controller.load();
   await f.controller.put('openai', 'private-secret', 0);
   assert.equal(f.controller.state.error, 'conflict');
-  assert.equal(f.controller.state.credentials.length, 10);
+  assert.equal(f.controller.state.credentials.length, rows.length);
   assert.equal(f.calls.filter((call) => call.startsWith('PUT')).length, 1);
   assert.equal(f.calls.length, 5);
 });

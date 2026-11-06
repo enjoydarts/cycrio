@@ -68,7 +68,7 @@ func TestIntegrationMigrationEighteenPreservesEverySeventeenTable(t *testing.T) 
 		out := map[string]string{}
 		for _, name := range tables {
 			var hash string
-			if e = pool.QueryRow(ctx, `SELECT md5(coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text) FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend')) x`, mailConnectionMigrationColumns(name)).Scan(&hash); e != nil {
+			if e = pool.QueryRow(ctx, `SELECT md5(coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text) FROM (SELECT to_jsonb(t)-$1::text[] AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend','healthchecks')) x`, mailConnectionMigrationColumns(name)).Scan(&hash); e != nil {
 				t.Fatal(e)
 			}
 			out[name] = hash

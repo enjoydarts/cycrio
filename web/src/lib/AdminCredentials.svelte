@@ -42,6 +42,10 @@
   let nextProvider = $state<CredentialProvider | null>(null);
   let controller: ReturnType<typeof createCredentialsController> | undefined;
   const providers = {
+    healthchecks: {
+      label: 'Healthchecks.io',
+      purpose: 'API・DB・Workerの定期監視通知',
+    },
     liquid: { label: 'Liquid AI（D1）', purpose: '一次判定' },
     openrouter: { label: 'OpenRouter', purpose: '二次処理' },
     openai: { label: 'OpenAI', purpose: '二次処理' },
@@ -81,7 +85,7 @@
     dependency_unavailable:
       '読み込みまたは保存に失敗しました。保存状態を再読み込みして確認してください。',
     invalid_request:
-      'API キーまたは OAuth アプリの入力条件とコールバック URI を確認してください。',
+      'API キー・Ping URL・OAuth アプリの入力条件を確認してください。',
     conflict:
       '別の操作により更新されました。最新の保存状態を読み込みました。内容を確認して、もう一度入力・操作してください。',
     not_found: '対象が見つかりません。保存状態を再読み込みしてください。',
@@ -263,8 +267,12 @@
           </p>{/if}
         {#if view.success}<p class="success">
             {view.success === 'saved'
-              ? 'API キーを保存しました。'
-              : 'API キーを無効化しました。'}
+              ? selectedProvider === 'healthchecks'
+                ? '監視用Ping URLを保存しました。'
+                : 'API キーを保存しました。'
+              : selectedProvider === 'healthchecks'
+                ? '監視通知の送信を停止しました。'
+                : 'API キーを無効化しました。'}
           </p>{/if}
       </div>
       {#if discardConfirmation}<div class="confirmation" role="alert">
@@ -416,7 +424,9 @@
                   {:else}
                     <div class="credential-field">
                       <label for={`secret-${credential.provider}`}
-                        >{provider.label} の API キー</label
+                        >{credential.provider === 'healthchecks'
+                          ? 'Healthchecks.io Ping URL'
+                          : `${provider.label} の API キー`}</label
                       >
                       <input
                         id={`secret-${credential.provider}`}
@@ -432,8 +442,14 @@
                         aria-describedby="secret-help"
                       />
                       <p id="secret-help" class="help">
-                        キーは空白を含まない半角英数字・記号の 8〜4096
-                        文字で入力してください。送信時に入力欄を消去します。
+                        {#if credential.provider === 'healthchecks'}
+                          Healthchecks.ioで作成した https://hc-ping.com/
+                          から始まるUUID形式のPing
+                          URLを入力します。保存すると、API・DB・Workerが正常な場合だけ1分ごとに空のPOSTを送信します。保存したURLは再表示しません。送信先のチェックは、この環境専用にしてください。
+                        {:else}
+                          キーは空白を含まない半角英数字・記号の 8〜4096
+                          文字で入力してください。送信時に入力欄を消去します。
+                        {/if}
                       </p>
                     </div>
                   {/if}
@@ -445,9 +461,13 @@
                         class={['primary']}
                         type="submit"
                         disabled={busy}
-                        >{credential.state === 'configured'
-                          ? '設定を更新する'
-                          : '設定を登録する'}</Button
+                        >{credential.provider === 'healthchecks'
+                          ? credential.state === 'configured'
+                            ? '監視用URLを更新する'
+                            : '保存して監視を開始'
+                          : credential.state === 'configured'
+                            ? '設定を更新する'
+                            : '設定を登録する'}</Button
                       >
                     </ActionGroup>
                   </div>
@@ -463,7 +483,13 @@
                         role="group"
                         aria-label={`${provider.label} の無効化確認`}
                       >
-                        <p>{provider.label} の API キーを無効化しますか？</p>
+                        {#if credential.provider === 'healthchecks'}
+                          <p>
+                            Cycrioからの監視通知を停止しますか？healthchecks.io側のチェックも一時停止してください。
+                          </p>
+                        {:else}<p>
+                            {provider.label} の API キーを無効化しますか？
+                          </p>{/if}
                         <ActionGroup
                           class={[
                             'confirmation-actions',

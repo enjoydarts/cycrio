@@ -1,4 +1,6 @@
 <script lang="ts">
+  import AdminCredentials from '../src/lib/AdminCredentials.svelte';
+  import { createAPI } from '../src/lib/api.ts';
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
   import PriceResearch from '../src/lib/PriceResearch.svelte';
   import { createCatalogAPI } from '../src/lib/catalog-api.ts';
@@ -262,6 +264,14 @@
         />
       </div>
     </LibraryPanel>
+  </main>
+{:else if mode === 'healthchecks'}
+  <main>
+    <AdminCredentials
+      api={createAPI('/synthetic')}
+      token={async () => 'synthetic'}
+      onDenied={denied}
+    />
   </main>
 {:else if mode === 'price-research'}
   <main>

@@ -140,6 +140,7 @@ const summaries = [
   'resend_webhook',
   'gmail_oauth',
   'outlook_oauth',
+  'healthchecks',
 ].map((provider) => ({
   provider,
   state: 'not_configured',

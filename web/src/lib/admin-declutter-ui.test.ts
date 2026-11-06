@@ -157,6 +157,38 @@ test('Clerk backend editor requests a fresh secret without exposing saved values
   assert.doesNotMatch(input, /\bvalue="[^"]+"/);
   assert.doesNotMatch(html, /id="secret-openai"|id="secret-clerk_webhook"/);
 });
+
+test('Healthchecks editor explains outbound pings and keeps the saved URL secret', async () => {
+  assert.ok(credentialProviders.includes('healthchecks' as any));
+  const Component = (
+    await import(
+      await component('AdminCredentials', {
+        view: {
+          ...credentials,
+          credentials: credentials.credentials.map((row) =>
+            row.provider === 'healthchecks'
+              ? { ...row, state: 'not_configured', version: 0 }
+              : row,
+          ),
+        },
+        selectedProvider: 'healthchecks',
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => '', onDenied() {} },
+  }).body;
+  assert.match(html, /Healthchecks\.io Ping URL/);
+  assert.match(html, /1分ごと/);
+  assert.match(html, /正常な場合だけ/);
+  assert.match(html, /保存して監視を開始/);
+  const input = html.match(
+    /<input(?=[^>]*id="secret-healthchecks")(?=[^>]*type="password")[^>]*>/,
+  )?.[0];
+  assert.ok(input);
+  assert.doesNotMatch(input, /\bvalue="[^"]+"/);
+  assert.doesNotMatch(html, /Healthchecks\.io の API キー/);
+});
 test('credential selection preserves dirty secrets until explicit discard and blocks mutation-time switching', async () => {
   const source = await readFile(
     new URL('./AdminCredentials.svelte', import.meta.url),

@@ -60,7 +60,7 @@ func allAutomationLegacyRecords(t *testing.T, pool *pgxpool.Pool) map[string]str
 		if name == "billing_events" || name == "billing_event_sources" {
 			drop = append(drop, "provenance")
 		}
-		if e = pool.QueryRow(ctx, `SELECT coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text FROM(SELECT to_jsonb(t)-$1::text[]-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend'))x`, drop).Scan(&raw); e != nil {
+		if e = pool.QueryRow(ctx, `SELECT coalesce(jsonb_agg(row ORDER BY row::text),'[]')::text FROM(SELECT to_jsonb(t)-$1::text[]-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend','healthchecks'))x`, drop).Scan(&raw); e != nil {
 			t.Fatal(e)
 		}
 		out[name] = raw

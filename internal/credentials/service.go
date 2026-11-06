@@ -8,6 +8,7 @@ import (
 	"math"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/healthchecks"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 )
@@ -60,7 +61,7 @@ func NewService(repository Repository, keyring *secretstore.Keyring) *Service {
 }
 func validProvider(provider string) bool {
 	switch provider {
-	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_backend", "clerk_webhook", "resend_webhook", "gmail_oauth", "outlook_oauth":
+	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_backend", "clerk_webhook", "resend_webhook", "gmail_oauth", "outlook_oauth", "healthchecks":
 		return true
 	}
 	return false
@@ -101,6 +102,9 @@ func (s *Service) List(ctx context.Context) ([]Summary, error) {
 	return items, nil
 }
 func (s *Service) Put(ctx context.Context, actor, provider string, expected int64, secret string) (Summary, error) {
+	if provider == "healthchecks" && !healthchecks.ValidPingURL(secret) {
+		return Summary{}, ErrInvalid
+	}
 	if !validRequest(actor, provider, expected) || len(secret) < 8 || len(secret) > 4096 {
 		return Summary{}, ErrInvalid
 	}
