@@ -25,6 +25,8 @@ export async function browserTelemetryProbe(options = {}) {
   const host = options.host ?? 'https://us.i.posthog.com';
   let controller;
   let sdk;
+  let beforeSend;
+  let nativeFrameFields;
   try {
     window.fetch = async (resource, init) => {
       const url = new URL(String(resource), location.href);
@@ -58,16 +60,17 @@ export async function browserTelemetryProbe(options = {}) {
       loadSDK: async () => ({
         initialize(projectToken, config) {
           const filter = config.before_send;
+          beforeSend = (event) => {
+            const safe = filter(event);
+            if (safe) events.push(safe);
+            return safe;
+          };
           sdk = new PostHog().init(projectToken, {
             ...config,
             opt_out_useragent_filter: true,
             disable_compression: true,
             api_transport: 'fetch',
-            before_send(event) {
-              const safe = filter(event);
-              if (safe) events.push(safe);
-              return safe;
-            },
+            before_send: beforeSend,
           });
           return {
             capture: (_event, properties) =>
@@ -85,6 +88,19 @@ export async function browserTelemetryProbe(options = {}) {
     for (let i = 0; i < 100 && !sdk; i++)
       await new Promise((resolve) => setTimeout(resolve, 20));
     if (!sdk) throw Error('SDK initialization timed out');
+    // Compare the native SDK schema without sending this diagnostic event.
+    sdk.set_config({
+      before_send(event) {
+        nativeFrameFields = Object.keys(
+          event.properties.$exception_list[0].stacktrace.frames[0],
+        ).sort();
+        return null;
+      },
+    });
+    const schemaError = new Error('Synthetic schema error');
+    schemaError.stack = `Error: Synthetic schema error\n at syntheticFunction (${location.origin}/_app/immutable/chunks/synthetic.js:42:7)`;
+    sdk.captureException(schemaError);
+    sdk.set_config({ before_send: beforeSend });
     const owner = '11111111-1111-4111-8111-111111111111';
     controller.setUser(owner);
     const error = new Error('private@example.test secret-token');
@@ -128,6 +144,7 @@ export async function browserTelemetryProbe(options = {}) {
         body: request.body.split(token).join('[project-token]'),
       })),
       statuses,
+      nativeFrameFields,
       fixtureErrors: window.browserTest?.errors ?? [],
       cookieUnchanged: document.cookie === beforeCookie,
       localUnchanged:
@@ -186,6 +203,22 @@ export async function runTelemetryProbe(api, session, options = {}) {
   assert.equal(
     result.events[1].properties.distinct_id,
     'cycrio-browser-anonymous',
+  );
+  const stacktrace = result.events[0].properties.$exception_list[0].stacktrace;
+  assert.equal(stacktrace.type, 'raw');
+  assert.deepEqual(stacktrace.frames, [
+    {
+      platform: 'web:javascript',
+      filename: '/_app/immutable/chunks/synthetic.js',
+      function: '<redacted>',
+      in_app: true,
+      lineno: 42,
+      colno: 7,
+    },
+  ]);
+  assert.deepEqual(
+    Object.keys(stacktrace.frames[0]).sort(),
+    result.nativeFrameFields,
   );
   assert.doesNotMatch(
     JSON.stringify(result),

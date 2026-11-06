@@ -214,8 +214,16 @@ test('raw errors are replaced and only safe static asset frames survive', () => 
   );
   assert.equal(result.type, 'Error');
   assert.equal(result.value, 'Unhandled application error');
+  assert.equal(result.stacktrace?.type, 'raw');
   assert.deepEqual(result.stacktrace?.frames, [
-    { filename: '/_app/immutable/chunks/ABC-123.js', lineno: 14, colno: 7 },
+    {
+      platform: 'web:javascript',
+      filename: '/_app/immutable/chunks/ABC-123.js',
+      function: '<redacted>',
+      in_app: true,
+      lineno: 14,
+      colno: 7,
+    },
   ]);
   assert.doesNotThrow(() =>
     sanitizeException({
@@ -235,6 +243,56 @@ test('raw errors are replaced and only safe static asset frames survive', () => 
     ).stacktrace,
     undefined,
   );
+});
+
+test('final exception allowlist reconstructs the SDK raw stacktrace schema', () => {
+  const filename = '/_app/immutable/chunks/ABC-123.js';
+  const result = filterTelemetryEvent(
+    {
+      event: '$exception',
+      properties: {
+        $exception_list: [
+          {
+            type: 'Error',
+            value: 'Unhandled application error',
+            stacktrace: {
+              type: 'raw',
+              frames: [
+                {
+                  platform: 'private-unsupported-platform',
+                  filename,
+                  lineno: 14,
+                  colno: 7,
+                  function: 'privateFunction',
+                  vars: { secret: 'private' },
+                },
+              ],
+            },
+          },
+        ],
+      },
+    },
+    new Set([filename]),
+  );
+  assert.deepEqual(result?.properties.$exception_list, [
+    {
+      type: 'Error',
+      value: 'Unhandled application error',
+      stacktrace: {
+        type: 'raw',
+        frames: [
+          {
+            platform: 'web:javascript',
+            filename,
+            function: '<redacted>',
+            in_app: true,
+            lineno: 14,
+            colno: 7,
+          },
+        ],
+      },
+    },
+  ]);
 });
 
 test('final SDK allowlist strips automatic enrichment and rejects analytics', () => {

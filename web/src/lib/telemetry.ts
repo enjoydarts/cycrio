@@ -1,14 +1,26 @@
 import type { PostHogConfig } from 'posthog-js';
+import type { ErrorTracking } from '@posthog/core';
 
 // This boundary exposes errors only. Analytics needs a separately reviewed policy.
 export type TelemetryConfiguration =
   { enabled: false } | { enabled: true; project_token: string; host: string };
 type Properties = Record<string, unknown>;
-type SafeFrame = { filename: string; lineno: number; colno: number };
+type SafeFrame = Required<
+  Pick<
+    ErrorTracking.StackFrame,
+    'platform' | 'filename' | 'function' | 'in_app' | 'lineno' | 'colno'
+  >
+> & {
+  platform: 'web:javascript';
+  function: '<redacted>';
+  in_app: true;
+};
 type SafeException = {
   type: 'Error';
   value: 'Unhandled application error';
-  stacktrace?: { frames: SafeFrame[] };
+  stacktrace?: NonNullable<ErrorTracking.Exception['stacktrace']> & {
+    frames: SafeFrame[];
+  };
 };
 export type TelemetrySDK = {
   capture: (event: string, properties: Properties) => unknown;
@@ -23,6 +35,16 @@ const uuidPattern =
 const assetPattern =
   /^\/_app\/immutable\/(?:chunks|entry|nodes)\/[A-Za-z0-9_.-]+\.js$/;
 const anonymousIdentity = 'cycrio-browser-anonymous';
+function safeFrame(filename: string, lineno: number, colno: number): SafeFrame {
+  return {
+    platform: 'web:javascript',
+    filename,
+    function: '<redacted>',
+    in_app: true,
+    lineno,
+    colno,
+  };
+}
 export function validPostHogConfiguration(
   projectToken: unknown,
   host: unknown,
@@ -64,9 +86,9 @@ export function sanitizeException(
         Number.isSafeInteger(colno) &&
         colno > 0
       )
-        frames.push({ filename: url.pathname, lineno, colno });
+        frames.push(safeFrame(url.pathname, lineno, colno));
     }
-    if (frames.length) exception.stacktrace = { frames };
+    if (frames.length) exception.stacktrace = { type: 'raw', frames };
   } catch {
     /* Hostile Error subclasses must never break the application. */
   }
@@ -106,12 +128,8 @@ export function filterTelemetryEvent(
             Number.isSafeInteger(frame.colno) &&
             frame.colno > 0,
         )
-        .map((frame) => ({
-          filename: frame.filename,
-          lineno: frame.lineno,
-          colno: frame.colno,
-        }));
-      if (frames.length) exception.stacktrace = { frames };
+        .map((frame) => safeFrame(frame.filename, frame.lineno, frame.colno));
+      if (frames.length) exception.stacktrace = { type: 'raw', frames };
     }
     const properties: Properties = {
       $exception_list: [exception],
