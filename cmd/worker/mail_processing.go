@@ -32,6 +32,7 @@ func executeMailProcessing(ctx context.Context, input mailprocessing.Lease, exec
 }
 
 func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]mailprocessing.Lease, error), submit func(context.Context, mailprocessing.Lease) error, interval time.Duration, wake <-chan struct{}) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -44,9 +45,13 @@ func dispatchMailProcessing(ctx context.Context, claim func(context.Context) ([]
 					return
 				}
 				sendCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-				_ = submit(sendCtx, lease)
+				if err := submit(sendCtx, lease); err != nil {
+					reportWorkerFailure(ctx, "", "worker_mail_processing", "submit_failed")
+				}
 				stop()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_mail_processing", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

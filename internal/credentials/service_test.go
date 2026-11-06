@@ -114,6 +114,36 @@ func TestHealthchecksPingURLIsValidatedEncryptedAndNeverReturned(t *testing.T) {
 	}
 }
 
+func TestPosthogConfigurationIsValidatedAndEncrypted(t *testing.T) {
+	s, r := testService(t)
+	ctx := context.Background()
+	actor := uuid.NewString()
+	for _, bad := range []string{`{"project_token":"phx_personal_secret","host":"https://us.i.posthog.com"}`, `{"project_token":"phc_synthetic123","host":"http://localhost"}`, `{"project_token":"phc_synthetic123","host":"https://us.i.posthog.com/path"}`, `{"project_token":"phc_synthetic123","host":"https://us.i.posthog.com","secret":"hidden"}`, `{"project_token":"phc_synthetic123","host":"https://us.i.posthog.com"}{}`} {
+		if _, err := s.Put(ctx, actor, "posthog", 0, bad); !errors.Is(err, ErrInvalid) {
+			t.Fatal("unsafe configuration accepted", err)
+		}
+	}
+	if r.calls != 0 {
+		t.Fatal("invalid configuration reached storage")
+	}
+	secret := `{"project_token":"phc_synthetic123","host":"https://us.i.posthog.com"}`
+	summary, err := s.Put(ctx, actor, "posthog", 0, secret)
+	if err != nil || summary.Provider != "posthog" {
+		t.Fatal(summary, err)
+	}
+	if bytes.Contains(r.version.Envelope.Ciphertext, []byte("phc_synthetic123")) {
+		t.Fatal("plaintext stored")
+	}
+	raw, _ := json.Marshal(summary)
+	if bytes.Contains(raw, []byte("phc_synthetic123")) {
+		t.Fatal("token exposed by admin metadata")
+	}
+	plain, err := s.Resolve(ctx, r.version.ID)
+	if err != nil || string(plain) != secret {
+		t.Fatal("internal config unavailable", err)
+	}
+}
+
 func TestClerkBackendSecretUsesEncryptedCredentialLifecycle(t *testing.T) {
 	s, r := testService(t)
 	ctx := context.Background()

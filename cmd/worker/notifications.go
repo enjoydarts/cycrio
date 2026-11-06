@@ -10,6 +10,7 @@ import (
 const notificationTaskName = "cycrio-notification-delivery"
 
 func dispatchNotifications(ctx context.Context, claim func(context.Context) ([]notificationruntime.Task, error), submit func(context.Context, notificationruntime.Task) error, interval time.Duration) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -24,9 +25,13 @@ func dispatchNotifications(ctx context.Context, claim func(context.Context) ([]n
 				submitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 				// Only abandoned preparations can be reclaimed by the repository.
 				// Ambiguous submissions are not retried by this dispatcher.
-				_ = submit(submitCtx, task)
+				if err := submit(submitCtx, task); err != nil {
+					reportWorkerFailure(ctx, "", "worker_notification_delivery", "submit_failed")
+				}
 				cancel()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_notification_delivery", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

@@ -265,7 +265,7 @@
       </div>
     </LibraryPanel>
   </main>
-{:else if mode === 'healthchecks'}
+{:else if mode === 'healthchecks' || mode === 'posthog'}
   <main>
     <AdminCredentials
       api={createAPI('/synthetic')}

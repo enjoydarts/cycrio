@@ -28,6 +28,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
 	"github.com/enjoydarts/cycrio/internal/routesruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
+	"github.com/enjoydarts/cycrio/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -72,6 +73,10 @@ func run() error {
 	store := database.NewStore(pool, keyring)
 	verifier := auth.NewVerifier(config.Issuer(), config.AllowedOrigins, nil)
 	credentialService := credentials.NewService(database.NewCredentialRepository(pool), keyring)
+	reporter := telemetry.New(ctx, os.Getenv("CYCRIO_ENV") == "production", database.NewTelemetrySource(pool, keyring).Load, func(ctx context.Context, owner string, send func(context.Context) error) error {
+		return database.WithUserOperation(ctx, pool, owner, send)
+	}, "api")
+	defer reporter.Close()
 	integrationService := integrations.NewService(database.NewIntegrationRepository(pool, keyring, config.Issuer()), credentialService, integrations.NewResendSender(nil))
 	subscriptionRepository := database.NewSubscriptionRepository(pool)
 	billingRepository := database.NewBillingRepository(pool)
@@ -82,8 +87,9 @@ func run() error {
 	mailOAuthService := mailoauth.NewService(database.NewMailOAuthRepository(pool, keyring), credentialService.Resolve, mailoauth.NewClient(nil))
 	exchangeRatesOption := httpapi.WithExchangeRates(exchangerates.NewClient(nil, nil))
 	budgetOption := httpapi.WithAIBudgets(database.NewAIBudgetRepository(pool))
+	telemetryOption := httpapi.WithTelemetry(reporter)
 	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
-	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithUserErasure(database.NewErasureRepository(pool, keyring)), exchangeRatesOption, budgetOption, httpapi.WithNotifications(notificationRepository), httpapi.WithOverview(overviewRepository), httpapi.WithReports(reportsRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithPriceResearch(priceresearchruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
+	server := &http.Server{Addr: addr, Handler: httpapi.NewHandler(config, verifier, store.FindPrincipal, pool.Ping, httpapi.WithUserErasure(database.NewErasureRepository(pool, keyring)), exchangeRatesOption, budgetOption, telemetryOption, httpapi.WithNotifications(notificationRepository), httpapi.WithOverview(overviewRepository), httpapi.WithReports(reportsRepository), httpapi.WithIntegrations(integrationService), httpapi.WithCredentials(credentialService), httpapi.WithModelCatalog(catalogruntime.New(pool, keyring)), httpapi.WithPriceResearch(priceresearchruntime.New(pool, keyring)), httpapi.WithAIRuntime(airuntimeconfig.New(pool, keyring)), httpapi.WithAIRoutes(routesruntime.New(pool, keyring)), httpapi.WithMailAccounts(mailruntime.New(pool, keyring)), httpapi.WithMailOAuth(mailOAuthService), httpapi.WithMailSync(mailsyncruntime.New(pool, keyring)), httpapi.WithMailProcessing(mailprocessingruntime.New(pool, keyring)), httpapi.WithMailAutomation(mailAutomationService), httpapi.WithSubscriptions(subscriptionRepository), httpapi.WithAnalysisFeed(subscriptionRepository), httpapi.WithBilling(billingRepository), httpapi.WithBillingSchedule(billingScheduleRepository)), ReadHeaderTimeout: 5 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 << 10}
 	serverErr := make(chan error, 1)
 	go func() { serverErr <- server.ListenAndServe() }()
 	log.Print("API started")

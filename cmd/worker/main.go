@@ -31,6 +31,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
+	"github.com/enjoydarts/cycrio/internal/telemetry"
 	"github.com/google/uuid"
 	hatchet "github.com/hatchet-dev/hatchet/sdks/go"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,69 +66,88 @@ func run() (result error) {
 		return errors.New("database configuration failed")
 	}
 	defer pool.Close()
+	reporter := telemetry.New(ctx, os.Getenv("CYCRIO_ENV") == "production", database.NewTelemetrySource(pool, keyring).Load, func(ctx context.Context, owner string, execute func(context.Context) error) error {
+		return database.WithUserOperation(ctx, pool, owner, execute)
+	}, "worker")
+	defer reporter.Close()
+	ctx = withWorkerTelemetry(ctx, reporter)
+	var readOutcome jobOutcomeReader
+	if os.Getenv("CYCRIO_ENV") == "production" {
+		readOutcome = database.NewJobTelemetryRepository(pool).Outcome
+	}
 	client, err := hatchet.NewClient(hatchet.WithClientLogLevel("warn"))
 	if err != nil {
 		return errors.New("Hatchet client configuration failed")
 	}
 	defer func() { _ = client.Close(context.Background()) }()
 	task := client.NewStandaloneTask(infrastructure.TaskName, func(ctx hatchet.Context, input infrastructure.Input) (infrastructure.Output, error) {
-		return infrastructure.Check(ctx, input, pool.Ping)
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_check", "", "", func() (infrastructure.Output, error) { return infrastructure.Check(ctx, input, pool.Ping) })
 	})
 	catalog := catalogruntime.New(pool, keyring)
 	catalogTask := client.NewStandaloneTask(catalogTaskName, func(ctx hatchet.Context, input CatalogSyncInput) (CatalogSyncOutput, error) {
-		return executeCatalogSync(ctx, input, catalog.SyncProvider)
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_catalog_sync", "", "", func() (CatalogSyncOutput, error) { return executeCatalogSync(ctx, input, catalog.SyncProvider) })
 	}, hatchet.WithRetries(0))
 	research := priceresearchruntime.New(pool, keyring)
 	researchTask := client.NewStandaloneTask(priceResearchTaskName, func(ctx hatchet.Context, input priceresearch.Lease) (PriceResearchOutput, error) {
-		if err := research.Execute(ctx, input); err != nil {
-			return PriceResearchOutput{Status: "failed"}, errors.New("price research unavailable")
-		}
-		return PriceResearchOutput{Status: "recorded"}, nil
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_price_research", "research", input.RunID, func() (PriceResearchOutput, error) {
+			if err := research.Execute(ctx, input); err != nil {
+				return PriceResearchOutput{Status: "failed"}, errors.New("price research unavailable")
+			}
+			return PriceResearchOutput{Status: "recorded"}, nil
+		})
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(9*time.Minute))
 	execution := airuntimeconfig.New(pool, keyring)
 	aiTask := client.NewStandaloneTask(aiTestTaskName, func(ctx hatchet.Context, input airuntime.Lease) (AITestOutput, error) {
-		if err := execution.Run(ctx, input); err != nil {
-			if errors.Is(err, airuntime.ErrConflict) {
-				return AITestOutput{Status: "ignored"}, nil
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_ai_test", "ai_test", input.TestRunID, func() (AITestOutput, error) {
+			if err := execution.Run(ctx, input); err != nil {
+				if errors.Is(err, airuntime.ErrConflict) {
+					return AITestOutput{Status: "ignored"}, nil
+				}
+				return AITestOutput{Status: "failed"}, errors.New("AI connection test unavailable")
 			}
-			return AITestOutput{Status: "failed"}, errors.New("AI connection test unavailable")
-		}
-		return AITestOutput{Status: "recorded"}, nil
+			return AITestOutput{Status: "recorded"}, nil
+		})
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	mail := mailruntime.New(pool, keyring)
 	mailTask := client.NewStandaloneTask(mailProbeTaskName, func(ctx hatchet.Context, input mailaccounts.Lease) (MailProbeOutput, error) {
-		if err := database.WithMailOperation(ctx, pool, "probe", input.ProbeID, func(ctx context.Context) error { return mail.Run(ctx, input) }); err != nil {
-			return MailProbeOutput{Status: "failed"}, errors.New("mail connection check unavailable")
-		}
-		return MailProbeOutput{Status: "handled"}, nil
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_probe", "probe", input.ProbeID, func() (MailProbeOutput, error) {
+			if err := database.WithMailOperation(ctx, pool, "probe", input.ProbeID, func(ctx context.Context) error { return mail.Run(ctx, input) }); err != nil {
+				return MailProbeOutput{Status: "failed"}, errors.New("mail connection check unavailable")
+			}
+			return MailProbeOutput{Status: "handled"}, nil
+		})
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	name := "cycrio-worker-" + uuid.NewString()
 	discovery := mailsyncruntime.New(pool, keyring)
 	discoveryWake := make(chan struct{}, 1)
 	automationWake := make(chan struct{}, 1)
 	discoverTask := client.NewStandaloneTask(mailDiscoverTaskName, func(ctx hatchet.Context, input mailsync.Lease) (MailDiscoverOutput, error) {
-		out := MailDiscoverOutput{Status: "ignored"}
-		err := database.WithMailOperation(ctx, pool, "sync", input.RunID, func(ctx context.Context) (err error) {
-			out, err = executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
-			return err
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_discovery", "sync", input.RunID, func() (MailDiscoverOutput, error) {
+			out := MailDiscoverOutput{Status: "ignored"}
+			err := database.WithMailOperation(ctx, pool, "sync", input.RunID, func(ctx context.Context) (err error) {
+				out, err = executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
+				return err
+			})
+			return out, err
 		})
-		return out, err
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(time.Minute))
 	processing := mailprocessingruntime.New(pool, keyring)
 	defer func() { _ = processing.Close() }()
 	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
-		out := MailProcessingOutput{Status: "ignored"}
-		err := database.WithMailOperation(ctx, pool, "processing", input.RunID, func(ctx context.Context) (err error) {
-			out, err = executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
-			return err
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_processing", "processing", input.RunID, func() (MailProcessingOutput, error) {
+			out := MailProcessingOutput{Status: "ignored"}
+			err := database.WithMailOperation(ctx, pool, "processing", input.RunID, func(ctx context.Context) (err error) {
+				out, err = executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
+				return err
+			})
+			return out, err
 		})
-		return out, err
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
 	notificationService := notificationruntime.NewService(notificationRepository, notificationruntime.NewResendSender(nil))
 	notificationTask := client.NewStandaloneTask(notificationTaskName, func(ctx hatchet.Context, input notificationruntime.Task) (notificationruntime.Result, error) {
-		return notificationService.Execute(ctx, input)
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_notification_delivery", "notification", input.DeliveryID, func() (notificationruntime.Result, error) { return notificationService.Execute(ctx, input) })
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(30*time.Second))
 	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, priceResearch: researchTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask, notification: notificationTask})
 	cleanup, err := startWorkerGroups(groups, func(group workerGroup) (workerStarter, error) {
@@ -141,39 +161,39 @@ func run() (result error) {
 	for _, group := range groups {
 		workerNames = append(workerNames, group.name)
 	}
-	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
-	go dispatchSubscriptionAutomation(ctx, database.NewSubscriptionRepository(pool).ApplyScheduledChangesDue, 2*time.Second)
-	go dispatchPriceResearch(ctx, research.ClaimDue, func(ctx context.Context, l priceresearch.Lease) error {
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_subscription_register"), database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_subscription_changes"), database.NewSubscriptionRepository(pool).ApplyScheduledChangesDue, 2*time.Second)
+	go dispatchPriceResearch(withWorkerOperation(ctx, "worker_price_research"), research.ClaimDue, func(ctx context.Context, l priceresearch.Lease) error {
 		_, err := researchTask.RunNoWait(ctx, l)
 		return err
 	}, 10*time.Second)
-	go dispatchSubscriptionAutomation(ctx, database.NewBillingRepository(pool).RecordDue, time.Second)
-	go dispatchSubscriptionAutomation(ctx, notificationRepository.GenerateDue, 10*time.Second)
-	go dispatchSubscriptionAutomation(ctx, database.NewErasureRepository(pool, keyring).PurgeDue, 10*time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_billing_record"), database.NewBillingRepository(pool).RecordDue, time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_notification_generate"), notificationRepository.GenerateDue, 10*time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_erasure_purge"), database.NewErasureRepository(pool, keyring).PurgeDue, 10*time.Second)
 	clerkErasure := clerkdelete.NewService(database.NewClerkErasureRepository(pool, keyring, config.Issuer()), clerkdelete.NewClient(nil))
-	go dispatchClerkErasure(ctx, clerkErasure.Drain, 10*time.Second)
-	go dispatchNotifications(ctx, notificationRepository.ClaimNotifications, func(ctx context.Context, task notificationruntime.Task) error {
+	go dispatchClerkErasure(withWorkerOperation(ctx, "worker_clerk_erasure"), clerkErasure.Drain, 10*time.Second)
+	go dispatchNotifications(withWorkerOperation(ctx, "worker_notification_delivery"), notificationRepository.ClaimNotifications, func(ctx context.Context, task notificationruntime.Task) error {
 		_, err := notificationTask.RunNoWait(ctx, task)
 		return err
 	}, 10*time.Second)
-	go dispatchMailAutomation(ctx, database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
-	go dispatchCatalog(ctx, catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
+	go dispatchMailAutomation(withWorkerOperation(ctx, "worker_mail_automation"), database.NewMailAutomationRepository(pool).Tick, 2*time.Second, automationWake, discoveryWake, processingWake)
+	go dispatchCatalog(withWorkerOperation(ctx, "worker_catalog_sync"), catalog.ClaimDue, func(ctx context.Context, input CatalogSyncInput) error {
 		_, err := catalogTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
-	go dispatchAITests(ctx, execution.Claim, func(ctx context.Context, input airuntime.Lease) error {
+	go dispatchAITests(withWorkerOperation(ctx, "worker_ai_test"), execution.Claim, func(ctx context.Context, input airuntime.Lease) error {
 		_, err := aiTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
-	go dispatchMailProbes(ctx, mail.Claim, func(ctx context.Context, input mailaccounts.Lease) error {
+	go dispatchMailProbes(withWorkerOperation(ctx, "worker_mail_probe"), mail.Claim, func(ctx context.Context, input mailaccounts.Lease) error {
 		_, err := mailTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second)
-	go dispatchMailDiscovery(ctx, discovery.Claim, func(ctx context.Context, input mailsync.Lease) error {
+	go dispatchMailDiscovery(withWorkerOperation(ctx, "worker_mail_discovery"), discovery.Claim, func(ctx context.Context, input mailsync.Lease) error {
 		_, err := discoverTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second, discoveryWake)
-	go dispatchMailProcessing(ctx, processing.Claim, func(ctx context.Context, input mailprocessing.Lease) error {
+	go dispatchMailProcessing(withWorkerOperation(ctx, "worker_mail_processing"), processing.Claim, func(ctx context.Context, input mailprocessing.Lease) error {
 		_, err := processingTask.RunNoWait(ctx, input)
 		return err
 	}, 10*time.Second, processingWake)
@@ -189,7 +209,7 @@ func run() (result error) {
 	}
 	heartbeatCredentials := credentials.NewService(database.NewCredentialRepository(pool), keyring)
 	heartbeat := healthchecks.NewService(database.NewHealthchecksRepository(pool), heartbeatCredentials.Resolve, healthchecks.NewClient(nil), ready, healthchecks.NewAPIProbe(nil))
-	go dispatchSubscriptionAutomation(ctx, func(ctx context.Context, _ int) (int, error) { return 0, heartbeat.Tick(ctx) }, 10*time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_heartbeat"), func(ctx context.Context, _ int) (int, error) { return 0, heartbeat.Tick(ctx) }, 10*time.Second)
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"

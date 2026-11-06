@@ -14,6 +14,7 @@ type AITestOutput struct {
 }
 
 func dispatchAITests(ctx context.Context, claim func(context.Context) ([]airuntime.Lease, error), submit func(context.Context, airuntime.Lease) error, interval time.Duration) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -27,9 +28,13 @@ func dispatchAITests(ctx context.Context, claim func(context.Context) ([]airunti
 				}
 				sendCtx, sendCancel := context.WithTimeout(ctx, 15*time.Second)
 				// Failed delivery remains leased and can be recovered without repeating inference.
-				_ = submit(sendCtx, lease)
+				if err := submit(sendCtx, lease); err != nil {
+					reportWorkerFailure(ctx, "", "worker_ai_test", "submit_failed")
+				}
 				sendCancel()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_ai_test", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

@@ -109,11 +109,9 @@ func TestHealthchecksMigrationIsReversibleBeforeConfiguration(t *testing.T) {
 	ctx := context.Background()
 	p := automationMigrationProvider(t, pool)
 	down, e := p.DownTo(ctx, 45)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 46 || down[0].Direction != "down" {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 46)
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 46, 46)
+	assertMigrationRange(t, up, e, 46, latestMigrationVersion)
 	var state string
 	var version int
 	if e = pool.QueryRow(ctx, `SELECT state,version FROM provider_credentials WHERE provider='healthchecks'`).Scan(&state, &version); e != nil || state != "not_configured" || version != 0 {

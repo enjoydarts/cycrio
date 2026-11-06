@@ -8,6 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/hatchet-dev/hatchet v0.114.0
 	github.com/jackc/pgx/v5 v5.11.0
+	github.com/posthog/posthog-go v1.40.1
 	github.com/pressly/goose/v3 v3.29.0
 	golang.org/x/net v0.61.0
 	golang.org/x/text v0.43.0
@@ -16,6 +17,7 @@ require (
 require (
 	cel.dev/expr v0.25.2 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/andybalholm/brotli v1.2.6 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -38,6 +40,7 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-playground/validator/v10 v10.30.5 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/cel-go v0.29.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.4 // indirect
@@ -48,6 +51,7 @@ require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
+	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/echo/v4 v4.16.0 // indirect

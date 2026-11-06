@@ -22,6 +22,7 @@ func executeMailDiscovery(ctx context.Context, input mailsync.Lease, execute fun
 	return MailDiscoverOutput{Status: "handled"}, nil
 }
 func dispatchMailDiscovery(ctx context.Context, claim func(context.Context) ([]mailsync.Lease, error), submit func(context.Context, mailsync.Lease) error, interval time.Duration, wakes ...<-chan struct{}) {
+	defer capturePollerPanic(ctx)
 	var wake <-chan struct{}
 	if len(wakes) > 0 {
 		wake = wakes[0]
@@ -38,9 +39,13 @@ func dispatchMailDiscovery(ctx context.Context, claim func(context.Context) ([]m
 					return
 				}
 				sendCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-				_ = submit(sendCtx, lease)
+				if err := submit(sendCtx, lease); err != nil {
+					reportWorkerFailure(ctx, "", "worker_mail_discovery", "submit_failed")
+				}
 				stop()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_mail_discovery", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

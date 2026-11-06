@@ -13,6 +13,7 @@ type PriceResearchOutput struct {
 }
 
 func dispatchPriceResearch(ctx context.Context, claim func(context.Context) ([]priceresearch.Lease, error), submit func(context.Context, priceresearch.Lease) error, interval time.Duration) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -23,9 +24,13 @@ func dispatchPriceResearch(ctx context.Context, claim func(context.Context) ([]p
 					return
 				}
 				sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-				_ = submit(sendCtx, l)
+				if err := submit(sendCtx, l); err != nil {
+					reportWorkerFailure(ctx, "", "worker_price_research", "submit_failed")
+				}
 				cancel()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_price_research", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

@@ -17,6 +17,7 @@ export const credentialProviders = [
   'gmail_oauth',
   'outlook_oauth',
   'healthchecks',
+  'posthog',
 ] as const;
 export type CredentialProvider = (typeof credentialProviders)[number];
 export type CredentialSummary = {

@@ -141,6 +141,7 @@ const summaries = [
   'gmail_oauth',
   'outlook_oauth',
   'healthchecks',
+  'posthog',
 ].map((provider) => ({
   provider,
   state: 'not_configured',

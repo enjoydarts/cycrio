@@ -7,6 +7,7 @@ import {
   type TokenProvider,
   type createAPI,
 } from './api.ts';
+import { validPostHogConfiguration } from './telemetry.ts';
 
 export type CredentialsState = {
   status:
@@ -19,6 +20,18 @@ export type CredentialsState = {
 
 export function validSecret(secret: string): boolean {
   return /^[\x21-\x7e]{8,4096}$/.test(secret);
+}
+
+export function serializePostHogCredential(fields: {
+  project_token: string;
+  host: string;
+}): string {
+  if (!validPostHogConfiguration(fields.project_token, fields.host))
+    throw new ApiError('invalid_request');
+  return JSON.stringify({
+    project_token: fields.project_token,
+    host: fields.host,
+  });
 }
 
 export function serializeOAuthCredential(

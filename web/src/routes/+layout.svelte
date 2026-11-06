@@ -19,6 +19,7 @@
   import { createMailProcessingAPI } from '#lib/mail-processing-api.ts';
   import { createOverviewAPI } from '#lib/overview-api.ts';
   import { createNotificationsAPI } from '#lib/notifications-api.ts';
+  import { startBrowserTelemetry } from '#lib/telemetry-browser.ts';
 
   let { children } = $props();
   let controller: ReturnType<typeof createAuthController> | undefined;
@@ -68,6 +69,7 @@
   });
   onMount(() => {
     // Keep all browser access here so the layout also remains SSR safe.
+    const telemetry = startBrowserTelemetry(PUBLIC_API_BASE_URL);
     let storage: Pick<Storage, 'getItem' | 'setItem'>;
     try {
       storage = window.localStorage;
@@ -86,11 +88,13 @@
       (auth) => {
         boundary.update(auth);
         sessionState = boundary.current();
+        telemetry.setUser(auth.status === 'allowed' ? auth.user.id : null);
       },
     );
     void controller.start();
     return () => {
       controller?.dispose();
+      telemetry.dispose();
       themeController?.dispose();
     };
   });

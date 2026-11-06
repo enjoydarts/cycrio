@@ -1,8 +1,10 @@
 import { credentialProviders, type CredentialSummary } from '../src/lib/api.ts';
 
-export function healthchecksFixture() {
+export function healthchecksFixture(
+  service: 'healthchecks' | 'posthog' = 'healthchecks',
+) {
   let current: CredentialSummary = {
-    provider: 'healthchecks',
+    provider: service,
     state: 'not_configured',
     version: 0,
     updated_at: null,
@@ -14,7 +16,7 @@ export function healthchecksFixture() {
     if (method === 'GET' && url.pathname === path)
       return Response.json({
         credentials: credentialProviders.map((provider) =>
-          provider === 'healthchecks'
+          provider === service
             ? current
             : {
                 provider,
@@ -25,7 +27,7 @@ export function healthchecksFixture() {
         ),
       });
     if (
-      url.pathname === `${path}/healthchecks` &&
+      url.pathname === `${path}/${service}` &&
       ['PUT', 'DELETE'].includes(method)
     ) {
       if (body?.expected_version !== current.version)
@@ -33,7 +35,12 @@ export function healthchecksFixture() {
       if (
         method === 'PUT' &&
         body.secret !==
-          'https://hc-ping.com/11111111-1111-4111-8111-111111111111'
+          (service === 'posthog'
+            ? JSON.stringify({
+                project_token: 'phc_synthetic_browser_token',
+                host: 'https://eu.i.posthog.com',
+              })
+            : 'https://hc-ping.com/11111111-1111-4111-8111-111111111111')
       )
         throw Error('Unexpected synthetic Ping URL');
       current = {

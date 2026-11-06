@@ -189,6 +189,29 @@ test('Healthchecks editor explains outbound pings and keeps the saved URL secret
   assert.doesNotMatch(input, /\bvalue="[^"]+"/);
   assert.doesNotMatch(html, /Healthchecks\.io の API キー/);
 });
+test('PostHog editor requires a fresh public project token and a supported ingest host', async () => {
+  const Component = (
+    await import(
+      await component('AdminCredentials', {
+        view: credentials,
+        selectedProvider: 'posthog',
+      })
+    )
+  ).default;
+  const html = render(Component, {
+    props: { api: {}, token: async () => '', onDenied() {} },
+  }).body;
+  assert.match(html, /Project Token/);
+  assert.match(html, /Personal API\s+key/);
+  assert.match(html, /https:\/\/us\.i\.posthog\.com/);
+  assert.match(html, /https:\/\/eu\.i\.posthog\.com/);
+  const input = html.match(
+    /<input(?=[^>]*id="project-token-posthog")(?=[^>]*type="password")[^>]*>/,
+  )?.[0];
+  assert.ok(input);
+  assert.doesNotMatch(input, /\bvalue="[^"]+"/);
+});
+
 test('credential selection preserves dirty secrets until explicit discard and blocks mutation-time switching', async () => {
   const source = await readFile(
     new URL('./AdminCredentials.svelte', import.meta.url),

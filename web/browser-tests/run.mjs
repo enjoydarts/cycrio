@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
+import { runTelemetryProbe } from './telemetry-probe.mjs';
 
 const out = '/artifacts';
 await mkdir(out, { recursive: true });
@@ -174,6 +175,7 @@ try {
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
     await visit('healthchecks', width);
+    if (width === 1280) results.push(await runTelemetryProbe(api, session));
     const healthchecksService =
       "Array.from(document.querySelectorAll('button.service-row')).find(e=>e.textContent.includes('Healthchecks.io'))";
     await wait(`${healthchecksService}!==undefined`);
@@ -222,6 +224,42 @@ try {
     );
     await layout();
     results.push({ width, scenario: 'healthchecks', status: 'pass' });
+    await visit('posthog', width);
+    const posthogService =
+      "Array.from(document.querySelectorAll('button.service-row')).find(e=>e.textContent.includes('PostHog'))";
+    await wait(`${posthogService}!==undefined`);
+    await click(posthogService);
+    await wait("document.querySelector('#project-token-posthog')!==null");
+    await layout();
+    await screenshot(`posthog-${width}`);
+    await input(
+      "document.querySelector('#project-token-posthog')",
+      'phc_synthetic_browser_token',
+    );
+    await input(
+      "document.querySelector('#host-posthog')",
+      'https://eu.i.posthog.com',
+      'change',
+    );
+    await click(button('設定を登録する'));
+    await wait(
+      "document.body.innerText.includes('エラー追跡設定を保存しました。')",
+    );
+    assert.equal(
+      await js("return document.querySelector('#project-token-posthog').value"),
+      '',
+    );
+    assert.equal(
+      await js("return document.querySelector('#project-token-posthog').type"),
+      'password',
+    );
+    await click(button('PostHog を無効化する'));
+    await click(button('無効化を確定する'));
+    await wait(
+      "document.body.innerText.includes('エラー追跡を無効化しました。')",
+    );
+    await layout();
+    results.push({ width, scenario: 'posthog', status: 'pass' });
     for (const mode of ['scheduled-review', 'scheduled-uncertain']) {
       await visit(mode, width);
       await wait(`${button('効力日に予約する')}!==undefined`);

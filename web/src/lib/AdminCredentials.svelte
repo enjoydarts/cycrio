@@ -14,6 +14,7 @@
     createCredentialsController,
     type CredentialsState,
     serializeOAuthCredential,
+    serializePostHogCredential,
   } from './credentials';
 
   let {
@@ -42,6 +43,10 @@
   let nextProvider = $state<CredentialProvider | null>(null);
   let controller: ReturnType<typeof createCredentialsController> | undefined;
   const providers = {
+    posthog: {
+      label: 'PostHog',
+      purpose: '本番環境のエラー追跡',
+    },
     healthchecks: {
       label: 'Healthchecks.io',
       purpose: 'API・DB・Workerの定期監視通知',
@@ -85,7 +90,7 @@
     dependency_unavailable:
       '読み込みまたは保存に失敗しました。保存状態を再読み込みして確認してください。',
     invalid_request:
-      'API キー・Ping URL・OAuth アプリの入力条件を確認してください。',
+      'API キー・Ping URL・OAuth アプリ・エラー追跡設定の入力条件を確認してください。',
     conflict:
       '別の操作により更新されました。最新の保存状態を読み込みました。内容を確認して、もう一度入力・操作してください。',
     not_found: '対象が見つかりません。保存状態を再読み込みしてください。',
@@ -178,13 +183,18 @@
     let secret = '';
     try {
       secret =
-        provider === 'gmail_oauth' || provider === 'outlook_oauth'
-          ? serializeOAuthCredential(provider, {
-              ClientID: field('client_id'),
-              ClientSecret: field('client_secret'),
-              RedirectURI: field('redirect_uri'),
+        provider === 'posthog'
+          ? serializePostHogCredential({
+              project_token: field('project_token'),
+              host: field('host'),
             })
-          : field('secret');
+          : provider === 'gmail_oauth' || provider === 'outlook_oauth'
+            ? serializeOAuthCredential(provider, {
+                ClientID: field('client_id'),
+                ClientSecret: field('client_secret'),
+                RedirectURI: field('redirect_uri'),
+              })
+            : field('secret');
     } catch {
       /* The controller publishes the same safe validation error. */
     }
@@ -267,12 +277,16 @@
           </p>{/if}
         {#if view.success}<p class="success">
             {view.success === 'saved'
-              ? selectedProvider === 'healthchecks'
-                ? '監視用Ping URLを保存しました。'
-                : 'API キーを保存しました。'
-              : selectedProvider === 'healthchecks'
-                ? '監視通知の送信を停止しました。'
-                : 'API キーを無効化しました。'}
+              ? selectedProvider === 'posthog'
+                ? 'エラー追跡設定を保存しました。'
+                : selectedProvider === 'healthchecks'
+                  ? '監視用Ping URLを保存しました。'
+                  : 'API キーを保存しました。'
+              : selectedProvider === 'posthog'
+                ? 'エラー追跡を無効化しました。'
+                : selectedProvider === 'healthchecks'
+                  ? '監視通知の送信を停止しました。'
+                  : 'API キーを無効化しました。'}
           </p>{/if}
       </div>
       {#if discardConfirmation}<div class="confirmation" role="alert">
@@ -362,7 +376,44 @@
                   oninput={() => (dirty = true)}
                   novalidate
                 >
-                  {#if credential.provider === 'gmail_oauth' || credential.provider === 'outlook_oauth'}
+                  {#if credential.provider === 'posthog'}
+                    <p class="help">
+                      本番環境の未処理エラーだけを送信します。自動アクセス解析・録画・Cookieは利用しません。
+                    </p>
+                    <div class="credential-field">
+                      <label for="project-token-posthog">Project Token</label>
+                      <input
+                        id="project-token-posthog"
+                        name="project_token"
+                        type="password"
+                        autocomplete="off"
+                        spellcheck="false"
+                        autocapitalize="off"
+                        required
+                        disabled={busy}
+                      />
+                      <p class="help">
+                        phc_ で始まるブラウザー公開用のProject
+                        Tokenを入力してください。Personal API
+                        keyは使用できません。保存後は再表示しません。
+                      </p>
+                    </div>
+                    <div class="credential-field">
+                      <label for="host-posthog">Host</label>
+                      <select id="host-posthog" name="host" disabled={busy}>
+                        <option value="https://us.i.posthog.com"
+                          >US — https://us.i.posthog.com</option
+                        >
+                        <option value="https://eu.i.posthog.com"
+                          >EU — https://eu.i.posthog.com</option
+                        >
+                      </select>
+                      <p class="help">
+                        プロジェクトのリージョンを選択します。更新時はProject
+                        TokenとHostを再入力してください。
+                      </p>
+                    </div>
+                  {:else if credential.provider === 'gmail_oauth' || credential.provider === 'outlook_oauth'}
                     {@const mailProvider =
                       credential.provider === 'gmail_oauth'
                         ? 'gmail'

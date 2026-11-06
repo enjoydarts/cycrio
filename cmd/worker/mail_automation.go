@@ -14,6 +14,7 @@ func wakeMailWork(wakes ...chan<- struct{}) {
 	}
 }
 func dispatchMailAutomation(ctx context.Context, tick func(context.Context, int) (int, error), interval time.Duration, wake <-chan struct{}, dispatchWakes ...chan<- struct{}) {
+	defer capturePollerPanic(ctx)
 	timer := time.NewTicker(interval)
 	defer timer.Stop()
 	for ctx.Err() == nil {
@@ -22,6 +23,8 @@ func dispatchMailAutomation(ctx context.Context, tick func(context.Context, int)
 		stop()
 		if err == nil {
 			wakeMailWork(dispatchWakes...)
+		} else {
+			reportWorkerFailure(ctx, "", "", "poller_failed")
 		}
 		select {
 		case <-ctx.Done():

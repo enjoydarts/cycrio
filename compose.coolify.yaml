@@ -14,6 +14,7 @@ x-runtime: &runtime
   security_opt: [no-new-privileges:true]
   stop_grace_period: 30s
   environment:
+    CYCRIO_ENV: production
     DATABASE_URL_FILE: /run/secrets/database_url
     HATCHET_CLIENT_TOKEN_FILE: /run/secrets/hatchet_token
     HATCHET_CLIENT_TLS_STRATEGY: tls

@@ -14,6 +14,7 @@ type MailProbeOutput struct {
 }
 
 func dispatchMailProbes(ctx context.Context, claim func(context.Context) ([]mailaccounts.Lease, error), submit func(context.Context, mailaccounts.Lease) error, interval time.Duration) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -27,9 +28,13 @@ func dispatchMailProbes(ctx context.Context, claim func(context.Context) ([]mail
 				}
 				sendCtx, sendCancel := context.WithTimeout(ctx, 15*time.Second)
 				// Undelivered leases expire in the DB. Running checks are never retried here.
-				_ = submit(sendCtx, lease)
+				if err := submit(sendCtx, lease); err != nil {
+					reportWorkerFailure(ctx, "", "worker_mail_probe", "submit_failed")
+				}
 				sendCancel()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_mail_probe", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

@@ -27,6 +27,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	healthHandler := health.NewHandler(ready)
 	mux.Handle("GET /healthz", healthHandler)
 	mux.Handle("GET /readyz", healthHandler)
+	mux.HandleFunc("GET /v1/public/telemetry", publicTelemetry(settings.telemetry))
 	mux.HandleFunc("GET /v1/public/config", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, struct {
 			Configured     bool   `json:"configured"`
@@ -63,6 +64,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 				writeError(w, http.StatusForbidden, "access_denied")
 				return
 			}
+			setTelemetryOwner(r, p.ID)
 			next(w, r, p)
 		}
 	}
@@ -95,7 +97,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerBillingSchedule(mux, settings.billingSchedule, protect)
 	registerAnalysisFeed(mux, settings.analysisFeed, protect)
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { writeError(w, http.StatusNotFound, "not_found") })
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return telemetryBoundary(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Request-ID", uuid.NewString())
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
@@ -163,7 +165,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		mux.ServeHTTP(w, r.WithContext(ctx))
-	})
+	}), settings.telemetry)
 }
 
 func writeJSON(w http.ResponseWriter, status int, data any) {

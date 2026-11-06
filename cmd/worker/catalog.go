@@ -31,6 +31,7 @@ func executeCatalogSync(ctx context.Context, input CatalogSyncInput, sync func(c
 }
 
 func dispatchCatalog(ctx context.Context, claim func(context.Context) ([]modelcatalog.SyncLease, error), submit func(context.Context, CatalogSyncInput) error, interval time.Duration) {
+	defer capturePollerPanic(ctx)
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for ctx.Err() == nil {
@@ -43,9 +44,13 @@ func dispatchCatalog(ctx context.Context, claim func(context.Context) ([]modelca
 				runCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
 				// Submission/processing failures remain bounded by the DB lease;
 				// never log SDK errors that might contain upstream data.
-				_ = submit(runCtx, CatalogSyncInput{Provider: lease.Provider, LeaseID: lease.LeaseID})
+				if err := submit(runCtx, CatalogSyncInput{Provider: lease.Provider, LeaseID: lease.LeaseID}); err != nil {
+					reportWorkerFailure(ctx, "", "worker_catalog_sync", "submit_failed")
+				}
 				cancel()
 			}
+		} else {
+			reportWorkerFailure(ctx, "", "worker_catalog_sync", "claim_failed")
 		}
 		select {
 		case <-ctx.Done():

@@ -45,7 +45,10 @@ const response = (body: unknown) =>
 // This fake checks transport contracts and returns fixed synthetic records.
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
-  const healthchecks = mode === 'healthchecks' ? healthchecksFixture() : null;
+  const healthchecks =
+    mode === 'healthchecks' || mode === 'posthog'
+      ? healthchecksFixture(mode)
+      : null;
   const research = mode === 'price-research' ? priceResearchFixture() : null;
   const scheduled = mode.startsWith('scheduled-')
     ? scheduledChangesFixture(mode, initial)
