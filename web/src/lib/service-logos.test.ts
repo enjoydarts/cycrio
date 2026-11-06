@@ -4,6 +4,17 @@ import test from 'node:test';
 
 const domesticServices = [
   [
+    'address',
+    [
+      'ADDress',
+      'ＡＤＤｒｅｓｓ',
+      'アドレス',
+      'ADDress 月額プラン',
+      'https://address.love/',
+      'address.love',
+    ],
+  ],
+  [
     'bookwalker',
     [
       'BOOK☆WALKER',
@@ -119,6 +130,20 @@ const domesticServices = [
   ],
   ['note', ['note', 'ノート', 'noteプレミアム', 'note.com']],
 ] as const;
+
+test('ADDress does not match unrelated address words or domains', async () => {
+  const { resolveServiceLogo } = await import('./service-logos.ts');
+  for (const name of [
+    'Email Address',
+    'メールアドレス',
+    '住所',
+    'address.com',
+    'https://address.love.example.com/',
+    'ADDress Consulting Ltd',
+  ]) {
+    assert.equal(resolveServiceLogo(name), null, name);
+  }
+});
 
 for (const [slug, variants] of domesticServices) {
   test(`domestic service ${slug} uses its own local image for Japanese names, plans and official domains`, async () => {

@@ -11,6 +11,7 @@ export type ServiceLogo = {
 
 const aliases = new Map<string, string>();
 const names: [string, string[]][] = [
+  ['address', ['ADDress', 'アドレス']],
   ['techlib', ['TechLib', 'テックリブ']],
   ['tohocinemas', ['シネマイレージカード', 'シネマイレージ']],
   ['adguard', ['AdGuard License']],
@@ -455,6 +456,7 @@ for (const [slug, variants] of names) {
 }
 
 const domains: Record<string, string> = {
+  'address.love': 'address',
   'techlib.jp': 'techlib',
   'techlib.co.jp': 'techlib',
   'tohotheater.jp': 'tohocinemas',

@@ -1,5 +1,7 @@
 # サービスロゴの出典
 
+ADDress（アドレス）は[公式サイト](https://address.love/)が指定するApple Touch Iconを無加工で使用します。サービス名・月額プラン表記・公式ドメイン`address.love`を照合し、メールアドレス等の一般語や別ドメインからは推測しません。画像URLとSHA-256は`sources.json`に記録しています。
+
 2026-11-02 に公開サービスのロゴと表記揺れを拡充しました。Azure、ConoHa WING、さくらのメールボックス、FranklyMail、Mango Mail、Fantia、FANZA TV、DMM宅配レンタル、Qobuz、TechLib、コミックシーモア、カラリア、各種ナビ・天気アプリ、国内モバイルサービス、映画館の会員サービスなどを補完しています。公式Webサイトのアイコンを優先し、Web上の取得が難しいアプリは提供者を確認したApp Store / Google Playの公式配布画像を使用します。画像は無加工で、参照ページは `sourcePage`、画像URL・提供元・SHA-256は `sources.json` に記録しています。
 
 Azureには公式サイト配信のMicrosoftアイコン、My KIRINにはKIRIN、GMOとくとくBBにはGMOインターネットの企業アイコン、松弁ネットには松屋フーズの公式アプリアイコンを使用します。FANZA TVは公式ヘルプのサービスカテゴリ画像を使用します。YouTubeは明示的なプラットフォーム表記があるメンバーシップに限って割り当て、個人名から推測しません。Yahoo!カーナビの推しドラ関連は[公式案内](https://carnavi.yahoo.co.jp/promo/oshidora/)で確認した製品表記に限定します。空欄・個人ドメイン名・一般的な料金項目など、提供元を識別できない名前は汎用アイコンを維持します。

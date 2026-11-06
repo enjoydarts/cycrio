@@ -1,5 +1,14 @@
 [
   {
+    "slug": "address",
+    "title": "ADDress",
+    "file": "address.png",
+    "sourceUrl": "https://cdn.address.love/favicons/apple-touch-icon.png",
+    "sourcePage": "https://address.love/",
+    "credit": "株式会社アドレス",
+    "sha256": "65da2638a159543b695d5b3562fabec0fb9d91801f3f5c2d8d7ef4f7a3348a4e"
+  },
+  {
     "slug": "tohocinemas",
     "title": "TOHOシネマズ",
     "file": "tohocinemas.png",
