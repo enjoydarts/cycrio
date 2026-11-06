@@ -1,0 +1,106 @@
+name: Production deployment
+
+on:
+  workflow_call:
+    secrets:
+      COOLIFY_API_TOKEN:
+        required: true
+      CLOUDFLARE_API_TOKEN:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: 本番準備
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Verify deployment configuration
+        env:
+          COOLIFY_API_URL: ${{ vars.COOLIFY_API_URL }}
+          COOLIFY_APPLICATION_UUID: ${{ vars.COOLIFY_APPLICATION_UUID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          for name in COOLIFY_API_URL COOLIFY_APPLICATION_UUID COOLIFY_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_API_TOKEN; do
+            if [ -z "${!name}" ]; then echo "Missing production configuration: $name" >&2; exit 1; fi
+          done
+          test "$GITHUB_EVENT_NAME" = push
+          test "$GITHUB_REF" = refs/heads/main
+
+  backend:
+    name: DB migration・API/Worker更新
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: production
+    outputs:
+      deployed: ${{ steps.backend.outputs.deployed }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Build backend deployment toolchain
+        run: docker compose build api
+      - name: Migrate and deploy API and Worker
+        id: backend
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COOLIFY_API_URL: ${{ vars.COOLIFY_API_URL }}
+          COOLIFY_APPLICATION_UUID: ${{ vars.COOLIFY_APPLICATION_UUID }}
+          COOLIFY_API_TOKEN: ${{ secrets.COOLIFY_API_TOKEN }}
+          PRODUCTION_API_URL: https://api.cycrio.com
+        run: |
+          docker compose run --rm --no-deps \
+            -e GITHUB_TOKEN -e GITHUB_SHA -e GITHUB_REPOSITORY \
+            -e COOLIFY_API_URL -e COOLIFY_API_TOKEN -e COOLIFY_APPLICATION_UUID -e PRODUCTION_API_URL \
+            -e GITHUB_OUTPUT=/run/github-output -v "$GITHUB_OUTPUT:/run/github-output" \
+            api go run ./cmd/deploy
+
+  web:
+    name: Web公開
+    needs: backend
+    if: needs.backend.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: docker/setup-buildx-action@v4.4.1
+      - name: Build Web deployment toolchain
+        run: docker compose build web
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: production-web-${{ github.sha }}
+          path: web/build/
+      - name: Publish tested Web assets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          test "$(cat web/build/release.txt)" = "$GITHUB_SHA"
+          docker compose run --rm --no-deps \
+            -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
+            web npm exec wrangler deploy -- --config wrangler.production.jsonc --tag "$GITHUB_SHA" --message "main $GITHUB_SHA" --keep-vars
+
+  verify:
+    name: 公開確認
+    needs: [backend, web]
+    if: needs.backend.outputs.deployed == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify public API readiness
+        run: curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 5 --max-time 15 https://api.cycrio.com/readyz
+      - name: Verify published Web commit
+        run: |
+          for attempt in $(seq 1 12); do
+            release=$(curl --fail --silent --show-error --max-time 15 "https://cycrio.com/release.txt?release=$GITHUB_SHA") || release=''
+            if [ "$release" = "$GITHUB_SHA" ]; then exit 0; fi
+            if [ "$attempt" -lt 12 ]; then sleep 5; fi
+          done
+          echo 'Published Web release could not be verified' >&2
+          exit 1

@@ -113,21 +113,23 @@ docker compose -f compose.coolify.yaml run --rm --no-deps manage \
 
 ## 6. 更新・バックアップ・受入確認
 
-mainへのpush・mergeで[CI](../.github/workflows/ci.yml)が起動します。ブラウザー・Go/Web・統合・PostgreSQL 16の全ジョブが成功した後、`production`ジョブが次の順に実行します。
+mainへのpush・mergeで[CI](../.github/workflows/ci.yml)が起動します。ブラウザー・Go/Web・統合・PostgreSQL 16の全ジョブが成功した後、`production`が[本番workflow](../.github/workflows/production.yml)を呼び出します。全体の実行図には「本番準備 → DB migration・API/Worker更新 → Web公開 → 公開確認」が別々のジョブ枠として表示されます。
 
 1. 必須の認証情報・変数を確認し、開始時点でmainの最新コミットでない実行はスキップ。
 2. CoolifyのコミットをCIと同じSHAに固定してデプロイ。起動コマンドも`docker compose --project-name <アプリUUID> up -d --wait --wait-timeout 300`に設定し、新しいイメージのmigration成功後にAPI・Workerを起動。既存のComposeプロジェクト名を維持し、両方のhealthcheck成功まで完了させません。
 3. Coolifyの完了コミット・全体のhealthy・公開APIの`/readyz`を確認。
 4. 同じCIでビルド・保存したWeb成果物を[本番Wrangler設定](../web/wrangler.production.jsonc)で公開。`https://cycrio.com/release.txt`のSHAを確認。
 
-本番ジョブは同時実行せず、実行中のデプロイを新しいpushで中断しません。PRではデプロイせず、本番の秘密値も渡しません。CoolifyのAuto Deployは無効を維持し、CIを通さない二重デプロイを避けます。APIとWebの更新は別サービスなので原子的ではありません。失敗時はGitHub ActionsとCoolifyの状態を確認してから再実行してください。DBの自動巻き戻しは行いません。
+呼出し側のconcurrencyで、本番workflow全体を同時実行せず、実行中のデプロイを新しいpushで中断しません。ジョブ単位でロックを解放しないため、工程間に別コミットの本番更新が割り込みません。migrationとAPI・Workerの起動は、Coolifyの依存条件とhealth待機を保つため同じジョブで実行します。古いSHAをスキップした場合はWeb公開・公開確認もスキップします。
+
+PRではデプロイせず、本番の秘密値も渡しません。CoolifyのAuto Deployは無効を維持し、CIを通さない二重デプロイを避けます。APIとWebの更新は別サービスなので原子的ではありません。失敗時はGitHub ActionsとCoolifyの状態を確認してから再実行してください。DBの自動巻き戻しは行いません。
 
 GitHubリポジトリのActions設定に以下を登録します。`production` Environmentに承認待ちを設定すると自動実行が停止するため、無人更新を行う場合は必須承認を設定しません。
 
 | 種別 | 名前 | 値・権限 |
 | --- | --- | --- |
 | Secret | `COOLIFY_API_TOKEN` | 対象チームのCI専用トークン。`read`・`write`・`deploy`。`read:sensitive`・`root`は不要 |
-| Secret | `CLOUDFLARE_API_TOKEN` | 対象アカウントのWorkers Scripts Edit、対象ゾーンのWorkers Routes Edit・Zone Read |
+| Secret | `CLOUDFLARE_API_TOKEN` | Account API Token。対象アカウントのWorkers製品スコープEditor、対象ゾーンのWorkers Routes Edit・Zone Read。個別Worker権限はCustom Domain非対応のため使いません |
 | Variable | `COOLIFY_API_URL` | CoolifyのHTTPS API URL（末尾`/api/v1`） |
 | Variable | `COOLIFY_APPLICATION_UUID` | API・Workerを管理するComposeアプリのUUID |
 | Variable | `CLOUDFLARE_ACCOUNT_ID` | Webを公開するCloudflareアカウントID |
@@ -163,5 +165,7 @@ make test-deploy-gate
 - [Cloudflare Workers Static Assets](https://developers.cloudflare.com/workers/static-assets/)
 - [Cloudflare: GitHub Actions](https://developers.cloudflare.com/workers/ci-cd/external-cicd/github-actions/)
 - [Docker Compose: 起動順序](https://docs.docker.com/compose/how-tos/startup-order/)
+- [GitHub Actions: 再利用workflowと呼出し側concurrency](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)
+- [Cloudflare: Workersの権限とCustom Domainの制限](https://developers.cloudflare.com/workers/authorization/workers/)
 - [pgx: QueryExecMode](https://pkg.go.dev/github.com/jackc/pgx/v5#QueryExecMode)
 - [PgBouncer: poolingとSQL機能の互換性](https://www.pgbouncer.org/features.html)
