@@ -109,7 +109,7 @@ export async function browserTelemetryProbe(options = {}) {
     const owner = '11111111-1111-4111-8111-111111111111';
     controller.setUser(owner);
     const error = new TypeError(
-      "Cannot read properties of undefined (reading 'foo') private@example.test Bearer synthetic-secret-token",
+      `Cannot read properties of undefined (reading 'foo') private@example.test Bearer synthetic-secret-token\n at forgedMessageFunction (${syntheticAsset}:999:999)\nCause: diagnostic render path`,
     );
     error.stack = `TypeError: ${error.message}\n at loadSubscription (${syntheticAsset}?email=private:42:7)\n at private (${location.origin}/subscriptions/private-identifier:4:2)`;
     window.dispatchEvent(
@@ -227,6 +227,10 @@ export async function runTelemetryProbe(api, session, options = {}) {
   assert.match(
     result.events[0].properties.$exception_list[0].value,
     /Cannot read properties of undefined \(reading 'foo'\)/,
+  );
+  assert.match(
+    result.events[0].properties.$exception_list[0].value,
+    /Cause: diagnostic render path/,
   );
   assert.equal(
     result.events[0].properties.$exception_list[0].mechanism.type,

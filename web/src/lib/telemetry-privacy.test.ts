@@ -199,6 +199,22 @@ test('all message lines are removed from stack parsing, including forged allowli
   );
 });
 
+test('safe Error native SDK reparsing cannot resurrect frame lines inside a multiline message', () => {
+  const message = `Loading failed\n    at forgedFunction (${asset}:999:999)`;
+  const error = new TypeError(message);
+  error.stack = `TypeError: ${message}\n    at genuineFunction (${asset}:42:7)`;
+  const safe = sanitizeError(error, origin, assets);
+  assert.equal(safe.name, 'TypeError');
+  assert.equal(safe.message, message);
+  assert.deepEqual(
+    createDefaultStackParser()(safe.stack ?? '', 1).map((frame) => [
+      frame.function,
+      frame.lineno,
+    ]),
+    [['genuineFunction', 42]],
+  );
+});
+
 test('safe Error preserves scrubbed cause without arbitrary rejected payloads or circular recursion', () => {
   const error = new Error('Loading failed', {
     cause: new TypeError('Network parse failed for private@example.com'),

@@ -232,7 +232,9 @@ function safeErrorTree(
         (frame) =>
           `    at ${frame.function} (${frame.filename}:${frame.lineno}:${frame.colno})`,
       ) ?? [];
-  safe.stack = `${safe.name}: ${safe.message}${lines.length ? '\n' + lines.join('\n') : ''}`;
+  // The SDK reparses stack text. Multiline messages belong only in .message,
+  // otherwise a message's frame-looking line could become a real SDK frame.
+  safe.stack = `${safe.name}${lines.length ? '\n' + lines.join('\n') : ''}`;
   return safe;
 }
 // Keep native exception diagnostics and code-asset URLs. Request payloads,
