@@ -45,9 +45,18 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
 	// These timestamps cover the account's entire execution history, including
 	// manual work, automatic work and retries. Queued requests never count as
 	// executions, and pagination must not change the account's latest activity.
-	if e = tx.QueryRow(ctx, `SELECT
- (SELECT max(started_at) FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2),
- (SELECT max(started_at) FROM mail_processing_runs WHERE owner_id=$1 AND account_id=$2)`, owner, account).Scan(&out.LastSyncStartedAt, &out.LastAnalysisStartedAt); e != nil {
+	if e = tx.QueryRow(ctx, `SELECT sync.started_at,analysis.started_at,
+ CASE WHEN sync.id IS NOT NULL THEN jsonb_build_object('state',CASE WHEN sync.state='running' AND NOT coalesce(sync.lease_until>clock_timestamp(),false) THEN 'unknown' ELSE sync.state END,'added_count',sync.added_count) END,
+ CASE WHEN analysis.id IS NOT NULL THEN jsonb_build_object('state',CASE WHEN analysis.state='running' AND NOT coalesce(analysis.lease_until>clock_timestamp(),false) THEN 'unknown' WHEN analysis.state='completed' AND analysis.failed_count>0 THEN 'completed_with_failures' ELSE analysis.state END) END,
+ CASE WHEN a.id IS NOT NULL THEN jsonb_build_object('state',a.state,
+ 'next_check_at',CASE WHEN a.state='enabled' THEN a.next_check_at END,
+ 'retry_at',CASE WHEN a.state='enabled' THEN a.retry_after END,
+ 'busy',EXISTS(SELECT 1 FROM mail_sync_runs r WHERE r.owner_id=$1 AND r.account_id=$2 AND r.automation_id=a.id AND r.automation_generation=a.generation AND r.state IN ('queued','leased','running'))
+ OR EXISTS(SELECT 1 FROM mail_processing_runs r WHERE r.owner_id=$1 AND r.account_id=$2 AND r.automation_id=a.id AND r.automation_generation=a.generation AND r.state IN ('queued','leased','running'))) END
+ FROM (SELECT 1) base
+ LEFT JOIN LATERAL (SELECT id,started_at,state,added_count,lease_until FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 AND started_at IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1) sync ON true
+ LEFT JOIN LATERAL (SELECT id,started_at,state,failed_count,lease_until FROM mail_processing_runs WHERE owner_id=$1 AND account_id=$2 AND started_at IS NOT NULL ORDER BY started_at DESC,id DESC LIMIT 1) analysis ON true
+ LEFT JOIN mail_automations a ON a.owner_id=$1 AND a.account_id=$2`, owner, account).Scan(&out.LastSyncStartedAt, &out.LastAnalysisStartedAt, &out.LastSyncActivity, &out.LastAnalysisActivity, &out.AutomationActivity); e != nil {
 		return out, processingError(e)
 	}
 	if e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM histories`, owner, account).Scan(&out.Total); e != nil {

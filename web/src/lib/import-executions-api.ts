@@ -38,6 +38,9 @@ export type ImportExecutionFilter = {
   offset: number;
 };
 export type ImportExecutionPage = {
+  last_sync_activity?: ImportSyncActivity | null;
+  last_analysis_activity?: ImportAnalysisActivity | null;
+  automation_activity?: ImportAutomationActivity | null;
   last_sync_started_at?: string | null;
   last_analysis_started_at?: string | null;
   history: ImportExecution[];
@@ -45,6 +48,34 @@ export type ImportExecutionPage = {
   limit: number;
   offset: number;
 };
+export type ImportAnalysisActivity = { state: string };
+export type ImportSyncActivity = ImportAnalysisActivity & {
+  added_count: number;
+};
+export type ImportAutomationActivity = {
+  state: string;
+  next_check_at: string | null;
+  retry_at: string | null;
+  busy: boolean;
+};
+function parseAnalysisActivity(value: unknown): ImportAnalysisActivity {
+  return { state: text(record(value).state, 60) };
+}
+function parseSyncActivity(value: unknown): ImportSyncActivity {
+  return {
+    ...parseAnalysisActivity(value),
+    added_count: integer(record(value).added_count),
+  };
+}
+function parseAutomationActivity(value: unknown): ImportAutomationActivity {
+  const v = record(value);
+  return {
+    state: text(v.state, 60),
+    next_check_at: nullable(v.next_check_at, timestamp),
+    retry_at: nullable(v.retry_at, timestamp),
+    busy: bool(v.busy),
+  };
+}
 export function importHistoryID(value: unknown): string {
   const id = text(value, 200);
   const match = /^(automation|manual):([0-9a-f-]{36})(?::([1-9][0-9]*))?$/.exec(
@@ -111,6 +142,30 @@ export function createImportExecutionsAPI(
       const v = record(await request(path, token, signal));
       return {
         ...pagination(v),
+        ...(v.last_sync_activity === undefined
+          ? {}
+          : {
+              last_sync_activity: nullable(
+                v.last_sync_activity,
+                parseSyncActivity,
+              ),
+            }),
+        ...(v.last_analysis_activity === undefined
+          ? {}
+          : {
+              last_analysis_activity: nullable(
+                v.last_analysis_activity,
+                parseAnalysisActivity,
+              ),
+            }),
+        ...(v.automation_activity === undefined
+          ? {}
+          : {
+              automation_activity: nullable(
+                v.automation_activity,
+                parseAutomationActivity,
+              ),
+            }),
         ...(v.last_sync_started_at === undefined
           ? {}
           : {

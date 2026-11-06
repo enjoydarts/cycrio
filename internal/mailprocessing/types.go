@@ -116,12 +116,28 @@ type ImportHistory struct {
 	UnknownCount    int       `json:"unknown_count"`
 }
 type ImportHistoryPage struct {
-	LastSyncStartedAt     *time.Time      `json:"last_sync_started_at"`
-	LastAnalysisStartedAt *time.Time      `json:"last_analysis_started_at"`
-	History               []ImportHistory `json:"history"`
-	Total                 int             `json:"total"`
-	Limit                 int             `json:"limit"`
-	Offset                int             `json:"offset"`
+	LastSyncActivity      *ImportSyncActivity       `json:"last_sync_activity"`
+	LastAnalysisActivity  *ImportAnalysisActivity   `json:"last_analysis_activity"`
+	AutomationActivity    *ImportAutomationActivity `json:"automation_activity"`
+	LastSyncStartedAt     *time.Time                `json:"last_sync_started_at"`
+	LastAnalysisStartedAt *time.Time                `json:"last_analysis_started_at"`
+	History               []ImportHistory           `json:"history"`
+	Total                 int                       `json:"total"`
+	Limit                 int                       `json:"limit"`
+	Offset                int                       `json:"offset"`
+}
+type ImportSyncActivity struct {
+	State      string `json:"state"`
+	AddedCount int    `json:"added_count"`
+}
+type ImportAnalysisActivity struct {
+	State string `json:"state"`
+}
+type ImportAutomationActivity struct {
+	State       string     `json:"state"`
+	NextCheckAt *time.Time `json:"next_check_at"`
+	RetryAt     *time.Time `json:"retry_at"`
+	Busy        bool       `json:"busy"`
 }
 type RetryInput struct {
 	Input

@@ -71,6 +71,14 @@ test('history retains account execution times independently of an empty page', a
   const activity = {
     last_sync_started_at: '2026-11-03T14:59:58Z',
     last_analysis_started_at: '2026-11-03T15:00:01Z',
+    last_sync_activity: { state: 'completed', added_count: 0 },
+    last_analysis_activity: { state: 'failed' },
+    automation_activity: {
+      state: 'enabled',
+      next_check_at: '2026-11-04T01:00:00Z',
+      retry_at: null,
+      busy: false,
+    },
   };
   const api = createImportExecutionsAPI('', async () =>
     Response.json({
@@ -86,7 +94,58 @@ test('history retains account execution times independently of an empty page', a
     async () => 't',
   );
   for (const [key, value] of Object.entries(activity))
-    assert.equal((page as unknown as Record<string, unknown>)[key], value);
+    assert.deepEqual((page as unknown as Record<string, unknown>)[key], value);
+});
+
+test('history validates activity counts, states, scheduling and legacy nulls', async () => {
+  for (const metadata of [
+    { last_sync_activity: { state: 'completed', added_count: -1 } },
+    { last_sync_activity: { state: 'completed', added_count: null } },
+    { last_analysis_activity: { state: 42 } },
+    {
+      automation_activity: {
+        state: 'enabled',
+        next_check_at: 'invalid',
+        retry_at: null,
+        busy: false,
+      },
+    },
+  ]) {
+    const api = createImportExecutionsAPI('', async () =>
+      Response.json({
+        history: [],
+        total: 0,
+        limit: 20,
+        offset: 0,
+        ...metadata,
+      }),
+    );
+    await assert.rejects(
+      api.list(
+        { account_id: ids.account, limit: 20, offset: 0 },
+        async () => 't',
+      ),
+    );
+  }
+  const api = createImportExecutionsAPI('', async () =>
+    Response.json({
+      history: [],
+      total: 0,
+      limit: 20,
+      offset: 0,
+      last_sync_activity: null,
+      last_analysis_activity: null,
+      automation_activity: null,
+    }),
+  );
+  const page = await api.list(
+    { account_id: ids.account, limit: 20, offset: 0 },
+    async () => 't',
+  );
+  assert.equal(
+    (page as unknown as Record<string, unknown>).last_sync_activity,
+    null,
+  );
 });
 
 test('history rejects malformed execution timestamps while accepting null and older responses', async () => {

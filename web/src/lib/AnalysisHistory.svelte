@@ -226,6 +226,9 @@
         <ImportLastActivity
           syncStartedAt={view.page.last_sync_started_at}
           analysisStartedAt={view.page.last_analysis_started_at}
+          syncActivity={view.page.last_sync_activity}
+          analysisActivity={view.page.last_analysis_activity}
+          automationActivity={view.page.automation_activity}
         />
       </div>{/if}
     {#if accepted}<p class="notice library-content" role="status">

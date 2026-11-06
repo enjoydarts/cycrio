@@ -220,6 +220,14 @@
         <ImportLastActivity
           syncStartedAt="2026-11-03T14:59:58Z"
           analysisStartedAt="2026-11-03T15:00:01Z"
+          syncActivity={{ state: 'completed', added_count: 0 }}
+          analysisActivity={{ state: 'completed_with_failures' }}
+          automationActivity={{
+            state: 'enabled',
+            next_check_at: '2026-11-03T16:00:01Z',
+            retry_at: null,
+            busy: false,
+          }}
         />
       </div>
     </LibraryPanel>

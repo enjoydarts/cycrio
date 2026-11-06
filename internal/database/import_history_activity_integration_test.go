@@ -21,7 +21,7 @@ func TestImportHistoryActivityUnstartedIsExplicitNull(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := activityJSON(t, page)
-	for _, key := range []string{"last_sync_started_at", "last_analysis_started_at"} {
+	for _, key := range []string{"last_sync_started_at", "last_analysis_started_at", "last_sync_activity", "last_analysis_activity", "automation_activity"} {
 		if string(fields[key]) != "null" {
 			t.Fatalf("%s must explicitly be null for an unstarted account", key)
 		}
@@ -43,7 +43,7 @@ func TestImportHistoryActivityIncludesAllRunsBeyondPage(t *testing.T) {
 	}
 	syncAt := time.Date(2026, 11, 3, 14, 59, 58, 0, time.UTC)
 	analysisAt := syncAt.Add(3 * time.Second)
-	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET started_at=$1 WHERE account_id=$2;`, syncAt, f.account); err != nil {
+	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET started_at=$1,examined_count=1,added_count=1 WHERE account_id=$2;`, syncAt, f.account); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_processing_runs SET started_at=$1 WHERE account_id=$2`, analysisAt, f.account); err != nil {
@@ -77,6 +77,19 @@ func TestImportHistoryActivityIncludesAllRunsBeyondPage(t *testing.T) {
 			t.Fatal(err)
 		}
 		fields := activityJSON(t, page)
+		var syncActivity struct {
+			State      string `json:"state"`
+			AddedCount int    `json:"added_count"`
+		}
+		if err := json.Unmarshal(fields["last_sync_activity"], &syncActivity); err != nil || syncActivity.State != "completed" || syncActivity.AddedCount != 1 {
+			t.Fatalf("latest actual sync metadata missing at offset %d: %+v %v", offset, syncActivity, err)
+		}
+		var analysisActivity struct {
+			State string `json:"state"`
+		}
+		if err := json.Unmarshal(fields["last_analysis_activity"], &analysisActivity); err != nil || analysisActivity.State != "completed_with_failures" {
+			t.Fatalf("latest actual analysis metadata missing: %+v %v", analysisActivity, err)
+		}
 		for key, want := range map[string]time.Time{"last_sync_started_at": syncAt, "last_analysis_started_at": analysisAt} {
 			var got *time.Time
 			if err := json.Unmarshal(fields[key], &got); err != nil || got == nil || !got.Equal(want) {
@@ -86,5 +99,64 @@ func TestImportHistoryActivityIncludesAllRunsBeyondPage(t *testing.T) {
 	}
 	if _, err := f.repo.ImportHistory(ctx, f.other, f.account, 20, 0); !errors.Is(err, mailprocessing.ErrNotFound) {
 		t.Fatal("foreign owner read activity", err)
+	}
+}
+
+func TestImportHistoryActivityZeroResultsAndAutomationSchedule(t *testing.T) {
+	f, automation, input := automaticFixture(t)
+	v := automaticBootstrap(t, f, automation, input, 1)
+	ctx := context.Background()
+	checkAt := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	for _, state := range []string{"completed", "failed", "running", "cancelled"} {
+		if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET state=$1,added_count=0,lease_until=clock_timestamp()+interval '1 minute' WHERE account_id=$2`, state, f.account); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_automations SET state='enabled',next_check_at=$1,retry_after=$1 WHERE id=$2`, checkAt, v.ID); err != nil {
+			t.Fatal(err)
+		}
+		page, err := f.repo.ImportHistory(ctx, f.owner, f.account, 1, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fields := activityJSON(t, page)
+		var sync struct {
+			State      string `json:"state"`
+			AddedCount *int   `json:"added_count"`
+		}
+		if err = json.Unmarshal(fields["last_sync_activity"], &sync); err != nil || sync.State != state || sync.AddedCount == nil || *sync.AddedCount != 0 {
+			t.Fatalf("sync metadata: %+v %v", sync, err)
+		}
+		var schedule struct {
+			State       string     `json:"state"`
+			NextCheckAt *time.Time `json:"next_check_at"`
+			RetryAt     *time.Time `json:"retry_at"`
+			Busy        bool       `json:"busy"`
+		}
+		if err = json.Unmarshal(fields["automation_activity"], &schedule); err != nil || schedule.State != "enabled" || schedule.NextCheckAt == nil || !schedule.NextCheckAt.Equal(checkAt) || schedule.RetryAt == nil || !schedule.RetryAt.Equal(checkAt) || schedule.Busy != (state == "running") {
+			t.Fatalf("schedule: %+v %v", schedule, err)
+		}
+	}
+	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_automations SET state='stopped' WHERE id=$1`, v.ID); err != nil {
+		t.Fatal(err)
+	}
+	page, err := f.repo.ImportHistory(ctx, f.owner, f.account, 1, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schedule map[string]any
+	if err = json.Unmarshal(activityJSON(t, page)["automation_activity"], &schedule); err != nil || schedule["next_check_at"] != nil || schedule["retry_at"] != nil {
+		t.Fatalf("stopped schedule: %+v %v", schedule, err)
+	}
+	// An expired running lease is not evidence that a worker is still checking.
+	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_sync_runs SET state='running',lease_until=clock_timestamp()-interval '1 second' WHERE account_id=$1`, f.account); err != nil {
+		t.Fatal(err)
+	}
+	page, err = f.repo.ImportHistory(ctx, f.owner, f.account, 1, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var sync map[string]any
+	if err = json.Unmarshal(activityJSON(t, page)["last_sync_activity"], &sync); err != nil || sync["state"] != "unknown" {
+		t.Fatalf("expired activity: %+v %v", sync, err)
 	}
 }

@@ -174,12 +174,22 @@ try {
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
     await visit('import-activity', width);
-    await wait('document.querySelectorAll(".last-activity time").length===2');
+    await wait('document.querySelectorAll(".last-activity time").length===3');
     assert.deepEqual(
       await js(
         'return Array.from(document.querySelectorAll(".last-activity time"), e=>e.textContent)',
       ),
-      ['2026/11/03 23:59:58', '2026/11/04 00:00:01'],
+      ['2026/11/03 23:59:58', '2026/11/04 00:00:01', '2026/11/04 01:00:01'],
+    );
+    assert.ok(
+      await js(
+        'return document.querySelector(".last-activity").textContent.includes("追加 0 通")&&document.querySelector(".last-activity").textContent.includes("新しく追加されたメールはありません")',
+      ),
+    );
+    assert.ok(
+      await js(
+        'return document.querySelector(".last-activity").textContent.includes("未解析")&&document.querySelector(".last-activity").textContent.includes("再解析")',
+      ),
     );
     await layout();
     await screenshot(`import-activity-${width}`);

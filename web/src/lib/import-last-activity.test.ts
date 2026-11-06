@@ -17,7 +17,7 @@ test('account activity shows actual execution starts in Japan time across midnig
     },
   }).body;
   for (const label of [
-    '最終取り込み',
+    '最終メール確認',
     '最終解析',
     '実行開始日時',
     '日本時間',
@@ -26,6 +26,84 @@ test('account activity shows actual execution starts in Japan time across midnig
   ])
     assert.ok(body.includes(label), label);
   assert.match(body, /datetime="2026-11-03T15:00:01Z"/);
+});
+
+test('zero additions explain the check without claiming there is no analysis backlog', async () => {
+  const Activity = (await import('./ImportLastActivity.svelte')).default;
+  const body = render(Activity, {
+    props: {
+      syncStartedAt: '2026-11-03T14:59:58Z',
+      syncActivity: { state: 'completed', added_count: 0 },
+      analysisActivity: { state: 'failed' },
+      automationActivity: {
+        state: 'enabled',
+        next_check_at: '2026-11-03T15:00:01Z',
+        retry_at: null,
+        busy: false,
+      },
+    },
+  }).body;
+  for (const label of [
+    '追加 0 通',
+    '新しく追加されたメールはありません',
+    '未解析',
+    '再解析',
+    '失敗',
+    '次回確認',
+    '2026/11/04 00:00:01',
+  ])
+    assert.ok(body.includes(label), label);
+  assert.doesNotMatch(body, /解析対象なし/);
+});
+
+test('unfinished checks never describe zero additions as a successful empty result', async () => {
+  const Activity = (await import('./ImportLastActivity.svelte')).default;
+  for (const state of ['running', 'failed', 'cancelled', 'unknown']) {
+    const body = render(Activity, {
+      props: {
+        syncActivity: { state, added_count: 0 },
+        automationActivity: {
+          state: 'stopped',
+          next_check_at: '2026-11-03T15:00:01Z',
+          retry_at: null,
+          busy: false,
+        },
+      },
+    }).body;
+    assert.doesNotMatch(
+      body,
+      /新しく追加されたメールはありません|2026\/11\/04 00:00:01/,
+    );
+    assert.match(body, /自動確認は停止中/);
+  }
+});
+
+test('busy and retry schedules are conditional and clearly labeled', async () => {
+  const Activity = (await import('./ImportLastActivity.svelte')).default;
+  const busy = render(Activity, {
+    props: {
+      automationActivity: {
+        state: 'enabled',
+        next_check_at: '2026-11-03T15:00:01Z',
+        retry_at: null,
+        busy: true,
+      },
+    },
+  }).body;
+  assert.match(busy, /処理の完了後/);
+  assert.doesNotMatch(busy, /2026\/11\/04 00:00:01/);
+  const retry = render(Activity, {
+    props: {
+      automationActivity: {
+        state: 'enabled',
+        next_check_at: '2026-11-03T15:00:01Z',
+        retry_at: '2026-11-03T16:00:01Z',
+        busy: false,
+      },
+    },
+  }).body;
+  assert.match(retry, /再試行予定/);
+  assert.match(retry, /2026\/11\/04 01:00:01/);
 });
 
 test('activity distinguishes never executed from missing legacy metadata', async () => {
