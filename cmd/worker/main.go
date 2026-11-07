@@ -218,7 +218,7 @@ func run() (result error) {
 	})
 	heartbeatCredentials := credentials.NewService(database.NewCredentialRepository(pool), keyring)
 	heartbeat := healthchecks.NewService(database.NewHealthchecksRepository(pool), heartbeatCredentials.Resolve, healthchecks.NewClient(nil), ready, healthchecks.NewAPIProbe(nil))
-	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_heartbeat"), func(ctx context.Context, _ int) (int, error) { return 0, heartbeat.Tick(ctx) }, 10*time.Second)
+	go dispatchHeartbeat(withWorkerOperation(ctx, "worker_heartbeat"), ready, heartbeat.Tick)
 	addr := os.Getenv("HTTP_ADDR")
 	if addr == "" {
 		addr = ":8080"

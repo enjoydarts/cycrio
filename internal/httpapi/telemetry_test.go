@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/database"
@@ -169,5 +170,68 @@ func TestTelemetryBoundaryPreservesOriginalPanicForSanitizingReporter(t *testing
 	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/example", nil))
 	if w.Code != 500 || len(f.values) != 1 || f.values[0] != original || strings.Contains(w.Body.String(), original.Error()) {
 		t.Fatalf("panic detail not preserved safely: values=%v body=%s", f.values, w.Body.String())
+	}
+}
+
+func TestTelemetryBoundaryClassifiesRequestCancellation(t *testing.T) {
+	serverFailure := errors.New("database connection lost")
+	for _, tt := range []struct {
+		name       string
+		cancel     bool
+		deadline   bool
+		cause      error
+		wantEvents int
+	}{
+		{name: "canceled request and wrapped domain cancellation", cancel: true, cause: diagnostics.Wrap(subscriptions.ErrUnavailable, fmt.Errorf("query subscriptions: %w", context.Canceled)), wantEvents: 0},
+		{name: "canceled request and joined cancellations", cancel: true, cause: errors.Join(context.Canceled, fmt.Errorf("query: %w", context.Canceled)), wantEvents: 0},
+		{name: "active request and cancellation error", cause: context.Canceled, wantEvents: 1},
+		{name: "canceled request and independent failure", cancel: true, cause: serverFailure, wantEvents: 1},
+		{name: "canceled request without cause", cancel: true, wantEvents: 1},
+		{name: "canceled request and joined independent failure", cancel: true, cause: errors.Join(context.Canceled, serverFailure), wantEvents: 1},
+		{name: "canceled request and deadline failure", cancel: true, cause: context.DeadlineExceeded, wantEvents: 1},
+		{name: "deadline request and cancellation error", deadline: true, cause: context.Canceled, wantEvents: 1},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if tt.deadline {
+				var deadlineCancel context.CancelFunc
+				ctx, deadlineCancel = context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				defer deadlineCancel()
+			}
+			f := &detailedTelemetryFixture{}
+			h := telemetryBoundary(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if tt.cancel {
+					cancel()
+				}
+				writeSubscriptionError(w, diagnostics.Wrap(subscriptions.ErrUnavailable, tt.cause))
+			}), f)
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/subscriptions", nil).WithContext(ctx))
+			if w.Code != 503 || len(f.values) != tt.wantEvents {
+				t.Fatalf("status=%d events=%v, want %d reports", w.Code, f.values, tt.wantEvents)
+			}
+			if tt.wantEvents > 0 && tt.cause != nil {
+				err, ok := f.values[0].(error)
+				if !ok || !errors.Is(err, tt.cause) {
+					t.Fatalf("original cause lost: %v", f.values)
+				}
+			}
+		})
+	}
+}
+
+func TestTelemetryBoundaryReportsPanicOnCanceledRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	f := &detailedTelemetryFixture{}
+	h := telemetryBoundary(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		cancel()
+		panic(context.Canceled)
+	}), f)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/subscriptions", nil).WithContext(ctx))
+	if w.Code != 500 || len(f.events) != 1 || f.events[0][2] != "api_panic" || f.values[0] != context.Canceled {
+		t.Fatalf("panic not preserved: status=%d events=%v values=%v", w.Code, f.events, f.values)
 	}
 }

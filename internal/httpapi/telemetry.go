@@ -125,6 +125,10 @@ func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 				return
 			}
 			if response.status >= 500 && r.URL.Path != "/healthz" && r.URL.Path != "/readyz" {
+				cause := causes.Error()
+				if r.Context().Err() == context.Canceled && onlyCancellation(cause, 0) {
+					return
+				}
 				method := r.Method
 				switch method {
 				case "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS":
@@ -138,11 +142,40 @@ func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 				if !strings.HasPrefix(pattern, method+" ") {
 					pattern = method + " " + pattern
 				}
-				report("api_server_error", diagnostics.Wrap(fmt.Errorf("HTTP %d %s", response.status, pattern), causes.Error()))
+				report("api_server_error", diagnostics.Wrap(fmt.Errorf("HTTP %d %s", response.status, pattern), cause))
 			}
 		}()
 		next.ServeHTTP(response, r)
 	})
+}
+
+// A canceled request alone does not explain a server failure. Require its
+// recorded cause to end only in cancellation, keeping independent joined
+// failures, deadlines, and missing or unrecognized causes reportable.
+func onlyCancellation(err error, depth int) bool {
+	if err == nil || depth >= 16 {
+		return false
+	}
+	if err == context.Canceled {
+		return true
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := wrapped.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !onlyCancellation(cause, depth+1) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return onlyCancellation(wrapped.Unwrap(), depth+1)
+	default:
+		return false
+	}
 }
 
 // Match only registered patterns. Never derive dimensions from URLs, query
