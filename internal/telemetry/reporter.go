@@ -450,6 +450,10 @@ func (t *privateTransport) RoundTrip(req *http.Request) (response *http.Response
 	}
 	properties["$process_person_profile"] = json.RawMessage("false")
 	properties["$geoip_disable"] = json.RawMessage("true")
+	// Capture puts distinct_id at the top level, unlike Exception. Normalize
+	// both SDK shapes to the trusted owner rather than dropping required identity
+	// with optional SDK metadata. Never copy an arbitrary wire identity.
+	properties["distinct_id"], _ = json.Marshal(t.event.owner)
 	batch[0]["properties"], _ = json.Marshal(properties)
 	envelope["batch"], _ = json.Marshal(batch)
 	body, err := json.Marshal(envelope)

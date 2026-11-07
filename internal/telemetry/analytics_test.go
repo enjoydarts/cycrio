@@ -45,6 +45,9 @@ func TestAnalyticsWirePreservesOnlyTypedMetadata(t *testing.T) {
 	}
 	first := read()
 	props := first["properties"].(map[string]any)
+	if props["distinct_id"] != testOwner {
+		t.Fatalf("capture lost the required trusted identity: %v", first)
+	}
 	if first["event"] != "$ai_generation" || props["$ai_input_tokens"] != float64(123) || props["$ai_total_cost_usd"] != amount || props["$ai_latency"] != 1.5 || props["$process_person_profile"] != false {
 		t.Fatal(first)
 	}
@@ -75,6 +78,11 @@ func TestAnalyticsWirePreservesOnlyTypedMetadata(t *testing.T) {
 		if got := read(); got["event"] != "cycrio_api_operation" {
 			t.Fatal(got)
 		}
+	}
+	r.TrackQueue("mail_processing", 2, 1, 120)
+	queued := read()
+	if queued["event"] != "cycrio_queue_snapshot" || queued["properties"].(map[string]any)["distinct_id"] != "cycrio-system" {
+		t.Fatalf("system measurement lost identity: %v", queued)
 	}
 }
 
