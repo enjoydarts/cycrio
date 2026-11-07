@@ -29,6 +29,7 @@ func registerUserErasure(mux *http.ServeMux, service UserErasureService, c boots
 		}
 		identity, e := verifier.Verify(r.Context(), parts[1])
 		if e != nil {
+			recordTelemetryError(w, e)
 			if errors.Is(e, auth.ErrUnavailable) {
 				writeError(w, 503, "dependency_unavailable")
 			} else {
@@ -82,6 +83,7 @@ func registerUserErasure(mux *http.ServeMux, service UserErasureService, c boots
 	mux.HandleFunc("GET /v1/me/withdrawal", handle)
 }
 func writeErasureError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, erasure.ErrInvalid):
 		writeError(w, 400, "invalid_request")

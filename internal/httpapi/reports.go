@@ -32,6 +32,7 @@ func registerReports(mux *http.ServeMux, service ReportsService, protect protect
 		}
 		report, err := service.Read(r.Context(), p.ID, month)
 		if err != nil {
+			recordTelemetryError(w, err)
 			switch {
 			case errors.Is(err, reports.ErrInvalid):
 				writeError(w, 400, "invalid_request")

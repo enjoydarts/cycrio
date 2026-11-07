@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 	"strings"
 	"time"
@@ -38,7 +39,7 @@ func (r *ModelCatalogRepository) CurrentCredentialID(ctx context.Context, provid
 		return "", modelcatalog.ErrCredentialsRequired
 	}
 	if err != nil {
-		return "", modelcatalog.ErrUnavailable
+		return "", diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	return id, nil
 }
@@ -50,7 +51,7 @@ func catalogError(err error) error {
 	if errors.As(err, &p) && p.Code == "23505" {
 		return modelcatalog.ErrConflict
 	}
-	return modelcatalog.ErrUnavailable
+	return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 }
 func validRevision(v int64) bool { return v >= 0 && v < math.MaxInt64 }
 func readModel(ctx context.Context, q interface {
@@ -65,22 +66,25 @@ func readModel(ctx context.Context, q interface {
 	if err := q.QueryRow(ctx, sql, id).Scan(&current, &base); err != nil {
 		return m, b, catalogError(err)
 	}
-	if json.Unmarshal(current, &m) != nil || json.Unmarshal(base, &b) != nil {
-		return m, b, modelcatalog.ErrUnavailable
+	if err := json.Unmarshal(current, &m); err != nil {
+		return m, b, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
+	}
+	if err := json.Unmarshal(base, &b); err != nil {
+		return m, b, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	return m, b, nil
 }
 func writeModel(ctx context.Context, tx pgx.Tx, m modelcatalog.Model, base *modelcatalog.Model) error {
 	raw, err := json.Marshal(m)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	if base == nil {
 		_, err = tx.Exec(ctx, `UPDATE model_catalog SET doc=$2 WHERE id=$1`, m.ID, raw)
 	} else {
 		b, e := json.Marshal(base)
 		if e != nil {
-			return modelcatalog.ErrUnavailable
+			return diagnostics.Wrap(modelcatalog.ErrUnavailable, e)
 		}
 		_, err = tx.Exec(ctx, `UPDATE model_catalog SET doc=$2,base_doc=$3 WHERE id=$1`, m.ID, raw, b)
 	}
@@ -107,7 +111,7 @@ func mergeOverrides(m modelcatalog.Model) modelcatalog.Model {
 }
 func auditCatalog(ctx context.Context, tx pgx.Tx, actor, action, target string) error {
 	if _, err := tx.Exec(ctx, `INSERT INTO catalog_audit(id,actor_id,action,target)VALUES($1,$2,$3,$4)`, uuid.NewString(), actor, action, target); err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	return nil
 }
@@ -115,8 +119,8 @@ func finishCatalog(ctx context.Context, tx pgx.Tx, actor, action, target string)
 	if err := auditCatalog(ctx, tx, actor, action, target); err != nil {
 		return err
 	}
-	if tx.Commit(ctx) != nil {
-		return modelcatalog.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
@@ -130,24 +134,27 @@ func (r *ModelCatalogRepository) List(ctx context.Context, f modelcatalog.Filter
 	}
 	// Search uses position rather than LIKE, so administrator text is literal.
 	where := ` WHERE coalesce(doc->>'deleted_at','')='' AND ($1='' OR provider=$1) AND ($2 OR (doc->>'enabled')::boolean) AND ($3='' OR position(lower($3) in lower(model_id||' '||(doc->>'display_name')))>0)`
-	if r.pool.QueryRow(ctx, `SELECT count(*) FROM model_catalog`+where, f.Provider, f.IncludeDisabled, f.Search).Scan(&result.Total) != nil {
-		return result, modelcatalog.ErrUnavailable
+	if diagnosticErr := r.pool.QueryRow(ctx, `SELECT count(*) FROM model_catalog`+where, f.Provider, f.IncludeDisabled, f.Search).Scan(&result.Total); diagnosticErr != nil {
+		return result, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	rows, err := r.pool.Query(ctx, `SELECT doc FROM model_catalog`+where+` ORDER BY provider,model_id,id LIMIT $4 OFFSET $5`, f.Provider, f.IncludeDisabled, f.Search, f.Limit, f.Offset)
 	if err != nil {
-		return result, modelcatalog.ErrUnavailable
+		return result, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var raw []byte
 		var m modelcatalog.Model
-		if rows.Scan(&raw) != nil || json.Unmarshal(raw, &m) != nil {
-			return result, modelcatalog.ErrUnavailable
+		if err := rows.Scan(&raw); err != nil {
+			return result, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
+		}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			return result, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 		}
 		result.Models = append(result.Models, m)
 	}
-	if rows.Err() != nil {
-		return result, modelcatalog.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return result, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return result, nil
 }
@@ -161,7 +168,7 @@ func (r *ModelCatalogRepository) AddModel(ctx context.Context, actor string, in 
 	raw, _ := json.Marshal(m)
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return m, modelcatalog.ErrUnavailable
+		return m, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	if _, err := tx.Exec(ctx, `INSERT INTO model_catalog(id,provider,model_id,source,base_doc,doc)VALUES($1,$2,$3,'manual',$4,$4)`, m.ID, m.Provider, m.ModelID, raw); err != nil {
@@ -175,7 +182,7 @@ func (r *ModelCatalogRepository) AddModel(ctx context.Context, actor string, in 
 func (r *ModelCatalogRepository) UpdateModel(ctx context.Context, actor, id string, in modelcatalog.ModelUpdate) (modelcatalog.Model, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.Model{}, modelcatalog.ErrUnavailable
+		return modelcatalog.Model{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	m, base, err := readModel(ctx, tx, id, true)
@@ -217,19 +224,22 @@ func (r *ModelCatalogRepository) Prices(ctx context.Context, id string) ([]model
 	}
 	rows, err := r.pool.Query(ctx, `SELECT doc FROM catalog_prices WHERE model_id=$1 ORDER BY captured_at DESC,id DESC LIMIT 50`, id)
 	if err != nil {
-		return nil, modelcatalog.ErrUnavailable
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var raw []byte
 		var p modelcatalog.Price
-		if rows.Scan(&raw) != nil || json.Unmarshal(raw, &p) != nil {
-			return nil, modelcatalog.ErrUnavailable
+		if err := rows.Scan(&raw); err != nil {
+			return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
+		}
+		if err := json.Unmarshal(raw, &p); err != nil {
+			return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 		}
 		items = append(items, p)
 	}
-	if rows.Err() != nil {
-		return nil, modelcatalog.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return items, nil
 }
@@ -254,7 +264,7 @@ func addCatalogPrice(ctx context.Context, tx pgx.Tx, modelID, actor string, p mo
 func (r *ModelCatalogRepository) SavePrice(ctx context.Context, actor, id string, expected int64, p modelcatalog.Price) (modelcatalog.Model, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.Model{}, modelcatalog.ErrUnavailable
+		return modelcatalog.Model{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	m, _, err := readModel(ctx, tx, id, true)
@@ -284,7 +294,7 @@ func (r *ModelCatalogRepository) SavePrice(ctx context.Context, actor, id string
 func (r *ModelCatalogRepository) ResetPrice(ctx context.Context, actor, id string, expected int64) (modelcatalog.Model, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.Model{}, modelcatalog.ErrUnavailable
+		return modelcatalog.Model{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	m, _, err := readModel(ctx, tx, id, true)
@@ -320,7 +330,7 @@ func scanSync(row interface{ Scan(...any) error }) (modelcatalog.SyncState, erro
 func (r *ModelCatalogRepository) SyncStates(ctx context.Context) ([]modelcatalog.SyncState, error) {
 	rows, err := r.pool.Query(ctx, `SELECT `+syncColumns+` FROM catalog_sync ORDER BY provider`)
 	if err != nil {
-		return nil, modelcatalog.ErrUnavailable
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	items := []modelcatalog.SyncState{}
@@ -331,8 +341,8 @@ func (r *ModelCatalogRepository) SyncStates(ctx context.Context) ([]modelcatalog
 		}
 		items = append(items, s)
 	}
-	if rows.Err() != nil {
-		return nil, modelcatalog.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return items, nil
 }
@@ -342,7 +352,7 @@ func (r *ModelCatalogRepository) RequestSync(ctx context.Context, actor, provide
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.SyncState{}, modelcatalog.ErrUnavailable
+		return modelcatalog.SyncState{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	s, err := scanSync(tx.QueryRow(ctx, `UPDATE catalog_sync SET status=CASE WHEN status='running' AND lease_until>clock_timestamp() THEN 'running' ELSE 'queued' END,next_sync_at=CASE WHEN status='running' AND lease_until>clock_timestamp() THEN next_sync_at ELSE clock_timestamp() END WHERE provider=$1 RETURNING `+syncColumns, provider))
@@ -357,7 +367,7 @@ func (r *ModelCatalogRepository) RequestSync(ctx context.Context, actor, provide
 func (r *ModelCatalogRepository) ConfigureSync(ctx context.Context, actor, provider string, in modelcatalog.SyncConfigInput) (modelcatalog.SyncState, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.SyncState{}, modelcatalog.ErrUnavailable
+		return modelcatalog.SyncState{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	s, err := scanSync(tx.QueryRow(ctx, `SELECT `+syncColumns+` FROM catalog_sync WHERE provider=$1 FOR UPDATE`, provider))
@@ -380,7 +390,7 @@ func (r *ModelCatalogRepository) ClaimDue(ctx context.Context) ([]modelcatalog.S
 	items := []modelcatalog.SyncLease{}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, modelcatalog.ErrUnavailable
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	var provider string
@@ -398,14 +408,14 @@ func (r *ModelCatalogRepository) ClaimDue(ctx context.Context) ([]modelcatalog.S
 		return items, nil
 	}
 	if err != nil {
-		return nil, modelcatalog.ErrUnavailable
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	lease := modelcatalog.SyncLease{Provider: provider, LeaseID: uuid.NewString()}
 	if _, err := tx.Exec(ctx, `UPDATE catalog_sync SET status='running',last_attempt_at=now(),error_code=NULL,lease_id=$2,lease_until=now()+interval '2 minutes' WHERE provider=$1`, provider, lease.LeaseID); err != nil {
-		return nil, modelcatalog.ErrUnavailable
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return nil, modelcatalog.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return append(items, lease), nil
 }
@@ -421,7 +431,7 @@ func validLease(ctx context.Context, q interface {
 	}
 	var valid bool
 	if err := q.QueryRow(ctx, sql, provider, lease).Scan(&valid); err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	if !valid {
 		return modelcatalog.ErrConflict
@@ -437,7 +447,7 @@ func (r *ModelCatalogRepository) FinishSync(ctx context.Context, provider, lease
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	if err := validLease(ctx, tx, provider, lease, true); err != nil {
@@ -449,20 +459,20 @@ func (r *ModelCatalogRepository) FinishSync(ctx context.Context, provider, lease
 	}
 	result, err := tx.Exec(ctx, `UPDATE catalog_sync SET status=$3,error_code=$4,next_sync_at=clock_timestamp()+interval '15 minutes',lease_id=NULL,lease_until=NULL WHERE provider=$1 AND lease_id=$2 AND lease_until>clock_timestamp() AND status='running'`, provider, lease, status, code)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	if result.RowsAffected() != 1 {
 		return modelcatalog.ErrConflict
 	}
-	if tx.Commit(ctx) != nil {
-		return modelcatalog.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
 func (r *ModelCatalogRepository) ApplySync(ctx context.Context, provider, lease string, entries []modelcatalog.CatalogEntry) error {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	if err := validLease(ctx, tx, provider, lease, true); err != nil {
@@ -557,15 +567,19 @@ func (r *ModelCatalogRepository) ApplySync(ctx context.Context, provider, lease 
 	}
 	rows, err := tx.Query(ctx, `SELECT doc FROM model_catalog WHERE provider=$1 AND source='api' AND NOT(model_id=ANY($2::text[])) FOR UPDATE`, provider, ids)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	retired := []modelcatalog.Model{}
 	for rows.Next() {
 		var raw []byte
 		var m modelcatalog.Model
-		if rows.Scan(&raw) != nil || json.Unmarshal(raw, &m) != nil {
+		if err := rows.Scan(&raw); err != nil {
 			rows.Close()
-			return modelcatalog.ErrUnavailable
+			return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
+		}
+		if err := json.Unmarshal(raw, &m); err != nil {
+			rows.Close()
+			return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 		}
 		if m.Available {
 			if m.Version == math.MaxInt64 {
@@ -579,8 +593,8 @@ func (r *ModelCatalogRepository) ApplySync(ctx context.Context, provider, lease 
 		}
 	}
 	rows.Close()
-	if rows.Err() != nil {
-		return modelcatalog.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	for _, m := range retired {
 		if err := writeModel(ctx, tx, m, nil); err != nil {
@@ -589,13 +603,13 @@ func (r *ModelCatalogRepository) ApplySync(ctx context.Context, provider, lease 
 	}
 	result, err := tx.Exec(ctx, `UPDATE catalog_sync SET status='succeeded',error_code=NULL,last_success_at=clock_timestamp(),next_sync_at=clock_timestamp()+make_interval(hours=>interval_hours),lease_id=NULL,lease_until=NULL WHERE provider=$1 AND lease_id=$2 AND lease_until>clock_timestamp() AND status='running'`, provider, lease)
 	if err != nil {
-		return modelcatalog.ErrUnavailable
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	if result.RowsAffected() != 1 {
 		return modelcatalog.ErrConflict
 	}
-	if tx.Commit(ctx) != nil {
-		return modelcatalog.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
@@ -616,12 +630,12 @@ func (r *ModelCatalogRepository) Settings(ctx context.Context) (modelcatalog.Set
 func (r *ModelCatalogRepository) SaveSettings(ctx context.Context, actor string, in modelcatalog.SettingsInput) (modelcatalog.SettingsState, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return modelcatalog.SettingsState{}, modelcatalog.ErrUnavailable
+		return modelcatalog.SettingsState{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	var revision int64
-	if tx.QueryRow(ctx, `SELECT version FROM catalog_settings WHERE singleton FOR UPDATE`).Scan(&revision) != nil {
-		return modelcatalog.SettingsState{}, modelcatalog.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT version FROM catalog_settings WHERE singleton FOR UPDATE`).Scan(&revision); diagnosticErr != nil {
+		return modelcatalog.SettingsState{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, diagnosticErr)
 	}
 	if !validRevision(in.ExpectedVersion) || revision != in.ExpectedVersion {
 		return modelcatalog.SettingsState{}, modelcatalog.ErrConflict
@@ -658,7 +672,7 @@ func (r *ModelCatalogRepository) SaveSettings(ctx context.Context, actor string,
 		return modelcatalog.SettingsState{}, catalogError(err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE catalog_settings SET version=version+1,current_id=$1 WHERE singleton`, id); err != nil {
-		return modelcatalog.SettingsState{}, modelcatalog.ErrUnavailable
+		return modelcatalog.SettingsState{}, diagnostics.Wrap(modelcatalog.ErrUnavailable, err)
 	}
 	state, err := scanSettings(tx.QueryRow(ctx, settingsSelect))
 	if err != nil {

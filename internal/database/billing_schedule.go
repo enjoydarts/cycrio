@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"strings"
 	"time"
 
@@ -99,8 +100,13 @@ func (r *BillingScheduleRepository) Save(ctx context.Context, owner, id string, 
 		if !same || !strings.EqualFold(target, id) {
 			return billingschedule.SaveResult{}, &billingschedule.Conflict{Reason: "request_conflict"}
 		}
-		if json.Unmarshal(ruleJSON, &receipt.Rule) != nil || len(evidenceJSON) > 0 && json.Unmarshal(evidenceJSON, &receipt.HistoryEvidence) != nil {
-			return billingschedule.SaveResult{}, billingschedule.ErrUnavailable
+		if err := json.Unmarshal(ruleJSON, &receipt.Rule); err != nil {
+			return billingschedule.SaveResult{}, diagnostics.Wrap(billingschedule.ErrUnavailable, err)
+		}
+		if len(evidenceJSON) > 0 {
+			if err := json.Unmarshal(evidenceJSON, &receipt.HistoryEvidence); err != nil {
+				return billingschedule.SaveResult{}, diagnostics.Wrap(billingschedule.ErrUnavailable, err)
+			}
 		}
 		s, e := scheduleSubscription(ctx, tx, owner, id, false)
 		if e != nil {

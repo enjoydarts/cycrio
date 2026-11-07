@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"reflect"
 	"slices"
 
@@ -22,8 +23,11 @@ func scanScheduledChange(row pgx.Row) (subscriptions.ScheduledChange, error) {
 	if e != nil {
 		return s, subscriptionError(e)
 	}
-	if json.Unmarshal(p, &s.Preview) != nil || json.Unmarshal(fields, &s.SelectedFields) != nil {
-		return s, subscriptions.ErrUnavailable
+	if err := json.Unmarshal(p, &s.Preview); err != nil {
+		return s, diagnostics.Wrap(subscriptions.ErrUnavailable, err)
+	}
+	if err := json.Unmarshal(fields, &s.SelectedFields); err != nil {
+		return s, diagnostics.Wrap(subscriptions.ErrUnavailable, err)
 	}
 	return s, nil
 }

@@ -4,11 +4,13 @@ import (
 	"context"
 	"crypto/rsa"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
 
 	"github.com/clerk/clerk-sdk-go/v2"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 const (
@@ -21,7 +23,7 @@ const (
 func (v *ClerkVerifier) key(ctx context.Context, keyID string) (*clerk.JSONWebKey, error) {
 	for {
 		if ctx.Err() != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, ctx.Err())
 		}
 		v.mu.Lock()
 		now := v.now()
@@ -33,7 +35,7 @@ func (v *ClerkVerifier) key(ctx context.Context, keyID string) (*clerk.JSONWebKe
 			v.mu.Unlock()
 			select {
 			case <-ctx.Done():
-				return nil, ErrUnavailable
+				return nil, diagnostics.Wrap(ErrUnavailable, ctx.Err())
 			case <-done:
 				continue
 			}
@@ -44,7 +46,7 @@ func (v *ClerkVerifier) key(ctx context.Context, keyID string) (*clerk.JSONWebKe
 			err := v.fetchErr
 			v.mu.Unlock()
 			if err != nil {
-				return nil, ErrUnavailable
+				return nil, diagnostics.Wrap(ErrUnavailable, err)
 			}
 			return nil, ErrInvalidToken
 		}
@@ -74,30 +76,33 @@ func (v *ClerkVerifier) refreshKeys() {
 
 func (v *ClerkVerifier) fetchKeys(ctx context.Context) (map[string]*clerk.JSONWebKey, error) {
 	if v.jwksURL == "" {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, fmt.Errorf("JWKS issuer URL is not configured"))
 	}
 	ctx, cancel := context.WithTimeout(ctx, jwksTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, v.jwksURL, nil)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	request.Header.Set("Accept", "application/json")
 	response, err := v.client.Do(request)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, fmt.Errorf("JWKS fetch HTTP %d", response.StatusCode))
 	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, jwksMaxBytes+1))
-	if err != nil || len(body) > jwksMaxBytes {
-		return nil, ErrUnavailable
+	if err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
+	}
+	if len(body) > jwksMaxBytes {
+		return nil, diagnostics.Wrap(ErrUnavailable, fmt.Errorf("JWKS exceeds %d bytes", jwksMaxBytes))
 	}
 	var keySet clerk.JSONWebKeySet
-	if json.Unmarshal(body, &keySet) != nil {
-		return nil, ErrUnavailable
+	if err := json.Unmarshal(body, &keySet); err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, diagnostics.Snapshot(err, func(text string) string { return diagnostics.ScrubKnown(text, string(body)) }))
 	}
 	keys := make(map[string]*clerk.JSONWebKey, len(keySet.Keys))
 	for _, key := range keySet.Keys {
@@ -109,12 +114,12 @@ func (v *ClerkVerifier) fetchKeys(ctx context.Context) (map[string]*clerk.JSONWe
 			continue
 		}
 		if _, duplicate := keys[key.KeyID]; duplicate {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, fmt.Errorf("JWKS contains duplicate key IDs"))
 		}
 		keys[key.KeyID] = key
 	}
 	if len(keys) == 0 {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, fmt.Errorf("JWKS contains no supported signing keys"))
 	}
 	return keys, nil
 }

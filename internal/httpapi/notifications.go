@@ -21,6 +21,7 @@ func WithNotifications(service NotificationService) Option {
 	return func(o *handlerOptions) { o.notifications = service }
 }
 func writeNotificationError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, notifications.ErrInvalid) || errors.Is(e, subscriptions.ErrInvalid):
 		writeError(w, 400, "invalid_request")

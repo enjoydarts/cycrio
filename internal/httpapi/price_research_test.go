@@ -3,14 +3,42 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+func TestPriceResearchHTTPKeepsOriginalDiagnostic(t *testing.T) {
+	original := errors.New("database query failed SQLSTATE 40001")
+	service := &researchHTTPFixture{err: diagnostics.Wrap(priceresearch.ErrUnavailable, original)}
+	trace := &detailedTelemetryFixture{}
+	h := NewHandler(configured(), verifyFunc(func(context.Context, string) (auth.Identity, error) { return auth.Identity{}, nil }), func(context.Context, string, string) (database.Principal, error) {
+		return database.Principal{Role: "platform_admin"}, nil
+	}, nil, WithPriceResearch(service), WithTelemetry(trace))
+	r := httptest.NewRequest("GET", "/v1/admin/ai/price-research", nil)
+	r.Header.Set("Authorization", "Bearer token")
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 503 || len(trace.values) != 1 {
+		t.Fatal("error not tracked", w.Code, trace.values)
+	}
+	cause, ok := trace.values[0].(error)
+	if !ok || !errors.Is(cause, original) {
+		t.Fatal("original cause lost", trace.values)
+	}
+	if !strings.Contains(fmt.Sprint(cause), "GET /v1/admin/ai/price-research") {
+		t.Fatal("registered route missing", cause)
+	}
+	if strings.Contains(w.Body.String(), "SQLSTATE") {
+		t.Fatal("private cause in response")
+	}
+}
 
 type researchHTTPFixture struct {
 	calls int

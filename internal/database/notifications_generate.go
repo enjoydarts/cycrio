@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"strings"
 	"time"
 
@@ -115,8 +116,8 @@ func notificationPriceChanges(ctx context.Context, tx pgx.Tx, owner, today strin
 		if e = rows.Scan(&result, &index, &account, &raw, &received); e != nil {
 			return out, notificationError(e)
 		}
-		if json.Unmarshal(raw, &event) != nil {
-			return out, notifications.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &event); diagnosticErr != nil {
+			return out, diagnostics.Wrap(notifications.ErrUnavailable, diagnosticErr)
 		}
 		if received == nil || strings.TrimSpace(event.Service) == "" || event.RecurringAmount == nil || event.RecurringCurrency == nil {
 			continue
@@ -307,8 +308,8 @@ func (r *NotificationRepository) generateNotifications(ctx context.Context, owne
 			return 0, notificationError(e)
 		}
 		var frozen notifications.Candidate
-		if json.Unmarshal(frozenJSON, &frozen) != nil {
-			return 0, notifications.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(frozenJSON, &frozen); diagnosticErr != nil {
+			return 0, diagnostics.Wrap(notifications.ErrUnavailable, diagnosticErr)
 		}
 		if !notifications.SameFacts(frozen, candidate) {
 			if _, e = tx.Exec(ctx, `UPDATE notification_events SET superseded_at=coalesce(superseded_at,clock_timestamp()) WHERE owner_id=$1 AND kind=$2 AND source_key=$3`, owner, candidate.Kind, candidate.SourceKey); e != nil {
@@ -406,7 +407,7 @@ func (r *NotificationRepository) recordNotificationFailure(ctx context.Context, 
 		return nil
 	}
 	if e != nil {
-		return notifications.ErrUnavailable
+		return diagnostics.Wrap(notifications.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	reason := "generation_unavailable"

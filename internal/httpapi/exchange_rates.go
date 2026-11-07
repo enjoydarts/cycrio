@@ -28,6 +28,7 @@ func registerExchangeRates(mux *http.ServeMux, service ExchangeRatesService, pro
 		}
 		snapshot, err := service.Latest(r.Context())
 		if err != nil {
+			recordTelemetryError(w, err)
 			writeError(w, http.StatusServiceUnavailable, "dependency_unavailable")
 			return
 		}

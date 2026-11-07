@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"strings"
 	"time"
 
@@ -29,14 +30,14 @@ func routeError(e error) error {
 	case errors.Is(e, airuntime.ErrConflict), errors.Is(e, pgx.ErrNoRows):
 		return airoutes.ErrConflict
 	default:
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 }
 func (r *AIRoutesRepository) Claim(ctx context.Context, actor string) (airoutes.Lease, error) {
 	var lease airoutes.Lease
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return lease, airoutes.ErrUnavailable
+		return lease, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = runtimeAdmin(ctx, tx, actor, true); e != nil {
@@ -46,7 +47,7 @@ func (r *AIRoutesRepository) Claim(ctx context.Context, actor string) (airoutes.
 	var version *int64
 	var active bool
 	if e = tx.QueryRow(ctx, `SELECT lease_id,lease_credential_id,lease_credential_version,COALESCE(lease_until>clock_timestamp(),false) FROM ai_routes_state WHERE singleton FOR UPDATE`).Scan(&id, &key, &version, &active); e != nil {
-		return lease, airoutes.ErrUnavailable
+		return lease, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	credential, v, e := runtimeCredential(ctx, tx, "openrouter", true)
 	if e != nil {
@@ -57,11 +58,11 @@ func (r *AIRoutesRepository) Claim(ctx context.Context, actor string) (airoutes.
 	} else {
 		lease = airoutes.Lease{ID: uuid.NewString(), CredentialID: credential, CredentialVersion: v, Owner: true}
 		if _, e = tx.Exec(ctx, `UPDATE ai_routes_state SET status='running',error_code=NULL,last_attempt_at=clock_timestamp(),lease_id=$1,lease_until=clock_timestamp()+interval '15 seconds',lease_credential_id=$2,lease_credential_version=$3 WHERE singleton`, lease.ID, credential, v); e != nil {
-			return lease, airoutes.ErrUnavailable
+			return lease, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 		}
 	}
-	if tx.Commit(ctx) != nil {
-		return airoutes.Lease{}, airoutes.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return airoutes.Lease{}, diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 	}
 	return lease, nil
 }
@@ -97,7 +98,7 @@ func (r *AIRoutesRepository) Apply(ctx context.Context, actor string, lease airo
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = routeValidate(ctx, tx, actor, lease, true); e != nil {
@@ -106,10 +107,10 @@ func (r *AIRoutesRepository) Apply(ctx context.Context, actor string, lease airo
 	snapshot := uuid.NewString()
 	var now time.Time
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO ai_route_snapshots(id,captured_at,source_url,credential_id,credential_version,row_count)VALUES($1,$2,$3,$4,$5,$6)`, snapshot, now, airoutes.SourceURL, lease.CredentialID, lease.CredentialVersion, len(routes)); e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	for _, r := range routes {
 		r.ID = uuid.NewString()
@@ -122,21 +123,24 @@ func (r *AIRoutesRepository) Apply(ctx context.Context, actor string, lease airo
 			r.Price.SourceURL = airoutes.SourceURL
 		}
 		raw, e := json.Marshal(r.Proof)
-		if e != nil || len(r.RawMetadata) == 0 {
+		if e != nil {
+			return diagnostics.Wrap(airoutes.ErrUnavailable, e)
+		}
+		if len(r.RawMetadata) == 0 {
 			return airoutes.ErrUnavailable
 		}
 		if _, e = tx.Exec(ctx, `INSERT INTO ai_routes(id,snapshot_id,model_id,tag,service_tier,doc,raw_metadata)VALUES($1,$2,$3,$4,$5,$6,$7)`, r.ID, snapshot, r.UpstreamModelID, r.Tag, r.ServiceTier, raw, r.RawMetadata); e != nil {
-			return airoutes.ErrUnavailable
+			return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 		}
 	}
 	if _, e = tx.Exec(ctx, `UPDATE ai_routes_state SET current_snapshot_id=$1,status='succeeded',error_code=NULL,last_success_at=$2,lease_id=NULL,lease_until=NULL,lease_credential_id=NULL,lease_credential_version=NULL WHERE singleton`, snapshot, now); e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO ai_routes_audit(id,actor_id,snapshot_id)VALUES($1,$2,$3)`, uuid.NewString(), actor, snapshot); e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return airoutes.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
@@ -146,7 +150,7 @@ func (r *AIRoutesRepository) Finish(ctx context.Context, lease airoutes.Lease, c
 	}
 	_, e := r.pool.Exec(ctx, `UPDATE ai_routes_state SET status='failed',error_code=$2,lease_id=NULL,lease_until=NULL,lease_credential_id=NULL,lease_credential_version=NULL WHERE singleton AND lease_id=$1`, lease.ID, code)
 	if e != nil {
-		return airoutes.ErrUnavailable
+		return diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	return nil
 }
@@ -159,38 +163,38 @@ func (r *AIRoutesRepository) List(ctx context.Context, f airoutes.Filter) (airou
 	}
 	tx, e := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if e != nil {
-		return out, airoutes.ErrUnavailable
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	var snapshot *string
 	var now time.Time
 	if e = tx.QueryRow(ctx, `SELECT current_snapshot_id,status,error_code,last_attempt_at,last_success_at,clock_timestamp() FROM ai_routes_state WHERE singleton`).Scan(&snapshot, &out.Refresh.Status, &out.Refresh.ErrorCode, &out.Refresh.LastAttemptAt, &out.Refresh.LastSuccessAt, &now); e != nil {
-		return out, airoutes.ErrUnavailable
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	currentKey, currentVersion, keyErr := runtimeCredential(ctx, tx, "openrouter", false)
 	e = keyErr
 	out.KeyAvailable = e == nil
 	if e != nil && !errors.Is(e, airuntime.ErrCredentialsRequired) {
-		return out, airoutes.ErrUnavailable
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	if snapshot == nil {
-		if tx.Commit(ctx) != nil {
-			return out, airoutes.ErrUnavailable
+		if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+			return out, diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 		}
 		return out, nil
 	}
 	s := airoutes.Snapshot{ID: *snapshot}
 	var sourceKey string
 	var sourceVersion int64
-	if tx.QueryRow(ctx, `SELECT captured_at,source_url,credential_id,credential_version FROM ai_route_snapshots WHERE id=$1`, s.ID).Scan(&s.CapturedAt, &s.SourceURL, &sourceKey, &sourceVersion) != nil {
-		return out, airoutes.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT captured_at,source_url,credential_id,credential_version FROM ai_route_snapshots WHERE id=$1`, s.ID).Scan(&s.CapturedAt, &s.SourceURL, &sourceKey, &sourceVersion); diagnosticErr != nil {
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 	}
 	out.Snapshot = &s
 	keyMatches := currentKey == sourceKey && currentVersion == sourceVersion
 	out.Fresh = airoutes.Fresh(s.CapturedAt, now) && keyMatches
 	rows, e := tx.Query(ctx, `SELECT r.doc,m.id,m.doc FROM ai_routes r LEFT JOIN model_catalog m ON m.provider='openrouter' AND m.model_id=r.model_id WHERE r.snapshot_id=$1 AND ($2='' OR m.id::text=$2) ORDER BY lower(r.doc->>'provider_name'),r.tag,r.model_id,r.id`, s.ID, f.ModelID)
 	if e != nil {
-		return out, airoutes.ErrUnavailable
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, e)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -198,11 +202,16 @@ func (r *AIRoutesRepository) List(ctx context.Context, f airoutes.Filter) (airou
 		var route airoutes.Route
 		var id *string
 		var m modelcatalog.Model
-		if rows.Scan(&raw, &id, &modelraw) != nil || json.Unmarshal(raw, &route.Proof) != nil {
-			return out, airoutes.ErrUnavailable
+		if err := rows.Scan(&raw, &id, &modelraw); err != nil {
+			return out, diagnostics.Wrap(airoutes.ErrUnavailable, err)
 		}
-		if modelraw != nil && json.Unmarshal(modelraw, &m) != nil {
-			return out, airoutes.ErrUnavailable
+		if err := json.Unmarshal(raw, &route.Proof); err != nil {
+			return out, diagnostics.Wrap(airoutes.ErrUnavailable, err)
+		}
+		if modelraw != nil {
+			if err := json.Unmarshal(modelraw, &m); err != nil {
+				return out, diagnostics.Wrap(airoutes.ErrUnavailable, err)
+			}
 		}
 		route.ModelID = id
 		if route.Price != nil && id != nil {
@@ -221,12 +230,12 @@ func (r *AIRoutesRepository) List(ctx context.Context, f airoutes.Filter) (airou
 			out.Routes = append(out.Routes, route)
 		}
 	}
-	if rows.Err() != nil {
-		return out, airoutes.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 	}
 	rows.Close()
-	if tx.Commit(ctx) != nil {
-		return out, airoutes.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return out, diagnostics.Wrap(airoutes.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }
@@ -247,10 +256,10 @@ func routeProofForSave(ctx context.Context, tx pgx.Tx, id string) (routeSelectio
 		if errors.Is(err, pgx.ErrNoRows) {
 			return selection, airuntime.ErrConflict
 		}
-		return selection, airuntime.ErrUnavailable
+		return selection, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
-	if json.Unmarshal(raw, &selection.Proof) != nil {
-		return selection, airuntime.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &selection.Proof); diagnosticErr != nil {
+		return selection, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 	}
 	return selection, nil
 }
@@ -264,14 +273,14 @@ func routeProfileCompatible(ctx context.Context, q runtimeQuery, p airuntime.Pro
 		return nil
 	}
 	if err != nil {
-		return airuntime.ErrUnavailable
+		return diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	if raw == nil {
 		return airuntime.ErrConflict
 	}
 	var route airoutes.Route
-	if json.Unmarshal(raw, &route.Proof) != nil {
-		return airuntime.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &route.Proof); diagnosticErr != nil {
+		return diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 	}
 	// Freshness applies only to new saves. A later complete snapshot may prove
 	// incompatibility, but the mere passage of time never stops an active profile.

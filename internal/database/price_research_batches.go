@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/jackc/pgx/v5"
@@ -232,8 +233,8 @@ func researchBatchResult(ctx context.Context, tx pgx.Tx, run priceresearch.Run, 
 		}
 		if (code == "" || code == "research_failed") && state == "succeeded" && kind == "text_generation" && unapplied {
 			var quotes []priceresearch.Quote
-			if json.Unmarshal(quoteRaw, &quotes) != nil {
-				return result, progress, priceresearch.ErrUnavailable
+			if diagnosticErr := json.Unmarshal(quoteRaw, &quotes); diagnosticErr != nil {
+				return result, progress, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 			}
 			result.Quotes = append(result.Quotes, quotes...)
 		}

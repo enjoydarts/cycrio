@@ -13,6 +13,7 @@ import (
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/jwt"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 var (
@@ -77,7 +78,7 @@ func NewVerifier(issuer string, allowedOrigins []string, client *http.Client) *C
 
 func (v *ClerkVerifier) Verify(ctx context.Context, token string) (Identity, error) {
 	if ctx.Err() != nil {
-		return Identity{}, ErrUnavailable
+		return Identity{}, diagnostics.Wrap(ErrUnavailable, ctx.Err())
 	}
 	// Read only the key selector before verification. Neither token issuer nor
 	// URL-bearing headers participate in constructing the JWKS request URL.
@@ -111,7 +112,7 @@ func (v *ClerkVerifier) Verify(ctx context.Context, token string) (Identity, err
 		},
 	})
 	if ctx.Err() != nil {
-		return Identity{}, ErrUnavailable
+		return Identity{}, diagnostics.Wrap(ErrUnavailable, ctx.Err())
 	}
 	if err != nil || claims == nil {
 		return Identity{}, ErrInvalidToken

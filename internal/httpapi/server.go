@@ -44,6 +44,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 			}
 			identity, err := verifier.Verify(r.Context(), parts[1])
 			if err != nil {
+				recordTelemetryError(w, err)
 				if errors.Is(err, auth.ErrUnavailable) {
 					writeError(w, http.StatusServiceUnavailable, "dependency_unavailable")
 				} else {
@@ -53,6 +54,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 			}
 			p, err := lookup(r.Context(), identity.Issuer, identity.Subject)
 			if err != nil {
+				recordTelemetryError(w, err)
 				if errors.Is(err, database.ErrForbidden) {
 					writeError(w, http.StatusForbidden, "access_denied")
 				} else {
@@ -164,7 +166,9 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
-		mux.ServeHTTP(w, r.WithContext(ctx))
+		bounded := r.WithContext(ctx)
+		defer func() { r.Pattern = bounded.Pattern }()
+		mux.ServeHTTP(w, bounded)
 	}), settings.telemetry)
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
@@ -37,19 +38,19 @@ func (r *NotificationRepository) ClaimNotifications(ctx context.Context) ([]noti
 	) UPDATE notification_deliveries d SET state='claimed',reason='',lease_id=gen_random_uuid(),lease_until=$2,updated_at=clock_timestamp()
 	 FROM due WHERE d.id=due.id RETURNING d.id,d.lease_id`, now, now.Add(time.Minute))
 	if err != nil {
-		return nil, notificationruntime.ErrUnavailable
+		return nil, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	tasks := []notificationruntime.Task{}
 	for rows.Next() {
 		var task notificationruntime.Task
-		if rows.Scan(&task.DeliveryID, &task.LeaseID) != nil {
-			return nil, notificationruntime.ErrUnavailable
+		if diagnosticErr := rows.Scan(&task.DeliveryID, &task.LeaseID); diagnosticErr != nil {
+			return nil, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 		}
 		tasks = append(tasks, task)
 	}
-	if rows.Err() != nil {
-		return nil, notificationruntime.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 	}
 	return tasks, nil
 }
@@ -82,13 +83,13 @@ type notificationSendInput struct {
 func (r *NotificationRepository) notificationSendTransaction(ctx context.Context, owner string) (pgx.Tx, string, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, "", notificationruntime.ErrUnavailable
+		return nil, "", diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	var state string
 	err = tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`, owner).Scan(&state)
 	if err != nil {
 		tx.Rollback(ctx)
-		return nil, "", notificationruntime.ErrUnavailable
+		return nil, "", diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	return tx, state, nil
 }
@@ -122,7 +123,7 @@ func (r *NotificationRepository) notificationSendInput(ctx context.Context, tx p
 	var instance string
 	err = tx.QueryRow(ctx, `SELECT version,sender,clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&in.configVersion, &in.delivery.From, &instance)
 	if err != nil {
-		return in, "", notificationruntime.ErrUnavailable
+		return in, "", diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	if instance == "" || !validIntegrationAddress(in.delivery.From) {
 		return in, "sender_unavailable", nil
@@ -132,7 +133,7 @@ func (r *NotificationRepository) notificationSendInput(ctx context.Context, tx p
 		return in, "sender_unavailable", nil
 	}
 	if err != nil {
-		return in, "", notificationruntime.ErrUnavailable
+		return in, "", diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	in.key, err = credentials.OpenVersion(r.keyring, in.credential)
 	if err != nil {
@@ -147,10 +148,10 @@ func (r *NotificationRepository) notificationSendInput(ctx context.Context, tx p
 
 func suppressNotification(ctx context.Context, tx pgx.Tx, id, reason string) (notificationruntime.Result, error) {
 	if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET state='suppressed',reason=$2,lease_until=NULL,updated_at=clock_timestamp() WHERE id=$1`, id, reason); err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 	}
 	return notificationruntime.Result{Status: notificationruntime.TaskRecorded}, nil
 }
@@ -159,10 +160,10 @@ func suppressNotification(ctx context.Context, tx pgx.Tx, id, reason string) (no
 // lease prevents a duplicate job from using the earlier preparation.
 func deferNotification(ctx context.Context, tx pgx.Tx, id string, at time.Time) (notificationruntime.Result, error) {
 	if _, err := tx.Exec(ctx, `UPDATE notification_deliveries SET state='queued',reason='',lease_id=NULL,lease_until=NULL,attempt_started_at=NULL,settings_version=NULL,config_version=NULL,credential_id=NULL,scheduled_at=$2,updated_at=clock_timestamp() WHERE id=$1`, id, at); err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 	}
 	return notificationruntime.Result{Status: notificationruntime.TaskRecorded}, nil
 }
@@ -182,7 +183,7 @@ func (r *NotificationRepository) DeliverNotification(ctx context.Context, delive
 		return ignored, nil
 	}
 	if err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	tx, ownerState, err := r.notificationSendTransaction(ctx, owner)
 	if err != nil {
@@ -196,18 +197,18 @@ func (r *NotificationRepository) DeliverNotification(ctx context.Context, delive
 		return ignored, nil
 	}
 	if err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	if ownerState != "active" {
 		return suppressNotification(ctx, tx, id, "source_unavailable")
 	}
 	var facts notifications.Candidate
-	if json.Unmarshal(raw, &facts) != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &facts); diagnosticErr != nil {
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 	}
 	in, reason, err := r.notificationSendInput(ctx, tx, owner, id, facts)
 	if err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
 	if reason != "" {
 		return suppressNotification(ctx, tx, id, reason)
@@ -216,10 +217,10 @@ func (r *NotificationRepository) DeliverNotification(ctx context.Context, delive
 		return deferNotification(ctx, tx, id, in.delivery.Candidate.ScheduledAt)
 	}
 	if _, err = tx.Exec(ctx, `UPDATE notification_deliveries SET state='unknown',reason='unknown_result',attempt_started_at=$2,settings_version=$3,config_version=$4,credential_id=$5,updated_at=clock_timestamp() WHERE id=$1`, id, r.now(), in.settingsVersion, in.configVersion, in.credential.ID); err != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, diagnosticErr)
 	}
 
 	// Only this invocation crossed claimed -> unknown. Replayed tasks stop above,
@@ -261,8 +262,10 @@ func (r *NotificationRepository) DeliverNotification(ctx context.Context, delive
 	} else if result.State == notificationruntime.Rejected || result.State == notificationruntime.Invalid {
 		state, reason = "failed", "provider_rejected"
 	}
-	if _, err = dispatch.Exec(dispatchCtx, `UPDATE notification_deliveries SET state=$2,reason=$3,provider_id=$4,accepted_at=CASE WHEN $2='accepted' THEN clock_timestamp() END,lease_until=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='unknown' AND lease_id=$5`, id, state, reason, provider, task.LeaseID); err == nil {
-		_ = dispatch.Commit(dispatchCtx)
+	if _, err = dispatch.Exec(dispatchCtx, `UPDATE notification_deliveries SET state=$2,reason=$3,provider_id=$4,accepted_at=CASE WHEN $2='accepted' THEN clock_timestamp() END,lease_until=NULL,updated_at=clock_timestamp() WHERE id=$1 AND state='unknown' AND lease_id=$5`, id, state, reason, provider, task.LeaseID); err != nil {
+		diagnostics.RecordUnexpected(dispatchCtx, err)
+	} else if err := dispatch.Commit(dispatchCtx); err != nil {
+		diagnostics.RecordUnexpected(dispatchCtx, err)
 	}
 	return notificationruntime.Result{Status: notificationruntime.TaskRecorded}, nil
 }

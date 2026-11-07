@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 )
@@ -166,9 +167,9 @@ func (r *AIRuntimeRepository) Claim(ctx context.Context) ([]airuntime.Lease, err
 	var expired []string
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) != nil {
+		if diagnosticErr := rows.Scan(&id); diagnosticErr != nil {
 			rows.Close()
-			return nil, airuntime.ErrUnavailable
+			return nil, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 		}
 		expired = append(expired, id)
 	}
@@ -342,8 +343,8 @@ func (r *AIRuntimeRepository) FinishTest(ctx context.Context, l airuntime.Lease,
 		return airuntime.ErrConflict
 	}
 	var valid bool
-	if tx.QueryRow(ctx, `SELECT lease_until>clock_timestamp() FROM ai_test_runs WHERE id=$1`, l.TestRunID).Scan(&valid) != nil {
-		return airuntime.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT lease_until>clock_timestamp() FROM ai_test_runs WHERE id=$1`, l.TestRunID).Scan(&valid); diagnosticErr != nil {
+		return diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 	}
 	if !valid {
 		return airuntime.ErrConflict

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/clerkdelete"
@@ -85,7 +86,7 @@ var _ clerkdelete.Repository = (*ClerkErasureRepository)(nil)
 func (r *ClerkErasureRepository) Claim(ctx context.Context) (*clerkdelete.Work, error) {
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return nil, erasure.ErrUnavailable
+		return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	var work clerkdelete.Work
@@ -95,11 +96,11 @@ func (r *ClerkErasureRepository) Claim(ctx context.Context) (*clerkdelete.Work, 
 		return nil, nil
 	}
 	if e != nil {
-		return nil, erasure.ErrUnavailable
+		return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	work.LeaseID = uuid.NewString()
 	if _, e = tx.Exec(ctx, `UPDATE clerk_erasure_outbox SET lease_id=$2,lease_until=clock_timestamp()+interval '60 seconds',attempts=least(attempts+1,1000000) WHERE request_id=$1`, work.ID, work.LeaseID); e != nil {
-		return nil, erasure.ErrUnavailable
+		return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	raw, openErr := r.keys.Open(envelope, clerkErasureAAD(work.ID))
 	if openErr == nil {
@@ -109,7 +110,7 @@ func (r *ClerkErasureRepository) Claim(ctx context.Context) (*clerkdelete.Work, 
 	if openErr == nil && work.Target.Issuer == r.issuer && r.issuer != "" {
 		var instance string
 		if e = tx.QueryRow(ctx, `SELECT clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&instance); e != nil {
-			return nil, erasure.ErrUnavailable
+			return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 		}
 		if integrationInstance.MatchString(instance) {
 			// The issuer and subject are immutable. Configuration may be corrected;
@@ -118,7 +119,7 @@ func (r *ClerkErasureRepository) Claim(ctx context.Context) (*clerkdelete.Work, 
 			var v credentials.CredentialVersion
 			e = tx.QueryRow(ctx, `SELECT v.id,v.provider,v.version,v.key_id,v.ciphertext FROM credential_versions v JOIN provider_credentials p ON p.provider=v.provider AND p.version=v.version WHERE p.provider='clerk_backend' AND p.state='configured' AND v.state='active' FOR SHARE OF p,v`).Scan(&v.ID, &v.Provider, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext)
 			if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-				return nil, erasure.ErrUnavailable
+				return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 			}
 			if e == nil {
 				work.Secret, _ = credentials.OpenVersion(r.keys, v)
@@ -127,7 +128,7 @@ func (r *ClerkErasureRepository) Claim(ctx context.Context) (*clerkdelete.Work, 
 	}
 	if e = tx.Commit(ctx); e != nil {
 		clear(work.Secret)
-		return nil, erasure.ErrUnavailable
+		return nil, diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	return &work, nil
 }
@@ -160,7 +161,7 @@ func (r *ClerkErasureRepository) Finish(ctx context.Context, work clerkdelete.Wo
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	var attempts int
@@ -169,7 +170,7 @@ func (r *ClerkErasureRepository) Finish(ctx context.Context, work clerkdelete.Wo
 		return nil
 	}
 	if e != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
 	if result.Deleted && result.Code == "" {
 		_, e = tx.Exec(ctx, `DELETE FROM clerk_erasure_outbox WHERE request_id=$1`, work.ID)
@@ -178,10 +179,10 @@ func (r *ClerkErasureRepository) Finish(ctx context.Context, work clerkdelete.Wo
 		_, e = tx.Exec(ctx, `UPDATE clerk_erasure_outbox SET lease_id=NULL,lease_until=NULL,error_code=$2,next_attempt_at=clock_timestamp()+$3*interval '1 second' WHERE request_id=$1`, work.ID, code, delay.Seconds())
 	}
 	if e != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return erasure.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(erasure.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }

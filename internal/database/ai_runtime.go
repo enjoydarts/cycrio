@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"sort"
 	"strings"
 	"time"
@@ -35,7 +36,7 @@ func runtimeError(err error) error {
 	if errors.As(err, &p) && p.Code == "23505" {
 		return airuntime.ErrConflict
 	}
-	return airuntime.ErrUnavailable
+	return diagnostics.Wrap(airuntime.ErrUnavailable, err)
 }
 func runtimeID(id string) bool { _, err := uuid.Parse(id); return err == nil }
 func runtimeAdmin(ctx context.Context, q runtimeQuery, actor string, lock bool) error {
@@ -74,8 +75,8 @@ func runtimeProfile(ctx context.Context, q runtimeQuery, id string) (airuntime.P
 	if err := q.QueryRow(ctx, `SELECT doc FROM ai_profiles WHERE id=$1`, id).Scan(&raw); err != nil {
 		return p, runtimeError(err)
 	}
-	if json.Unmarshal(raw, &p) != nil {
-		return p, airuntime.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &p); diagnosticErr != nil {
+		return p, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 	}
 	return p, nil
 }
@@ -85,7 +86,7 @@ func runtimeModels(ctx context.Context, q runtimeQuery, ids []string, lock bool)
 	for _, id := range ids {
 		m, _, err := readModel(ctx, q, id, lock)
 		if err != nil {
-			return nil, airuntime.ErrUnavailable
+			return nil, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		out[id] = m
 	}
@@ -265,7 +266,7 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 	if proof != nil {
 		var now time.Time
 		if err := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
-			return airuntime.State{}, airuntime.ErrUnavailable
+			return airuntime.State{}, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		if len(airoutes.Reasons(airoutes.Route{Proof: *proof}, models[p2], true, proof.CapturedAt, now, airoutes.Limits{MaxInputBytes: in.MaxInputBytes, MaxOutputTokens: in.MaxOutputTokens})) != 0 {
 			return airuntime.State{}, airuntime.ErrConflict
@@ -296,8 +297,8 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 			if err := tx.QueryRow(ctx, `SELECT doc FROM catalog_prices WHERE id=$1 AND model_id=$2`, *priceID, id).Scan(&raw); err != nil {
 				return airuntime.State{}, runtimeError(err)
 			}
-			if json.Unmarshal(raw, &price) != nil {
-				return airuntime.State{}, airuntime.ErrUnavailable
+			if diagnosticErr := json.Unmarshal(raw, &price); diagnosticErr != nil {
+				return airuntime.State{}, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 			}
 			ref.Price = &price
 		}
@@ -311,7 +312,7 @@ func (r *AIRuntimeRepository) SaveProfile(ctx context.Context, actor string, in 
 					price.ModelID = id
 					raw, err := json.Marshal(price)
 					if err != nil {
-						return airuntime.State{}, airuntime.ErrUnavailable
+						return airuntime.State{}, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 					}
 					if _, err := tx.Exec(ctx, `INSERT INTO catalog_prices(id,model_id,source,currency,content_hash,doc,captured_at)VALUES($1,$2,'api',$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`, price.ID, id, price.Currency, proof.PricingHash, raw, price.CapturedAt); err != nil {
 						return airuntime.State{}, runtimeError(err)

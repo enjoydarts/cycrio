@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailoauth"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
@@ -35,7 +36,7 @@ func (r *MailOAuthRepository) WithUserOperation(ctx context.Context, owner strin
 	})
 	if !started {
 		if err != nil {
-			return mailaccounts.ErrUnavailable
+			return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 		}
 		return mailaccounts.ErrNotFound
 	}
@@ -52,7 +53,7 @@ func (r *MailOAuthRepository) ActiveClient(ctx context.Context, provider string)
 		return "", mailaccounts.ErrNotFound
 	}
 	if e != nil {
-		return "", mailaccounts.ErrUnavailable
+		return "", diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	return id, nil
 }
@@ -79,39 +80,39 @@ func (r *MailOAuthRepository) SavePending(ctx context.Context, hash, browser str
 		return mailaccounts.ErrConflict
 	}
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	var count int
 	if e = tx.QueryRow(ctx, `SELECT count(*) FROM mail_oauth_pending WHERE owner_id=$1 AND expires_at>clock_timestamp()`, p.OwnerID).Scan(&count); e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	if count >= 10 {
 		return mailaccounts.ErrConflict
 	}
 	if _, e = tx.Exec(ctx, `DELETE FROM mail_oauth_pending WHERE expires_at<=clock_timestamp()`); e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	raw, e := json.Marshal(p)
 	if e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	defer clear(raw)
 	env, e := r.keys.Seal(raw, pendingAAD(hash, p.OwnerID, p.Provider))
 	if e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_oauth_pending(state_hash,browser_hash,owner_id,provider,key_id,ciphertext,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, hash, browser, p.OwnerID, p.Provider, env.KeyID, env.Ciphertext, p.ExpiresAt); e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
 func (r *MailOAuthRepository) ConsumePending(ctx context.Context, provider, hash, browser string) (mailoauth.Pending, error) {
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return mailoauth.Pending{}, mailaccounts.ErrUnavailable
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	var owner string
@@ -122,23 +123,29 @@ func (r *MailOAuthRepository) ConsumePending(ctx context.Context, provider, hash
 		return mailoauth.Pending{}, mailaccounts.ErrNotFound
 	}
 	if e != nil {
-		return mailoauth.Pending{}, mailaccounts.ErrUnavailable
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	e = tx.QueryRow(ctx, `DELETE FROM mail_oauth_pending WHERE state_hash=$1 AND browser_hash=$2 AND provider=$3 AND expires_at>clock_timestamp() RETURNING key_id,ciphertext`, hash, browser, provider).Scan(&env.KeyID, &env.Ciphertext)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return mailoauth.Pending{}, mailaccounts.ErrNotFound
 	}
 	if e != nil {
-		return mailoauth.Pending{}, mailaccounts.ErrUnavailable
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	raw, e := r.keys.Open(env, pendingAAD(hash, owner, provider))
 	defer clear(raw)
 	var p mailoauth.Pending
-	if e != nil || json.Unmarshal(raw, &p) != nil || p.OwnerID != owner || p.Provider != provider {
+	if e != nil {
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
+	}
+	if e := json.Unmarshal(raw, &p); e != nil {
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
+	}
+	if p.OwnerID != owner || p.Provider != provider {
 		return mailoauth.Pending{}, mailaccounts.ErrUnavailable
 	}
-	if tx.Commit(ctx) != nil {
-		return mailoauth.Pending{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return mailoauth.Pending{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return p, nil
 }
@@ -147,17 +154,17 @@ func (r *MailOAuthRepository) SaveConnection(ctx context.Context, p mailoauth.Pe
 	secret := mailaccounts.ConnectionSecret{Provider: p.Provider, Login: []byte(p.Provider), Password: []byte(token.RefreshToken), AccessToken: []byte(token.AccessToken), ExpiresAt: token.Expiry, OAuthClientID: p.ClientID}
 	raw, e := json.Marshal(secret)
 	if e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	defer clear(raw)
 	v.Envelope, e = r.keys.Seal(raw, mailaccounts.CredentialAAD(v))
 	if e != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	_, e = NewMailAccountRepository(r.pool).save(ctx, p.OwnerID, p.AccountID, p.ExpectedVersion, p.Label, v, func(ctx context.Context, tx pgx.Tx) error {
 		var valid bool
 		if e := tx.QueryRow(ctx, `SELECT v.state IN ('active','superseded') AND p.state='configured' FROM credential_versions v JOIN provider_credentials p USING(provider) WHERE v.id=$1 AND v.provider=$2 FOR SHARE OF p,v`, p.ClientID, p.Provider+"_oauth").Scan(&valid); e != nil || !valid {
-			return mailaccounts.ErrUnavailable
+			return diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 		}
 		return nil
 	})
@@ -171,7 +178,7 @@ func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts
 	defer cancel()
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	var env secretstore.Envelope
@@ -181,13 +188,16 @@ func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts
 		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrNotFound
 	}
 	if e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	raw, e := r.keys.Open(env, mailaccounts.CredentialAAD(v))
 	defer clear(raw)
 	var secret mailaccounts.ConnectionSecret
-	if e != nil || json.Unmarshal(raw, &secret) != nil {
-		return secret, mailaccounts.ErrUnavailable
+	if e != nil {
+		return secret, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
+	}
+	if e := json.Unmarshal(raw, &secret); e != nil {
+		return secret, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	if secret.Provider == "" {
 		secret.Provider = "fastmail"
@@ -197,7 +207,7 @@ func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts
 	}
 	before, e := json.Marshal(secret)
 	if e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	defer clear(before)
 	next, e := update(secret)
@@ -210,11 +220,11 @@ func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts
 	updated, e := json.Marshal(next)
 	defer clear(updated)
 	if e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	if bytes.Equal(before, updated) {
-		if tx.Commit(ctx) != nil {
-			return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+			return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 		}
 		return next, nil
 	}
@@ -222,13 +232,13 @@ func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts
 	// user configuration and must not invalidate the already authorized run.
 	sealed, e := r.keys.Seal(updated, mailaccounts.CredentialAAD(v))
 	if e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_account_credentials SET key_id=$2,ciphertext=$3 WHERE id=$1`, v.ID, sealed.KeyID, sealed.Ciphertext); e != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return mailaccounts.ConnectionSecret{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return next, nil
 }

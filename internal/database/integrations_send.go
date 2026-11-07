@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/integrations"
@@ -20,7 +21,7 @@ func (r *IntegrationRepository) Send(ctx context.Context, actor string, in integ
 	in.RequestID = nonce.String()
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = integrationAdmin(ctx, tx, actor); e != nil {
@@ -28,18 +29,18 @@ func (r *IntegrationRepository) Send(ctx context.Context, actor string, in integ
 	}
 	// A nonce belongs permanently to its first attempt, including uncertain attempts.
 	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, actor+"|email-test|"+in.RequestID); e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	e = scanAttempt(tx.QueryRow(ctx, attemptSelect+` WHERE t.owner_id=$1 AND t.request_id=$2`, actor, in.RequestID), &out)
 	if e == nil {
 		return out, nil
 	}
 	if !errors.Is(e, pgx.ErrNoRows) {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	var config integrations.Config
-	if tx.QueryRow(ctx, `SELECT version,sender,clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&config.Version, &config.Sender, &config.ClerkInstanceID) != nil {
-		return out, integrations.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT version,sender,clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&config.Version, &config.Sender, &config.ClerkInstanceID); diagnosticErr != nil {
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	if config.Version != in.ExpectedVersion {
 		return out, integrations.ErrConflict
@@ -55,14 +56,14 @@ func (r *IntegrationRepository) Send(ctx context.Context, actor string, in integ
 		return out, integrations.ErrNotReady
 	}
 	out = integrations.Attempt{ID: uuid.NewString(), RequestID: in.RequestID, State: "unknown"}
-	if tx.QueryRow(ctx, `INSERT INTO integration_email_tests(id,owner_id,request_id,settings_version,credential_id,state)VALUES($1,$2,$3,$4,$5,'unknown') RETURNING created_at`, out.ID, actor, in.RequestID, config.Version, credential).Scan(&out.CreatedAt) != nil {
-		return out, integrations.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `INSERT INTO integration_email_tests(id,owner_id,request_id,settings_version,credential_id,state)VALUES($1,$2,$3,$4,$5,'unknown') RETURNING created_at`, out.ID, actor, in.RequestID, config.Version, credential).Scan(&out.CreatedAt); diagnosticErr != nil {
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO integration_audit(id,actor_id,action,version)VALUES($1,$2,'test_requested',$3)`, uuid.NewString(), actor, config.Version); e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return out, integrations.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	// The durable uncertain record exists before the only network call. A crash or
 	// cancellation can never turn a browser replay into a second send.

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 func runtimeTestFailures(ctx context.Context, q runtimeQuery, run *airuntime.TestRun) error {
@@ -12,11 +13,11 @@ func runtimeTestFailures(ctx context.Context, q runtimeQuery, run *airuntime.Tes
 	for _, stage := range []string{"classification", "extraction"} {
 		var raw []byte
 		if e := q.QueryRow(ctx, `SELECT coalesce((SELECT to_jsonb(http_status) FROM ai_calls WHERE run_id=$1 AND stage=$2 ORDER BY attempt_no DESC,started_at DESC,id DESC LIMIT 1),'null'::jsonb)`, run.ID, stage).Scan(&raw); e != nil {
-			return airuntime.ErrUnavailable
+			return diagnostics.Wrap(airuntime.ErrUnavailable, e)
 		}
 		var status *int
-		if json.Unmarshal(raw, &status) != nil {
-			return airuntime.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &status); diagnosticErr != nil {
+			return diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 		}
 		if status == nil {
 			continue

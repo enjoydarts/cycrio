@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/billingschedule"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -24,7 +25,7 @@ func scheduleError(e error) error {
 	if errors.Is(e, subscriptions.ErrNotFound) || errors.Is(e, pgx.ErrNoRows) {
 		return billingschedule.ErrNotFound
 	}
-	return billingschedule.ErrUnavailable
+	return diagnostics.Wrap(billingschedule.ErrUnavailable, e)
 }
 func scheduleSubscription(ctx context.Context, tx pgx.Tx, owner, id string, lock bool) (subscriptions.Subscription, error) {
 	suffix := ""
@@ -48,8 +49,10 @@ func scheduleSettings(ctx context.Context, tx pgx.Tx, owner, id string) (*billin
 	if e != nil {
 		return nil, false, scheduleError(e)
 	}
-	if len(evidenceJSON) > 0 && json.Unmarshal(evidenceJSON, &s.HistoryEvidence) != nil {
-		return nil, false, billingschedule.ErrUnavailable
+	if len(evidenceJSON) > 0 {
+		if err := json.Unmarshal(evidenceJSON, &s.HistoryEvidence); err != nil {
+			return nil, false, diagnostics.Wrap(billingschedule.ErrUnavailable, err)
+		}
 	}
 	return &s, manual, nil
 }

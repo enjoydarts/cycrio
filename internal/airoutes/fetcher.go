@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"regexp"
@@ -11,6 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 )
 
@@ -35,21 +39,33 @@ func (f *Fetcher) Fetch(ctx context.Context, key []byte) ([]Route, error) {
 	defer cancel()
 	r, err := http.NewRequestWithContext(ctx, http.MethodGet, SourceURL, nil)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 	}
 	r.Header.Set("Authorization", "Bearer "+string(key))
 	r.Header.Set("Accept", "application/json")
 	resp, err := f.client.Do(r)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode != 200 {
-		return nil, ErrUnavailable
-	}
 	b, err := io.ReadAll(io.LimitReader(resp.Body, MaxBodyBytes+1))
-	if err != nil || len(b) > MaxBodyBytes || !utf8.Valid(b) {
-		return nil, ErrUnavailable
+	if err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
+	}
+	if len(b) > MaxBodyBytes || !utf8.Valid(b) {
+		return nil, diagnostics.Wrap(ErrUnavailable, errors.New("route response exceeds size limit or contains invalid UTF-8"))
+	}
+	var document map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(b))
+	decoder.UseNumber()
+	_ = decoder.Decode(&document)
+	if resp.StatusCode != 200 || document["error"] != nil {
+		detail := ai.ProviderDiagnostic(document, resp.Header, ai.Request{Key: key})
+		cause := fmt.Errorf("route provider HTTP status: %d", resp.StatusCode)
+		if detail != nil {
+			cause = fmt.Errorf("route provider HTTP status: %d: %w", resp.StatusCode, detail)
+		}
+		return nil, diagnostics.Wrap(ErrUnavailable, cause)
 	}
 	return Parse(b, key)
 }
@@ -63,14 +79,20 @@ func Parse(b, key []byte) ([]Route, error) {
 	}
 	d := json.NewDecoder(bytes.NewReader(b))
 	d.UseNumber()
-	if strictValue(d, key, 0) != nil {
-		return nil, ErrUnavailable
+	if err := strictValue(d, key, 0); err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 	}
 	if _, err := d.Token(); err != io.EOF {
+		if err != nil {
+			return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
+		}
 		return nil, ErrUnavailable
 	}
 	var root map[string]json.RawMessage
-	if json.Unmarshal(b, &root) != nil || root == nil {
+	if err := json.Unmarshal(b, &root); err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
+	}
+	if root == nil {
 		return nil, ErrUnavailable
 	}
 	for _, key := range []string{"partial", "truncated"} {
@@ -92,12 +114,18 @@ func Parse(b, key []byte) ([]Route, error) {
 		}
 	}
 	var data []json.RawMessage
-	if json.Unmarshal(root["data"], &data) != nil || len(data) == 0 || len(data) > MaxRows {
+	if err := json.Unmarshal(root["data"], &data); err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
+	}
+	if len(data) == 0 || len(data) > MaxRows {
 		return nil, ErrUnavailable
 	}
 	if raw, ok := root["total"]; ok {
 		var n int
-		if json.Unmarshal(raw, &n) != nil || n != len(data) {
+		if err := json.Unmarshal(raw, &n); err != nil {
+			return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
+		}
+		if n != len(data) {
 			return nil, ErrUnavailable
 		}
 	}
@@ -121,8 +149,8 @@ func Parse(b, key []byte) ([]Route, error) {
 			Status              *int            `json:"status"`
 			Pricing             json.RawMessage `json:"pricing"`
 		}
-		if json.Unmarshal(raw, &wire) != nil {
-			return nil, ErrUnavailable
+		if err := json.Unmarshal(raw, &wire); err != nil {
+			return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 		}
 		wire.ModelName = strings.TrimSpace(wire.ModelName)
 		if !modelIdentifier.MatchString(wire.ModelID) || !safeText(wire.ModelName, 512) || !safeText(wire.ProviderName, 128) || !ValidTag(wire.Tag) {
@@ -152,13 +180,13 @@ func Parse(b, key []byte) ([]Route, error) {
 		seen[identity] = append(seen[identity], len(routes))
 		price, err := modelcatalog.ParseOpenRouterPricing(wire.Pricing)
 		if err != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 		}
 		price.SourceURL = SourceURL
 		r.Price = &price
 		r.PricingHash, err = modelcatalog.PricingHash(price)
 		if err != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, ai.TransportDiagnostic(err, ai.Request{Key: key}))
 		}
 		routes = append(routes, r)
 	}
@@ -193,7 +221,7 @@ func strictValue(d *json.Decoder, key []byte, depth int) error {
 	}
 	token, err := d.Token()
 	if err != nil {
-		return ErrUnavailable
+		return err
 	}
 	if s, ok := token.(string); ok && len(key) > 0 && strings.Contains(s, string(key)) {
 		return ErrUnavailable
@@ -207,27 +235,36 @@ func strictValue(d *json.Decoder, key []byte, depth int) error {
 		seen := map[string]bool{}
 		for d.More() {
 			t, e := d.Token()
+			if e != nil {
+				return e
+			}
 			s, ok := t.(string)
-			if e != nil || !ok || seen[s] || len(key) > 0 && strings.Contains(s, string(key)) {
+			if !ok || seen[s] || len(key) > 0 && strings.Contains(s, string(key)) {
 				return ErrUnavailable
 			}
 			seen[s] = true
-			if strictValue(d, key, depth+1) != nil {
-				return ErrUnavailable
+			if err := strictValue(d, key, depth+1); err != nil {
+				return err
 			}
 		}
 		end, e := d.Token()
-		if e != nil || end != json.Delim('}') {
+		if e != nil {
+			return e
+		}
+		if end != json.Delim('}') {
 			return ErrUnavailable
 		}
 	case '[':
 		for d.More() {
-			if strictValue(d, key, depth+1) != nil {
-				return ErrUnavailable
+			if err := strictValue(d, key, depth+1); err != nil {
+				return err
 			}
 		}
 		end, e := d.Token()
-		if e != nil || end != json.Delim(']') {
+		if e != nil {
+			return e
+		}
+		if end != json.Delim(']') {
 			return ErrUnavailable
 		}
 	default:

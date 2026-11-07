@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailautomation"
@@ -56,7 +57,7 @@ func automationReadiness(ctx context.Context, tx pgx.Tx, owner, account string, 
 	}
 	var folders, credential bool
 	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_account_folders WHERE account_id=$1 AND selected AND available AND selectable),EXISTS(SELECT 1 FROM mail_accounts a JOIN mail_account_credentials c ON c.account_id=a.id AND c.owner_id=a.owner_id AND c.version=a.credential_version AND c.state='active' WHERE a.id=$1)`, account).Scan(&folders, &credential); e != nil {
-		return basis, reasons, mailautomation.ErrUnavailable
+		return basis, reasons, diagnostics.Wrap(mailautomation.ErrUnavailable, e)
 	}
 	if !folders {
 		reasons = append(reasons, "folders_required")
@@ -138,10 +139,10 @@ func automationState(ctx context.Context, tx pgx.Tx, owner, account string) (mai
 			}
 		}
 		if e = tx.QueryRow(ctx, `SELECT NOT EXISTS(SELECT 1 FROM mail_automation_progress WHERE automation_id=$1 AND generation=$2 AND lane='bootstrap' AND NOT done),NOT EXISTS(SELECT 1 FROM mail_automation_progress p WHERE p.automation_id=$1 AND p.generation=$2 AND p.lane='historical' AND NOT done) AND EXISTS(SELECT 1 FROM mail_automation_progress p JOIN mail_automation_scopes s USING(automation_id,generation) WHERE p.automation_id=$1 AND p.generation=$2 AND p.lane='historical' AND p.before=s.before)`, out.ID, out.Generation).Scan(&out.Progress.BootstrapComplete, &out.Progress.HistoricalComplete); e != nil {
-			return out, mailautomation.ErrUnavailable
+			return out, diagnostics.Wrap(mailautomation.ErrUnavailable, e)
 		}
 		if e = tx.QueryRow(ctx, `SELECT count(*),count(*) FILTER(WHERE latest.state IS NULL OR latest.state IN ('cancelled','queued','running')),count(*) FILTER(WHERE latest.state IN ('succeeded','not_related')),count(*) FILTER(WHERE latest.state='failed'),count(*) FILTER(WHERE latest.state='unknown') FROM mail_automation_messages m LEFT JOIN LATERAL(SELECT state FROM mail_processing_items i WHERE i.message_id=m.message_id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true WHERE m.automation_id=$1 AND m.generation=$2`, out.ID, out.Generation).Scan(&out.Progress.DiscoveredCount, &out.Progress.PendingCount, &out.Progress.CompletedCount, &out.Progress.FailedCount, &out.Progress.UnknownCount); e != nil {
-			return out, mailautomation.ErrUnavailable
+			return out, diagnostics.Wrap(mailautomation.ErrUnavailable, e)
 		}
 		rows, e := tx.Query(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 AND automation_id=$3 AND automation_generation=$4 ORDER BY created_at DESC,id DESC LIMIT 20`, owner, account, out.ID, out.Generation)
 		if e != nil {
@@ -181,14 +182,14 @@ func automationReplay(ctx context.Context, tx pgx.Tx, owner, account, nonce stri
 		return mailautomation.State{}, false, nil
 	}
 	if e != nil {
-		return mailautomation.State{}, false, mailautomation.ErrUnavailable
+		return mailautomation.State{}, false, diagnostics.Wrap(mailautomation.ErrUnavailable, e)
 	}
 	if !same {
 		return mailautomation.State{}, false, mailautomation.ErrConflict
 	}
 	var v mailautomation.State
-	if json.Unmarshal(raw, &v) != nil {
-		return v, false, mailautomation.ErrUnavailable
+	if e := json.Unmarshal(raw, &v); e != nil {
+		return v, false, diagnostics.Wrap(mailautomation.ErrUnavailable, e)
 	}
 	return v, true, nil
 }

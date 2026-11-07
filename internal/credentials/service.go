@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 	"time"
 
@@ -80,7 +81,7 @@ func safeError(err error) error {
 			return known
 		}
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, err)
 }
 func credentialAAD(v CredentialVersion) []byte {
 	data, _ := json.Marshal(struct {
@@ -122,7 +123,7 @@ func (s *Service) Put(ctx context.Context, actor, provider string, expected int6
 	v := CredentialVersion{ID: uuid.NewString(), Provider: provider, Version: expected + 1}
 	envelope, err := s.keyring.Seal([]byte(secret), credentialAAD(v))
 	if err != nil {
-		return Summary{}, ErrUnavailable
+		return Summary{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	v.Envelope = envelope
 	summary, err := s.repository.Put(ctx, actor, expected, v)
@@ -161,7 +162,7 @@ func (s *Service) Resolve(ctx context.Context, id string) ([]byte, error) {
 func OpenVersion(keyring *secretstore.Keyring, v CredentialVersion) ([]byte, error) {
 	plain, err := keyring.Open(v.Envelope, credentialAAD(v))
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	return plain, nil
 }

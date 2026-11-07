@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
@@ -29,7 +30,7 @@ func anonymousCostFingerprint(cost ai.Cost) (string, ai.Cost, error) {
 	}
 	raw, err := json.Marshal(cost)
 	if err != nil {
-		return "", cost, airuntime.ErrUnavailable
+		return "", cost, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	h := sha256.Sum256(raw)
 	return hex.EncodeToString(h[:]), cost, nil
@@ -139,7 +140,7 @@ func finishErasedCall(ctx context.Context, tx pgx.Tx, oldID string, incoming ai.
 		return c, airuntime.ErrNotFound
 	}
 	if err != nil {
-		return c, airuntime.ErrUnavailable
+		return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	fingerprint, incoming, err := anonymousCostFingerprint(incoming)
 	if err != nil {
@@ -159,7 +160,7 @@ func finishErasedCall(ctx context.Context, tx pgx.Tx, oldID string, incoming ai.
 	if c.Cost.Status == "provider_reported" && incoming.Status == "provider_reported" {
 		var previous bool
 		if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM anonymous_ai_cost_revisions WHERE cost_id=$1 AND cost_kind='provider_reported' AND adopted_amount=$2::numeric AND currency=$3)`, c.ID, incoming.Amount, incoming.Currency).Scan(&previous); err != nil {
-			return c, airuntime.ErrUnavailable
+			return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		if previous {
 			adopt = false
@@ -167,14 +168,14 @@ func finishErasedCall(ctx context.Context, tx pgx.Tx, oldID string, incoming ai.
 	}
 	var duplicate bool
 	if err = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM anonymous_ai_cost_revisions WHERE cost_id=$1 AND fingerprint=$2)`, c.ID, fingerprint).Scan(&duplicate); err != nil {
-		return c, airuntime.ErrUnavailable
+		return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	if err = saveAnonymousCostRevision(ctx, tx, c.ID, incoming); err != nil {
-		return c, airuntime.ErrUnavailable
+		return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	if adopt && !duplicate {
 		if _, err = tx.Exec(ctx, `UPDATE anonymous_ai_costs SET cost_kind=$2,adopted_amount=$3::numeric,currency=$4,cost_reason=$5,updated_at=clock_timestamp() WHERE id=$1`, c.ID, incoming.Status, incoming.Amount, incoming.Currency, incoming.Reason); err != nil {
-			return c, airuntime.ErrUnavailable
+			return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		c.Cost = incoming
 	}

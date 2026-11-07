@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 	"net/url"
 	"strings"
@@ -177,7 +178,7 @@ func (s *Service) SyncProvider(ctx context.Context, provider, leaseID string) er
 	if code == "credentials_required" {
 		return ErrCredentialsRequired
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, err)
 }
 func (s *Service) Settings(ctx context.Context) (SettingsState, error) { return s.repo.Settings(ctx) }
 func (s *Service) SaveSettings(ctx context.Context, actor string, in SettingsInput) (SettingsState, error) {

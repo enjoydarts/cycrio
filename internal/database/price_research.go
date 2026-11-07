@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
@@ -34,7 +35,7 @@ func researchError(err error) error {
 	if errors.Is(catalogError(err), modelcatalog.ErrConflict) {
 		return priceresearch.ErrConflict
 	}
-	return priceresearch.ErrUnavailable
+	return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 }
 
 const researchRunColumns = `id,kind,target_provider,state,error_code,created_at,started_at,finished_at,updated_count,unresolved_count,call_id,sources,target_count,completed_count,non_text_count,unclassified_count`
@@ -46,8 +47,8 @@ func scanResearchRun(row interface{ Scan(...any) error }) (priceresearch.Run, er
 	if err != nil {
 		return r, researchError(err)
 	}
-	if json.Unmarshal(sources, &r.Sources) != nil {
-		return r, priceresearch.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(sources, &r.Sources); diagnosticErr != nil {
+		return r, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	if r.Sources == nil {
 		r.Sources = []string{}
@@ -202,8 +203,8 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 		return nil, researchError(err)
 	}
 	var pending bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM price_research_runs WHERE state IN ('queued','running'))`).Scan(&pending) != nil {
-		return nil, priceresearch.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM price_research_runs WHERE state IN ('queued','running'))`).Scan(&pending); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	if !pending && s.AutomaticEnabled && s.Ready {
 		var cycle *time.Time
@@ -265,10 +266,10 @@ func researchExecution(ctx context.Context, tx pgx.Tx, l priceresearch.Lease) (p
 	}
 	e.Model, _, err = readModel(ctx, tx, modelID, true)
 	if err != nil {
-		return e, priceresearch.ErrUnavailable
+		return e, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 	}
-	if json.Unmarshal(targets, &e.Targets) != nil {
-		return e, priceresearch.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(targets, &e.Targets); diagnosticErr != nil {
+		return e, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	return e, nil
 }
@@ -287,8 +288,8 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 		return e, err
 	}
 	var dispatched bool
-	if tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&dispatched) != nil {
-		return e, priceresearch.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&dispatched); diagnosticErr != nil {
+		return e, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	if dispatched {
 		return e, priceresearch.ErrDispatched
@@ -306,8 +307,8 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 	}
 	fresh := e.CredentialID == ""
 	e.CredentialID = credential
-	if tx.QueryRow(ctx, `SELECT workspace_id FROM catalog_sync WHERE provider=$1`, e.Model.Provider).Scan(&e.WorkspaceID) != nil {
-		return e, priceresearch.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT workspace_id FROM catalog_sync WHERE provider=$1`, e.Model.Provider).Scan(&e.WorkspaceID); diagnosticErr != nil {
+		return e, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	if fresh {
 		if e.Run.Kind == "test" {
@@ -321,9 +322,13 @@ func (r *PriceResearchRepository) Prepare(ctx context.Context, l priceresearch.L
 			for rows.Next() {
 				var raw []byte
 				var m modelcatalog.Model
-				if rows.Scan(&raw) != nil || json.Unmarshal(raw, &m) != nil {
+				if err := rows.Scan(&raw); err != nil {
 					rows.Close()
-					return e, priceresearch.ErrUnavailable
+					return e, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
+				}
+				if err := json.Unmarshal(raw, &m); err != nil {
+					rows.Close()
+					return e, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 				}
 				if m.DeletedAt == nil {
 					models = append(models, m)
@@ -383,8 +388,8 @@ func (r *PriceResearchRepository) Begin(ctx context.Context, l priceresearch.Lea
 		return err
 	}
 	var dispatched bool
-	if tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&dispatched) != nil {
-		return priceresearch.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT dispatched_at IS NOT NULL FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&dispatched); diagnosticErr != nil {
+		return diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	if dispatched {
 		return priceresearch.ErrDispatched
@@ -424,12 +429,17 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 	if err != nil {
 		return err
 	}
-	if tx.QueryRow(ctx, `SELECT lease_id,coalesce(lease_until>clock_timestamp(),false) FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&lease, &live) != nil {
-		return priceresearch.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT lease_id,coalesce(lease_until>clock_timestamp(),false) FROM price_research_runs WHERE id=$1`, l.RunID).Scan(&lease, &live); diagnosticErr != nil {
+		return diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 	}
 	currentCredential := ""
-	_ = tx.QueryRow(ctx, `SELECT v.id FROM credential_versions v JOIN provider_credentials p ON p.provider=v.provider WHERE p.provider=$1 AND p.state='configured' AND v.state='active' FOR SHARE OF v,p`, e.Model.Provider).Scan(&currentCredential)
+	if credentialErr := tx.QueryRow(ctx, `SELECT v.id FROM credential_versions v JOIN provider_credentials p ON p.provider=v.provider WHERE p.provider=$1 AND p.state='configured' AND v.state='active' FOR SHARE OF v,p`, e.Model.Provider).Scan(&currentCredential); credentialErr != nil && !errors.Is(credentialErr, pgx.ErrNoRows) {
+		diagnostics.RecordUnexpected(ctx, credentialErr)
+	}
 	current, _, modelErr := readModel(ctx, tx, e.Model.ID, true)
+	if modelErr != nil && !errors.Is(modelErr, modelcatalog.ErrNotFound) {
+		diagnostics.RecordUnexpected(ctx, modelErr)
+	}
 	if s.Version != e.Version || currentCredential != e.CredentialID || modelErr != nil || !current.Enabled || !current.Available || current.DeletedAt != nil {
 		code = "configuration_changed"
 	}
@@ -443,10 +453,10 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 	if run.CallID != nil && !result.CallsRecorded && legacyCall {
 		c, err := scanRuntimeCall(tx.QueryRow(ctx, `SELECT `+runtimeCallColumns+` FROM ai_calls WHERE id=$1 FOR UPDATE`, *run.CallID))
 		if err != nil {
-			return priceresearch.ErrUnavailable
+			return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 		}
 		if err = recordResearchCost(ctx, tx, c, result, r.keyring); err != nil {
-			return priceresearch.ErrUnavailable
+			return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 		}
 		status, outcome := researchFailureOutcome(code, result.FailureCode)
 		generation := result.GenerationID
@@ -505,7 +515,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 			if run.Kind == "update" {
 				m, base, err := readModel(ctx, tx, target.ID, true)
 				if err != nil {
-					return priceresearch.ErrUnavailable
+					return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 				}
 				if !m.Enabled || !m.Available || m.DeletedAt != nil {
 					continue
@@ -517,7 +527,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 				if !reuse {
 					p, err = addCatalogPrice(ctx, tx, m.ID, "", p)
 					if err != nil {
-						return priceresearch.ErrUnavailable
+						return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 					}
 					m.APIPrice = &p
 					m.Version++
@@ -532,7 +542,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 				base.CurrentPrice = &p
 				m = mergeOverrides(m)
 				if err = writeModel(ctx, tx, m, &base); err != nil {
-					return priceresearch.ErrUnavailable
+					return diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 				}
 				updated++
 			}

@@ -218,7 +218,7 @@ func TestServiceValidatesSecretsAndRequests(t *testing.T) {
 			if !errors.Is(err, failure) {
 				t.Fatal("domain error lost")
 			}
-		} else if err != ErrUnavailable {
+		} else if !errors.Is(err, ErrUnavailable) || err.Error() != ErrUnavailable.Error() {
 			t.Fatal("raw error leaked")
 		}
 	}

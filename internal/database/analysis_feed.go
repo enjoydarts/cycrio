@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -65,9 +66,9 @@ func (r *SubscriptionRepository) AnalysisResults(ctx context.Context, owner stri
 			rows.Close()
 			return out, subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &result.Events) != nil {
+		if diagnosticErr := json.Unmarshal(raw, &result.Events); diagnosticErr != nil {
 			rows.Close()
-			return out, subscriptions.ErrUnavailable
+			return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		if result.Events == nil {
 			result.Events = []ai.Event{}

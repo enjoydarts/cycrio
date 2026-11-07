@@ -3,6 +3,7 @@ package mailautomation
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 )
 
@@ -18,7 +19,7 @@ func safe(e error) error {
 			return v
 		}
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, e)
 }
 func valid(owner, account string) bool { return mailsync.ValidID(owner) && mailsync.ValidID(account) }
 func (s *Service) Read(ctx context.Context, owner, account string) (State, error) {

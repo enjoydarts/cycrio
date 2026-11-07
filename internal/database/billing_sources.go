@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/billing"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -23,7 +24,7 @@ func fillBilling(ctx context.Context, tx pgx.Tx, owner string, out *billing.Entr
 			return billingError(e)
 		}
 		if e = json.Unmarshal(raw, &s.OriginalEvent); e != nil {
-			return billing.ErrUnavailable
+			return diagnostics.Wrap(billing.ErrUnavailable, e)
 		}
 		out.Sources = append(out.Sources, s)
 	}

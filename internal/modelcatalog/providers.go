@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 const maxPageBytes = 8 << 20
@@ -43,7 +45,7 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 			return nil, ErrCredentialsRequired
 		}
 		if err != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogCause(err, key))
 		}
 		if bytes.ContainsAny(key, "\r\n") {
 			return nil, ErrCredentialsRequired
@@ -71,7 +73,7 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 		u.RawQuery = q.Encode()
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 		if err != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogCause(err, key))
 		}
 		req.Header.Set("Accept", "application/json")
 		if len(key) > 0 {
@@ -85,17 +87,35 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 		}
 		resp, err := f.client.Do(req)
 		if err != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogCause(err, key))
 		}
 		raw, readErr := io.ReadAll(io.LimitReader(resp.Body, maxPageBytes+1))
 		resp.Body.Close()
-		if readErr != nil || resp.StatusCode != 200 || len(raw) > maxPageBytes || len(key) > 0 && bytes.Contains(raw, key) {
-			return nil, ErrUnavailable
+		if readErr != nil {
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogCause(readErr, key))
+		}
+		if len(raw) > maxPageBytes {
+			return nil, diagnostics.Wrap(ErrUnavailable, errors.New("catalog response exceeded size limit"))
+		}
+		if resp.StatusCode != 200 {
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogHTTPDiagnostic(raw, resp.StatusCode, resp.Header, key))
+		}
+		var diagnosticDocument map[string]json.RawMessage
+		if json.Unmarshal(raw, &diagnosticDocument) == nil {
+			if upstreamError, ok := diagnosticDocument["error"]; ok && string(bytes.TrimSpace(upstreamError)) != "null" {
+				return nil, diagnostics.Wrap(ErrUnavailable, catalogHTTPDiagnostic(raw, resp.StatusCode, resp.Header, key))
+			}
+		}
+		if len(key) > 0 && bytes.Contains(raw, key) {
+			return nil, diagnostics.Wrap(ErrUnavailable, errors.New("catalog response contained a credential echo"))
 		}
 		if len(key) > 0 {
 			var document any
-			if decodeJSON(raw, &document) != nil || hasSecret(document, string(key)) {
-				return nil, ErrUnavailable
+			if decodeJSON(raw, &document) != nil {
+				return nil, diagnostics.Wrap(ErrUnavailable, catalogDecodeFailure(raw, key))
+			}
+			if hasSecret(document, string(key)) {
+				return nil, diagnostics.Wrap(ErrUnavailable, errors.New("catalog response contained a credential echo"))
 			}
 		}
 		var envelope struct {
@@ -105,7 +125,7 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 			LastID  string          `json:"last_id"`
 		}
 		if decodeJSON(raw, &envelope) != nil {
-			return nil, ErrUnavailable
+			return nil, diagnostics.Wrap(ErrUnavailable, catalogDecodeFailure(raw, key))
 		}
 		if provider == "liquid" {
 			envelope.Data = envelope.Models
@@ -119,7 +139,10 @@ func (f *Fetcher) Fetch(ctx context.Context, provider, workspaceID string) ([]Ca
 		}
 		for _, record := range records {
 			entry, err := parseEntry(provider, record)
-			if err != nil || seen[entry.Model.ModelID] {
+			if err != nil {
+				return nil, diagnostics.Wrap(ErrUnavailable, catalogCause(err, key))
+			}
+			if seen[entry.Model.ModelID] {
 				return nil, ErrUnavailable
 			}
 			seen[entry.Model.ModelID] = true

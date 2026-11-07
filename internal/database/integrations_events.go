@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/integrations"
@@ -42,7 +43,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if in.Type != "user.created" && in.Type != "user.updated" && in.Type != "user.deleted" {
@@ -52,16 +53,16 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 		return integrations.ErrInvalid
 	}
 	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, r.issuer+"|"+in.Data.ID); e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	// Serialize with requests and worker checks on this user's state.
 	if _, e = tx.Exec(ctx, `SELECT u.id FROM users u JOIN auth_identities i ON i.user_id=u.id WHERE i.issuer=$1 AND i.subject=$2 FOR NO KEY UPDATE OF u`, r.issuer, in.Data.ID); e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	// Match Configure/Send: user first, then settings, then credentials/profile.
 	var instance string
-	if tx.QueryRow(ctx, `SELECT clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&instance) != nil {
-		return integrations.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&instance); diagnosticErr != nil {
+		return diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	if instance == "" || in.InstanceID != instance {
 		return integrations.ErrInvalid
@@ -71,7 +72,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 	}
 	tag, e := tx.Exec(ctx, `INSERT INTO integration_webhook_events(provider,event_id,event_type,event_at) VALUES('clerk',$1,$2,$3) ON CONFLICT DO NOTHING`, eventID, in.Type, time.UnixMilli(in.Timestamp))
 	if e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if tag.RowsAffected() == 0 {
 		return nil
@@ -79,29 +80,29 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 	// Verified deletion is terminal, including when no local identity exists yet.
 	if in.Type == "user.deleted" {
 		if _, e = queueErasure(ctx, tx, r.keyring, r.issuer, in.Data.ID, uuid.NewString(), "clerk"); e != nil {
-			return integrations.ErrUnavailable
+			return diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
 		if e = wakeClerkErasure(ctx, tx, r.keyring, r.issuer, in.Data.ID); e != nil {
-			return integrations.ErrUnavailable
+			return diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
 		if _, e = tx.Exec(ctx, `DELETE FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, in.Data.ID); e != nil {
-			return integrations.ErrUnavailable
+			return diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
-		if tx.Commit(ctx) != nil {
-			return integrations.ErrUnavailable
+		if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+			return diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 		}
 		return nil
 	}
 	blockedIdentity, err := erasureIdentityBlocked(ctx, tx, r.keyring, r.issuer, in.Data.ID)
 	if err != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, err)
 	}
 	if blockedIdentity {
 		if _, e = tx.Exec(ctx, `DELETE FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, in.Data.ID); e != nil {
-			return integrations.ErrUnavailable
+			return diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
-		if tx.Commit(ctx) != nil {
-			return integrations.ErrUnavailable
+		if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+			return diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 		}
 		return nil
 	}
@@ -109,7 +110,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 	var oldBlocked, oldDeleted bool
 	e = tx.QueryRow(ctx, `SELECT event_at,object_updated_at,blocked,deleted FROM integration_profiles WHERE issuer=$1 AND subject=$2 FOR UPDATE`, r.issuer, in.Data.ID).Scan(&oldAt, &oldUpdatedAt, &oldBlocked, &oldDeleted)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	deleted := in.Type == "user.deleted"
 	blocked := in.Data.Banned || in.Data.Deprovisioned || deleted
@@ -131,7 +132,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 				if a.ID == in.Data.Primary && a.Verification.Status == "verified" && validIntegrationAddress(a.Address) {
 					envelope, err := r.keyring.Seal([]byte(a.Address), profileAAD(r.issuer, in.Data.ID, in.Timestamp))
 					if err != nil {
-						return integrations.ErrUnavailable
+						return diagnostics.Wrap(integrations.ErrUnavailable, err)
 					}
 					key = envelope.KeyID
 					ciphertext = envelope.Ciphertext
@@ -141,7 +142,7 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 		}
 		_, e = tx.Exec(ctx, `INSERT INTO integration_profiles(issuer,subject,event_at,blocked,deleted,key_id,ciphertext,object_updated_at)VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(issuer,subject)DO UPDATE SET event_at=EXCLUDED.event_at,blocked=EXCLUDED.blocked,deleted=EXCLUDED.deleted,key_id=EXCLUDED.key_id,ciphertext=EXCLUDED.ciphertext,object_updated_at=EXCLUDED.object_updated_at,synced_at=clock_timestamp()`, r.issuer, in.Data.ID, in.Timestamp, blocked, deleted, key, ciphertext, updatedAt)
 		if e != nil {
-			return integrations.ErrUnavailable
+			return diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
 		if blocked {
 			state := "disabled"
@@ -149,12 +150,12 @@ func (r *IntegrationRepository) ApplyClerk(ctx context.Context, credential, even
 				state = "deleting"
 			}
 			if _, e = tx.Exec(ctx, `UPDATE users u SET state=$3 FROM auth_identities i WHERE i.user_id=u.id AND i.issuer=$1 AND i.subject=$2 AND u.state<>'deleting'`, r.issuer, in.Data.ID, state); e != nil {
-				return integrations.ErrUnavailable
+				return diagnostics.Wrap(integrations.ErrUnavailable, e)
 			}
 		}
 	}
-	if tx.Commit(ctx) != nil {
-		return integrations.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }
@@ -181,31 +182,31 @@ func (r *IntegrationRepository) ApplyResend(ctx context.Context, credential, eve
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	// Match purge's lock order before locking shared credentials. Unknown IDs
 	// still retain early events until the send acknowledgement arrives.
 	hash := erasedResendEmailHash(id)
 	if e = lockErasedResendEmail(ctx, tx, hash); e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if e = integrationCredential(ctx, tx, credential, "resend_webhook"); e != nil {
 		return e
 	}
 	var erased bool
 	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM erased_resend_email_receipts WHERE email_hash=$1)`, hash).Scan(&erased); e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if erased {
 		return nil
 	}
 	// Keep minimal facts even if the send ACK has not arrived yet.
 	if _, e = tx.Exec(ctx, `INSERT INTO integration_webhook_events(provider,event_id,event_type,event_at,email_id)VALUES('resend',$1,$2,$3,$4) ON CONFLICT DO NOTHING`, eventID, in.Type, in.CreatedAt, id); e != nil {
-		return integrations.ErrUnavailable
+		return diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return integrations.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	return nil
 }

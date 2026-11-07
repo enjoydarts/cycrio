@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
@@ -166,8 +167,8 @@ func (r *SubscriptionRepository) AnalysisMessage(ctx context.Context, owner, id 
 	if e != nil {
 		return out, subscriptionError(e)
 	}
-	if json.Unmarshal(raw, &result.Events) != nil {
-		return out, subscriptions.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &result.Events); diagnosticErr != nil {
+		return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 	}
 	if result.Events == nil {
 		result.Events = []ai.Event{}

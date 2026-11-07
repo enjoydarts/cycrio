@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -24,7 +25,7 @@ func scanMailSync(row pgx.Row) (mailsync.Run, error) {
 		return r, mailsync.ErrNotFound
 	}
 	if e != nil {
-		return r, mailsync.ErrUnavailable
+		return r, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	return r, nil
 }
@@ -39,7 +40,7 @@ func (r *MailSyncRepository) beginAccount(ctx context.Context, owner, id string)
 		if errors.Is(e, pgx.ErrNoRows) {
 			return nil, mailsync.ErrNotFound
 		}
-		return nil, mailsync.ErrUnavailable
+		return nil, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	return tx, nil
 }
@@ -55,8 +56,8 @@ func (r *MailSyncRepository) Request(ctx context.Context, owner, id string, in m
 	existing, e := scanMailSync(tx.QueryRow(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE owner_id=$1 AND request_id=$2`, owner, in.RequestID))
 	if e == nil {
 		var version int64
-		if tx.QueryRow(ctx, `SELECT config_version FROM mail_sync_runs WHERE id=$1`, existing.ID).Scan(&version) != nil {
-			return mailsync.Run{}, mailsync.ErrUnavailable
+		if diagnosticErr := tx.QueryRow(ctx, `SELECT config_version FROM mail_sync_runs WHERE id=$1`, existing.ID).Scan(&version); diagnosticErr != nil {
+			return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, diagnosticErr)
 		}
 		if existing.AccountID != id || existing.Since != in.Since || existing.Before != in.Before || existing.MaxMessages != in.MaxMessages || version != in.ExpectedVersion {
 			return mailsync.Run{}, mailsync.ErrConflict
@@ -70,14 +71,17 @@ func (r *MailSyncRepository) Request(ctx context.Context, owner, id string, in m
 	var state, credential string
 	var count int
 	var active bool
-	if tx.QueryRow(ctx, `SELECT version,state FROM mail_accounts WHERE id=$1`, id).Scan(&version, &state) != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT version,state FROM mail_accounts WHERE id=$1`, id).Scan(&version, &state); diagnosticErr != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, diagnosticErr)
 	}
 	if version != in.ExpectedVersion || state != "ready" {
 		return mailsync.Run{}, mailsync.ErrConflict
 	}
-	if tx.QueryRow(ctx, `SELECT count(*) FROM mail_account_folders WHERE account_id=$1 AND selected AND available AND selectable`, id).Scan(&count) != nil || tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_sync_runs WHERE account_id=$1 AND state IN ('queued','leased','running'))`, id).Scan(&active) != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+	if e := tx.QueryRow(ctx, `SELECT count(*) FROM mail_account_folders WHERE account_id=$1 AND selected AND available AND selectable`, id).Scan(&count); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
+	}
+	if e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_sync_runs WHERE account_id=$1 AND state IN ('queued','leased','running'))`, id).Scan(&active); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	if count == 0 || count > 1000 || active {
 		return mailsync.Run{}, mailsync.ErrConflict
@@ -90,10 +94,13 @@ func (r *MailSyncRepository) Request(ctx context.Context, owner, id string, in m
 		return mailsync.Run{}, e
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_sync_run_folders(owner_id,account_id,run_id,folder_id) SELECT $1,$2,$3,id FROM mail_account_folders WHERE account_id=$2 AND selected AND available AND selectable`, owner, id, run.ID); e != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
-	if auditSync(ctx, tx, owner, id, run.ID, "sync_requested") != nil || tx.Commit(ctx) != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+	if e := auditSync(ctx, tx, owner, id, run.ID, "sync_requested"); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
+	}
+	if e := tx.Commit(ctx); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	return run, nil
 }
@@ -109,7 +116,7 @@ func (r *MailSyncRepository) List(ctx context.Context, owner, id string) ([]mail
 	defer tx.Rollback(ctx)
 	rows, e := tx.Query(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE owner_id=$1 AND account_id=$2 AND mode='manual' ORDER BY created_at DESC,id DESC LIMIT 20`, owner, id)
 	if e != nil {
-		return nil, mailsync.ErrUnavailable
+		return nil, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	defer rows.Close()
 	out := []mailsync.Run{}
@@ -120,8 +127,8 @@ func (r *MailSyncRepository) List(ctx context.Context, owner, id string) ([]mail
 		}
 		out = append(out, v)
 	}
-	if rows.Err() != nil {
-		return nil, mailsync.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(mailsync.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }
@@ -138,15 +145,18 @@ func (r *MailSyncRepository) Cancel(ctx context.Context, owner, id, run string) 
 	if v.State != "queued" && v.State != "leased" && v.State != "running" {
 		return v, mailsync.ErrConflict
 	}
-	if endSync(ctx, tx, run, "cancelled", "cancelled") != nil || auditSync(ctx, tx, owner, id, run, "sync_cancelled") != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+	if e := endSync(ctx, tx, run, "cancelled", "cancelled"); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
+	}
+	if e := auditSync(ctx, tx, owner, id, run, "sync_cancelled"); e != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, e)
 	}
 	v, e = scanMailSync(tx.QueryRow(ctx, `SELECT `+mailSyncColumns+` FROM mail_sync_runs WHERE id=$1`, run))
 	if e != nil {
 		return v, e
 	}
-	if tx.Commit(ctx) != nil {
-		return mailsync.Run{}, mailsync.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return mailsync.Run{}, diagnostics.Wrap(mailsync.ErrUnavailable, diagnosticErr)
 	}
 	return v, nil
 }

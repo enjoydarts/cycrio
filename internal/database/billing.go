@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"strings"
 
 	"github.com/enjoydarts/cycrio/internal/billing"
@@ -38,7 +39,7 @@ func billingError(e error) error {
 			return billing.ErrNotFound
 		}
 	}
-	return billing.ErrUnavailable
+	return diagnostics.Wrap(billing.ErrUnavailable, e)
 }
 func (r *BillingRepository) begin(ctx context.Context, owner, contract string) (pgx.Tx, error) {
 	if !billing.ValidID(owner) || contract != "" && !billing.ValidID(contract) {
@@ -109,7 +110,7 @@ func finalizeBilling(ctx context.Context, tx pgx.Tx, owner, contract, id, action
 	}
 	snapshot, e := json.Marshal(out)
 	if e != nil {
-		return billing.Entry{}, billing.ErrUnavailable
+		return billing.Entry{}, diagnostics.Wrap(billing.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO billing_event_revisions(owner_id,subscription_id,entry_id,version,snapshot) VALUES($1,$2,$3,$4,$5)`, owner, contract, id, out.Version, snapshot); e != nil {
 		return billing.Entry{}, billingError(e)

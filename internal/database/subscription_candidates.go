@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"encoding/json"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 )
 
@@ -68,8 +69,8 @@ func (r *SubscriptionRepository) Candidates(ctx context.Context, owner string, f
 		if e = rows.Scan(&c.ResultID, &c.EventIndex, &c.AccountID, &c.AccountLabel, &raw, &c.ReceivedAt, &c.MailCount, &c.RelatedCount); e != nil {
 			return out, subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &c.Event) != nil {
-			return out, subscriptions.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &c.Event); diagnosticErr != nil {
+			return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		out.Candidates = append(out.Candidates, c)
 	}
@@ -93,8 +94,8 @@ func (r *SubscriptionRepository) Candidate(ctx context.Context, owner, result st
 	if e != nil {
 		return out, subscriptionError(e)
 	}
-	if json.Unmarshal(raw, &out.Event) != nil {
-		return out, subscriptions.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &out.Event); diagnosticErr != nil {
+		return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }
@@ -170,8 +171,8 @@ func (r *SubscriptionRepository) RelatedCandidates(ctx context.Context, owner, r
 		if e = rows.Scan(&c.ResultID, &c.EventIndex, &c.AccountID, &c.AccountLabel, &raw, &c.ReceivedAt); e != nil {
 			return out, subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &c.Event) != nil {
-			return out, subscriptions.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &c.Event); diagnosticErr != nil {
+			return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		out.Candidates = append(out.Candidates, c)
 	}

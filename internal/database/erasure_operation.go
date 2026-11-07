@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/erasure"
 	"github.com/jackc/pgx/v5"
@@ -16,16 +17,16 @@ func WithUserOperation(ctx context.Context, pool *pgxpool.Pool, owner string, ex
 	// pooled connection needed by their callbacks to persist progress/results.
 	conn, err := pgx.ConnectConfig(ctx, pool.Config().ConnConfig.Copy())
 	if err != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, err)
 	}
 	defer conn.Close(context.Background())
 	tx, err := conn.Begin(ctx)
 	if err != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, err)
 	}
 	defer tx.Rollback(context.Background())
 	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, "user-erasure-fence/v1:"+owner); err != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, err)
 	}
 	var state string
 	err = tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1`, owner).Scan(&state)
@@ -33,7 +34,7 @@ func WithUserOperation(ctx context.Context, pool *pgxpool.Pool, owner string, ex
 		return nil
 	}
 	if err != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, err)
 	}
 	if state != "active" {
 		return nil
@@ -60,7 +61,7 @@ func WithMailOperation(ctx context.Context, pool *pgxpool.Pool, kind, id string,
 		return nil
 	}
 	if err != nil {
-		return erasure.ErrUnavailable
+		return diagnostics.Wrap(erasure.ErrUnavailable, err)
 	}
 	return WithUserOperation(ctx, pool, owner, execute)
 }

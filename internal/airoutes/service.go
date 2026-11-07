@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/google/uuid"
 )
 
@@ -58,7 +59,7 @@ func (s *Service) Refresh(ctx context.Context, actor string) (ListResult, error)
 			}
 			select {
 			case <-ctx.Done():
-				return ListResult{}, ErrUnavailable
+				return ListResult{}, diagnostics.Wrap(ErrUnavailable, ctx.Err())
 			case <-ticker.C:
 			}
 		}
@@ -97,12 +98,15 @@ func (s *Service) Refresh(ctx context.Context, actor string) (ListResult, error)
 	}
 	cleanup, stop := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 	defer stop()
-	_ = s.repo.Finish(cleanup, lease, code)
+	if finishErr := s.repo.Finish(cleanup, lease, code); finishErr != nil {
+		diagnostics.Record(ctx, finishErr)
+		e = errors.Join(e, finishErr)
+	}
 	if code == "credentials_required" {
 		return ListResult{}, ErrCredentialsRequired
 	}
 	if code == "conflict" {
 		return ListResult{}, ErrConflict
 	}
-	return ListResult{}, ErrUnavailable
+	return ListResult{}, diagnostics.Wrap(ErrUnavailable, e)
 }

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/jackc/pgx/v5"
 	"time"
 )
@@ -43,7 +44,7 @@ func normalizeRuntimeTotals(t *airuntime.Totals) error {
 	for _, s := range []*string{&t.Amount, &t.EstimatedAmount, &t.ReportedAmount} {
 		v, err := ai.NormalizeAmount(*s)
 		if err != nil {
-			return airuntime.ErrUnavailable
+			return diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		*s = v
 	}
@@ -290,20 +291,20 @@ func (r *AIRuntimeRepository) Revisions(ctx context.Context, id string) ([]airun
 		if err := rows.Scan(&v.ID, &v.CallID, &raw, &v.Cost.Status, &v.Cost.Amount, &v.Cost.Currency, &v.Cost.Reason, &v.CapturedAt); err != nil {
 			return result, runtimeError(err)
 		}
-		if json.Unmarshal(raw, &v.Usage) != nil {
-			return result, airuntime.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &v.Usage); diagnosticErr != nil {
+			return result, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 		}
 		if v.Cost.Amount != nil {
 			a, err := ai.NormalizeAmount(*v.Cost.Amount)
 			if err != nil {
-				return result, airuntime.ErrUnavailable
+				return result, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 			}
 			v.Cost.Amount = &a
 		}
 		result = append(result, v)
 	}
-	if rows.Err() != nil {
-		return result, airuntime.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return result, diagnostics.Wrap(airuntime.ErrUnavailable, diagnosticErr)
 	}
 	return result, nil
 }

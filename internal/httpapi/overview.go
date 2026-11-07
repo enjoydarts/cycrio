@@ -28,6 +28,7 @@ func registerOverview(mux *http.ServeMux, service OverviewService, protect prote
 		}
 		report, err := service.Read(r.Context(), p.ID)
 		if err != nil {
+			recordTelemetryError(w, err)
 			switch {
 			case errors.Is(err, overview.ErrInvalid):
 				writeError(w, 400, "invalid_request")

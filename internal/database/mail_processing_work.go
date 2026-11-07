@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
@@ -40,7 +41,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string, atte
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return nil, w, mailprocessing.ErrUnavailable
+		return nil, w, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	fail := func(e error) (pgx.Tx, lockedProcessing, error) { tx.Rollback(ctx); return nil, w, processingError(e) }
 	// NO KEY UPDATE excludes user state changes but permits KEY SHARE from
@@ -62,8 +63,8 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string, atte
 		return fail(e)
 	}
 	var request processingRequest
-	if json.Unmarshal(requestDoc, &request) != nil {
-		return fail(mailprocessing.ErrUnavailable)
+	if err := json.Unmarshal(requestDoc, &request); err != nil {
+		return fail(diagnostics.Wrap(mailprocessing.ErrUnavailable, err))
 	}
 	w.work.FullEmail = request.Input.FullEmail
 	w.reanalysis = request.Reanalysis
@@ -182,21 +183,21 @@ func loadProcessingItem(ctx context.Context, tx pgx.Tx, w *lockedProcessing, id,
 func (r *MailProcessingRepository) Claim(ctx context.Context) ([]mailprocessing.Lease, error) {
 	rows, e := r.pool.Query(ctx, `SELECT id FROM mail_processing_runs WHERE state='queued' OR (state IN ('leased','running') AND lease_until<=clock_timestamp()) ORDER BY created_at,id LIMIT 100`)
 	if e != nil {
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	ids := []string{}
 	for rows.Next() {
 		var id string
-		if rows.Scan(&id) != nil {
+		if diagnosticErr := rows.Scan(&id); diagnosticErr != nil {
 			rows.Close()
-			return nil, mailprocessing.ErrUnavailable
+			return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, diagnosticErr)
 		}
 		ids = append(ids, id)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	out := []mailprocessing.Lease{}
 	partial := func(e error) ([]mailprocessing.Lease, error) {
@@ -233,11 +234,11 @@ func (r *MailProcessingRepository) Claim(ctx context.Context) ([]mailprocessing.
 		}
 		if e != nil {
 			tx.Rollback(ctx)
-			return partial(mailprocessing.ErrUnavailable)
+			return partial(diagnostics.Wrap(mailprocessing.ErrUnavailable, e))
 		}
 		if e = tx.Commit(ctx); e != nil {
 			tx.Rollback(ctx)
-			return partial(mailprocessing.ErrUnavailable)
+			return partial(diagnostics.Wrap(mailprocessing.ErrUnavailable, e))
 		}
 		if candidate.RunID != "" {
 			out = append(out, candidate)
@@ -310,10 +311,10 @@ func (r *MailProcessingRepository) Start(ctx context.Context, l mailprocessing.L
 		return mailprocessing.Work{}, e
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state='running' WHERE id=$1 AND state='queued'`, w.work.AttemptID); e != nil {
-		return mailprocessing.Work{}, mailprocessing.ErrUnavailable
+		return mailprocessing.Work{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_processing_runs SET state='running',started_at=coalesce(started_at,clock_timestamp()),lease_until=clock_timestamp()+interval '6 minutes' WHERE id=$1`, l.RunID); e != nil {
-		return mailprocessing.Work{}, mailprocessing.ErrUnavailable
+		return mailprocessing.Work{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return mailprocessing.Work{}, processingError(e)
@@ -344,7 +345,7 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 	if stage == "extraction" {
 		var primaryDone bool
 		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_calls WHERE operation_id=$1 AND stage='classification' AND attempt_no=1 AND status='succeeded' AND outcome='success')`, w.work.AttemptID).Scan(&primaryDone); e != nil {
-			return airuntime.Call{}, mailprocessing.ErrUnavailable
+			return airuntime.Call{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if !primaryDone {
 			return airuntime.Call{}, mailprocessing.ErrConflict
@@ -370,7 +371,7 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 	// The separate statement also catches a deadline crossed during insertion.
 	var alive bool
 	if e = tx.QueryRow(ctx, `SELECT lease_until>clock_timestamp() FROM mail_processing_runs WHERE id=$1`, l.RunID).Scan(&alive); e != nil {
-		return airuntime.Call{}, mailprocessing.ErrUnavailable
+		return airuntime.Call{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if !alive {
 		return airuntime.Call{}, mailprocessing.ErrNotFound
@@ -455,7 +456,7 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 		raw, _ = json.Marshal(in.Events)
 	}
 	if _, e = tx.Exec(ctx, `UPDATE mail_processing_items SET state=$2,classification=$3,error_code=$4,events=$5,received_at=$6,finished_at=clock_timestamp() WHERE id=$1 AND state='running'`, w.work.AttemptID, in.State, in.Classification, in.ErrorCode, raw, in.ReceivedAt); e != nil {
-		return mailprocessing.ErrUnavailable
+		return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	// Mail access can detect a changed generation or invalid credentials before
 	// the next UID discovery. Preserve this one result and atomically stop the
@@ -483,7 +484,7 @@ func (r *MailProcessingRepository) Finish(ctx context.Context, l mailprocessing.
 			failed = 1
 		}
 		if _, e = tx.Exec(ctx, `UPDATE mail_processing_runs SET completed_count=completed_count+1,related_count=related_count+$2,unrelated_count=unrelated_count+$3,failed_count=failed_count+$4 WHERE id=$1`, l.RunID, related, unrelated, failed); e != nil {
-			return mailprocessing.ErrUnavailable
+			return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if e = settleProcessingRun(ctx, tx, l.RunID); e != nil {
 			return e

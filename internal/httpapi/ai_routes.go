@@ -54,6 +54,7 @@ func registerAIRoutes(mux *http.ServeMux, service AIRoutesService, protect prote
 	})
 }
 func writeRoutesError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, airoutes.ErrInvalid), errors.Is(e, modelcatalog.ErrInvalid):
 		writeError(w, 400, "invalid_request")

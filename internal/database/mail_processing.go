@@ -6,6 +6,7 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ func processingError(e error) error {
 	if errors.Is(e, airuntime.ErrInvalid) || errors.Is(e, mailprocessing.ErrInvalid) {
 		return mailprocessing.ErrInvalid
 	}
-	return mailprocessing.ErrUnavailable
+	return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 }
 
 const processingRunColumns = `id,account_id,state,max_messages,total_count,completed_count,related_count,unrelated_count,failed_count,unknown_count,created_at,started_at,finished_at`
@@ -52,7 +53,7 @@ func (r *MailProcessingRepository) beginAccount(ctx context.Context, owner, acco
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	var state string
 	// State updates must serialize with processing, while admin audit FK
@@ -63,7 +64,7 @@ func (r *MailProcessingRepository) beginAccount(ctx context.Context, owner, acco
 		if e == nil || errors.Is(e, pgx.ErrNoRows) {
 			return nil, mailprocessing.ErrNotFound
 		}
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	var found string
 	// Provider call attribution takes KEY SHARE after model references. The
@@ -114,14 +115,14 @@ func processingPreview(ctx context.Context, tx pgx.Tx, owner, account string, lo
 		out.TimeoutSeconds = public.TimeoutSeconds
 	}
 	if e = tx.QueryRow(ctx, `SELECT count(*) FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND `+processingSourceSelected+` AND `+processingPending, owner, account).Scan(&out.PendingCount); e != nil {
-		return out, mailprocessing.ErrUnavailable
+		return out, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if e = tx.QueryRow(ctx, `SELECT count(*) FILTER(WHERE state='failed'),count(*) FILTER(WHERE state='unknown') FROM (SELECT DISTINCT ON(message_id) message_id,state FROM mail_processing_items WHERE owner_id=$1 AND account_id=$2 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC) latest`, owner, account).Scan(&out.FailedCount, &out.UnknownCount); e != nil {
-		return out, mailprocessing.ErrUnavailable
+		return out, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	var active, folders, credential bool
 	if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_processing_runs WHERE account_id=$1 AND state IN ('queued','leased','running')),EXISTS(SELECT 1 FROM mail_account_folders WHERE account_id=$1 AND selected AND available AND selectable),EXISTS(SELECT 1 FROM mail_accounts a JOIN mail_account_credentials c ON c.account_id=a.id AND c.version=a.credential_version WHERE a.id=$1 AND c.state='active')`, account).Scan(&active, &folders, &credential); e != nil {
-		return out, mailprocessing.ErrUnavailable
+		return out, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	switch {
 	case state != "ready":
@@ -202,8 +203,8 @@ func (r *MailProcessingRepository) retryBatch(ctx context.Context, owner, accoun
 	if e := r.pool.QueryRow(ctx, `SELECT response_doc FROM mail_processing_retry_batches WHERE owner_id=$1 AND account_id=$2 AND request_id=$3`, owner, account, in.RequestID).Scan(&raw); e != nil {
 		return out, processingError(e)
 	}
-	if json.Unmarshal(raw, &out) != nil {
-		return out, mailprocessing.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &out); diagnosticErr != nil {
+		return out, diagnostics.Wrap(mailprocessing.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }
@@ -227,7 +228,7 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		// Prompt identity belongs to the deployment, not the client's idempotency
 		// document. Replay its frozen receipt even when new code has a new prompt.
 		if e = tx.QueryRow(ctx, `SELECT account_id=$2 AND CASE WHEN $4 THEN request_doc-'prompt_version'=$3::jsonb-'prompt_version' ELSE request_doc=$3::jsonb END FROM mail_processing_runs WHERE id=$1`, existing.ID, account, raw, request.Reanalysis).Scan(&same); e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if !same {
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
@@ -266,14 +267,14 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
 		}
 		if e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if latest != request.ExpectedResultID || (state != "failed" && state != "unknown") || state == "unknown" && !request.ConfirmUnknown {
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
 		}
 		var selected bool
 		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.id=$1 AND m.owner_id=$2 AND m.account_id=$3 AND `+processingSourceSelected+`)`, request.MessageID, owner, account).Scan(&selected); e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if !selected {
 			return mailprocessing.Run{}, mailprocessing.ErrConflict
@@ -325,20 +326,20 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 	} else {
 		rows, e := tx.Query(ctx, `SELECT m.id FROM mail_discovered_messages m LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE m.owner_id=$1 AND m.account_id=$2 AND `+processingSourceSelected+` AND `+processingPending+` ORDER BY m.created_at,m.id LIMIT $3`, owner, account, in.MaxMessages)
 		if e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		for rows.Next() {
 			var id string
-			if rows.Scan(&id) != nil {
+			if diagnosticErr := rows.Scan(&id); diagnosticErr != nil {
 				rows.Close()
-				return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+				return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, diagnosticErr)
 			}
 			ids = append(ids, id)
 		}
 		e = rows.Err()
 		rows.Close()
 		if e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 	}
 	if len(ids) == 0 {
@@ -352,12 +353,12 @@ func (r *MailProcessingRepository) request(ctx context.Context, owner, account s
 		// Snapshot all selected failures in one statement so the HTTP deadline
 		// does not turn the number of round trips into an implicit page limit.
 		if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state) SELECT gen_random_uuid(),$1,$2,$3,message_id,'queued' FROM unnest($4::uuid[]) AS message_id`, owner, account, run.ID, ids); e != nil {
-			return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+			return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 	} else {
 		for _, id := range ids {
 			if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_items(id,owner_id,account_id,run_id,message_id,state)VALUES($1,$2,$3,$4,$5,'queued')`, uuid.NewString(), owner, account, run.ID, id); e != nil {
-				return mailprocessing.Run{}, mailprocessing.ErrUnavailable
+				return mailprocessing.Run{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 			}
 		}
 	}
@@ -400,7 +401,7 @@ func (r *MailProcessingRepository) ListRuns(ctx context.Context, owner, account 
 	defer tx.Rollback(ctx)
 	rows, e := tx.Query(ctx, `SELECT `+processingRunColumns+` FROM mail_processing_runs WHERE owner_id=$1 AND account_id=$2 ORDER BY created_at DESC,id DESC LIMIT 20`, owner, account)
 	if e != nil {
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	defer rows.Close()
 	out := []mailprocessing.Run{}
@@ -421,15 +422,18 @@ func (r *MailProcessingRepository) Results(ctx context.Context, owner, account s
 	defer tx.Rollback(ctx)
 	rows, e := tx.Query(ctx, `SELECT id,message_id,state,classification,error_code,events,finished_at,received_at FROM (SELECT DISTINCT ON(message_id) id,message_id,state,classification,error_code,events,finished_at,received_at FROM mail_processing_items WHERE owner_id=$1 AND account_id=$2 AND state IN ('succeeded','not_related','failed','unknown') ORDER BY message_id,created_at DESC,id DESC) latest ORDER BY finished_at DESC,id DESC LIMIT 100`, owner, account)
 	if e != nil {
-		return nil, mailprocessing.ErrUnavailable
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	defer rows.Close()
 	out := []mailprocessing.Result{}
 	for rows.Next() {
 		var v mailprocessing.Result
 		var raw []byte
-		if rows.Scan(&v.ID, &v.MessageID, &v.State, &v.Classification, &v.ErrorCode, &raw, &v.FinishedAt, &v.ReceivedAt) != nil || json.Unmarshal(raw, &v.Events) != nil {
-			return nil, mailprocessing.ErrUnavailable
+		if err := rows.Scan(&v.ID, &v.MessageID, &v.State, &v.Classification, &v.ErrorCode, &raw, &v.FinishedAt, &v.ReceivedAt); err != nil {
+			return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, err)
+		}
+		if err := json.Unmarshal(raw, &v.Events); err != nil {
+			return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, err)
 		}
 		if v.Events == nil {
 			v.Events = []ai.Event{}

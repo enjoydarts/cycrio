@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -25,17 +26,17 @@ func (r *MailAccountRepository) SaveFolders(ctx context.Context, owner, id strin
 	}
 	// Validate the complete selection before writing any row.
 	var count int
-	if tx.QueryRow(ctx, `SELECT count(*) FROM mail_account_folders WHERE account_id=$1 AND id=ANY($2::uuid[]) AND available AND selectable`, id, in.FolderIDs).Scan(&count) != nil {
-		return mailaccounts.Account{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT count(*) FROM mail_account_folders WHERE account_id=$1 AND id=ANY($2::uuid[]) AND available AND selectable`, id, in.FolderIDs).Scan(&count); diagnosticErr != nil {
+		return mailaccounts.Account{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	if count != len(in.FolderIDs) {
 		return mailaccounts.Account{}, mailaccounts.ErrInvalid
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_folders SET selected=(id=ANY($2::uuid[])) WHERE account_id=$1`, id, in.FolderIDs); err != nil {
-		return mailaccounts.Account{}, mailaccounts.ErrUnavailable
+		return mailaccounts.Account{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_accounts SET version=version+1,updated_at=now() WHERE id=$1`, id); err != nil {
-		return mailaccounts.Account{}, mailaccounts.ErrUnavailable
+		return mailaccounts.Account{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	return completeMailAccount(ctx, tx, owner, id, "folders_selected", in.ExpectedVersion+1)
 }
@@ -46,11 +47,11 @@ func replaceMailFolders(ctx context.Context, tx pgx.Tx, id string, items []maila
 		names = append(names, f.Name)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_folders SET available=false,selected=false WHERE account_id=$1 AND NOT (name=ANY($2::text[]))`, id, names); err != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	for _, f := range items {
 		if _, err := tx.Exec(ctx, `INSERT INTO mail_account_folders(id,account_id,name,delimiter,selectable,available,display_name) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(account_id,name) DO UPDATE SET delimiter=excluded.delimiter,selectable=excluded.selectable,available=true,selected=mail_account_folders.selected AND excluded.selectable,display_name=excluded.display_name`, uuid.NewString(), id, f.Name, f.Delimiter, f.Selectable, f.DisplayName); err != nil {
-			return mailaccounts.ErrUnavailable
+			return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 		}
 	}
 	return nil

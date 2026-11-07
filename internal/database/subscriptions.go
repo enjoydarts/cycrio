@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ func subscriptionError(e error) error {
 	if errors.Is(e, subscriptions.ErrNotFound) || errors.Is(e, subscriptions.ErrConflict) || errors.Is(e, subscriptions.ErrInvalid) {
 		return e
 	}
-	return subscriptions.ErrUnavailable
+	return diagnostics.Wrap(subscriptions.ErrUnavailable, e)
 }
 func (r *SubscriptionRepository) begin(ctx context.Context, owner string) (pgx.Tx, error) {
 	if !subscriptions.ValidID(owner) {
@@ -44,7 +45,7 @@ func (r *SubscriptionRepository) begin(ctx context.Context, owner string) (pgx.T
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return nil, subscriptions.ErrUnavailable
+		return nil, diagnostics.Wrap(subscriptions.ErrUnavailable, e)
 	}
 	var state string
 	// Serialize owner mutations without conflicting with administrator audit FK checks.
@@ -85,8 +86,8 @@ func fillSubscription(ctx context.Context, tx pgx.Tx, owner string, s *subscript
 		if e = rows.Scan(&source.ResultID, &source.EventIndex, &raw, &source.Provenance, &source.AccountID, &source.AccountLabel, &source.Provider, &source.ReceivedAt, &source.AffectsBillingAnchor); e != nil {
 			return subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &source.OriginalEvent) != nil {
-			return subscriptions.ErrUnavailable
+		if e := json.Unmarshal(raw, &source.OriginalEvent); e != nil {
+			return diagnostics.Wrap(subscriptions.ErrUnavailable, e)
 		}
 		s.Sources = append(s.Sources, source)
 	}

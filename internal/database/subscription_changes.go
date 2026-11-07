@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"slices"
 	"strings"
 	"time"
@@ -43,8 +44,8 @@ func changeSourceEvidence(ctx context.Context, tx pgx.Tx, owner string, ref subs
 	if e != nil {
 		return out, nil, subscriptionError(e)
 	}
-	if json.Unmarshal(event, &out.OriginalEvent) != nil {
-		return out, nil, subscriptions.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(event, &out.OriginalEvent); diagnosticErr != nil {
+		return out, nil, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 	}
 	return out, record, nil
 }
@@ -137,9 +138,9 @@ func subscriptionChangePreviewMode(ctx context.Context, tx pgx.Tx, owner, id str
 			rows.Close()
 			return p, subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &receipt) != nil {
+		if diagnosticErr := json.Unmarshal(raw, &receipt); diagnosticErr != nil {
 			rows.Close()
-			return p, subscriptions.ErrUnavailable
+			return p, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		history = append(history, receipt)
 	}
@@ -260,8 +261,8 @@ func (r *SubscriptionRepository) Changes(ctx context.Context, owner, id string, 
 		if e = rows.Scan(&raw); e != nil {
 			return p, subscriptionError(e)
 		}
-		if json.Unmarshal(raw, &receipt) != nil {
-			return p, subscriptions.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &receipt); diagnosticErr != nil {
+			return p, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		p.Changes = append(p.Changes, receipt)
 	}
@@ -299,8 +300,8 @@ func applySubscriptionChangeTx(ctx context.Context, tx pgx.Tx, owner, id string,
 		if !same || !strings.EqualFold(target, id) {
 			return out, subscriptions.ErrConflict
 		}
-		if json.Unmarshal(receiptJSON, &out.Receipt) != nil {
-			return out, subscriptions.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(receiptJSON, &out.Receipt); diagnosticErr != nil {
+			return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 		}
 		current, e := scanSubscription(tx.QueryRow(ctx, `SELECT `+subscriptionColumns+` FROM subscriptions WHERE owner_id=$1 AND id=$2 AND deleted_at IS NULL`, owner, id))
 		if errors.Is(e, subscriptions.ErrNotFound) {
@@ -378,8 +379,8 @@ func applySubscriptionChangeTx(ctx context.Context, tx pgx.Tx, owner, id string,
 	out.Receipt = subscriptions.ChangeReceipt{RequestID: in.RequestID, AppliedVersion: after.Version, CreatedAt: created, SelectedFields: in.SelectedFields, Before: p.Subscription, After: after, Source: p.Source, AdditionalEvidence: p.AdditionalEvidence, AlgorithmVersion: p.AlgorithmVersion}
 	receiptJSON, _ = json.Marshal(out.Receipt)
 	// Return the same JSON-normalized receipt on first success and every retry.
-	if json.Unmarshal(receiptJSON, &out.Receipt) != nil {
-		return out, subscriptions.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(receiptJSON, &out.Receipt); diagnosticErr != nil {
+		return out, diagnostics.Wrap(subscriptions.ErrUnavailable, diagnosticErr)
 	}
 	_, e = tx.Exec(ctx, `INSERT INTO subscription_change_requests(owner_id,request_id,actor_id,subscription_id,request_doc,base_version,applied_version,receipt_doc,created_at) VALUES($1,$2,$1,$3,$4,$5,$6,$7,$8)`, owner, in.RequestID, id, raw, in.ExpectedVersion, after.Version, receiptJSON, created)
 	if e != nil {

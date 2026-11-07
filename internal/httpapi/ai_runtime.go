@@ -131,6 +131,7 @@ func registerAIRuntime(mux *http.ServeMux, service AIRuntimeService, protect pro
 	})
 }
 func writeRuntimeError(w http.ResponseWriter, err error) {
+	recordTelemetryError(w, err)
 	switch {
 	case errors.Is(err, airuntime.ErrInvalid), errors.Is(err, modelcatalog.ErrInvalid):
 		writeError(w, 400, "invalid_request")

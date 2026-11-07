@@ -110,6 +110,7 @@ func strictScheduleObject(raw []byte, target any, keys []string) bool {
 }
 func normalizeScheduleView(v *billingschedule.View) { normalizeSubscription(&v.Subscription) }
 func writeScheduleError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, billingschedule.ErrInvalid):
 		writeError(w, 400, "invalid_request")

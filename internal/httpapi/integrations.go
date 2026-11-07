@@ -88,6 +88,7 @@ func registerIntegrations(mux *http.ServeMux, service IntegrationService, protec
 	}
 }
 func writeIntegrationError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, integrations.ErrInvalid):
 		writeError(w, 400, "invalid_request")

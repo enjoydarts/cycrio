@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/airoutes"
@@ -19,11 +20,11 @@ func processingStandardProof(ctx context.Context, q runtimeQuery, p *mailprocess
 		return nil
 	}
 	if e != nil {
-		return mailprocessing.ErrUnavailable
+		return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	var proof mailprocessing.StandardProof
-	if json.Unmarshal(raw, &proof) != nil {
-		return mailprocessing.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &proof); diagnosticErr != nil {
+		return diagnostics.Wrap(mailprocessing.ErrUnavailable, diagnosticErr)
 	}
 	p.StandardProof = &proof
 	return nil
@@ -40,7 +41,7 @@ func standardRouteReady(ctx context.Context, q runtimeQuery, p airuntime.Profile
 	}
 	model, _, e := readModel(ctx, q, p.Secondary.ID, lock)
 	if e != nil {
-		return time.Time{}, mailprocessing.ErrUnavailable
+		return time.Time{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	key, version, e := runtimeCredential(ctx, q, "openrouter", lock)
 	if e != nil {
@@ -50,8 +51,8 @@ func standardRouteReady(ctx context.Context, q runtimeQuery, p airuntime.Profile
 		return time.Time{}, mailprocessing.ErrConflict
 	}
 	var now time.Time
-	if q.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now) != nil {
-		return now, mailprocessing.ErrUnavailable
+	if diagnosticErr := q.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); diagnosticErr != nil {
+		return now, diagnostics.Wrap(mailprocessing.ErrUnavailable, diagnosticErr)
 	}
 	if len(airoutes.Reasons(airoutes.Route{Proof: proof}, model, true, proof.CapturedAt, now, airoutes.Limits{MaxInputBytes: p.MaxInputBytes, MaxOutputTokens: p.MaxOutputTokens})) != 0 {
 		return now, mailprocessing.ErrConflict
@@ -73,7 +74,7 @@ func processingStandardTerms(ctx context.Context, q runtimeQuery, p airuntime.Pr
 		out.Secondary = &terms
 		if e := runtimeProfileReady(ctx, q, p, true, false); e != nil {
 			if errors.Is(processingError(e), mailprocessing.ErrUnavailable) {
-				return nil, mailprocessing.ErrUnavailable
+				return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 			}
 			return out, nil
 		}
@@ -88,8 +89,11 @@ func processingStandardTerms(ctx context.Context, q runtimeQuery, p airuntime.Pr
 		out.BlockedReason = "route_confirmation_required"
 		return out, nil
 	}
-	if e != nil || json.Unmarshal(raw, &s.Proof) != nil {
-		return nil, mailprocessing.ErrUnavailable
+	if e != nil {
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
+	}
+	if e := json.Unmarshal(raw, &s.Proof); e != nil {
+		return nil, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	out.SecondaryRoute = &s.Proof
 	_, e = standardRouteReady(ctx, q, p, s, false)
@@ -112,7 +116,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return empty, mailprocessing.ErrUnavailable
+		return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = runtimeAdmin(ctx, tx, actor, true); e != nil {
@@ -121,7 +125,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	var active *string
 	var runtimeVersion int64
 	if e = tx.QueryRow(ctx, `SELECT version,active_id FROM ai_runtime_settings WHERE singleton FOR SHARE`).Scan(&runtimeVersion, &active); e != nil {
-		return empty, mailprocessing.ErrUnavailable
+		return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if active == nil || *active != in.ProfileID || runtimeVersion != in.RuntimeVersion {
 		return empty, mailprocessing.ErrConflict
@@ -129,7 +133,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	var v int64
 	e = tx.QueryRow(ctx, `SELECT version FROM mail_processing_policies WHERE profile_id=$1 FOR UPDATE`, in.ProfileID).Scan(&v)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return empty, mailprocessing.ErrUnavailable
+		return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if v != in.ExpectedVersion {
 		return empty, mailprocessing.ErrConflict
@@ -169,7 +173,7 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 			return empty, processingError(e)
 		}
 		if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); e != nil {
-			return empty, mailprocessing.ErrUnavailable
+			return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 	}
 	primary := in.PrimaryRetention
@@ -190,11 +194,11 @@ func (r *MailProcessingRepository) SaveStandardPolicy(ctx context.Context, actor
 	// Use the written column so disabled legacy saves that preserve scope also
 	// freeze an identical confirmation scope.
 	if e = tx.QueryRow(ctx, `SELECT full_email_allowed FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&proof.FullEmailAllowed); e != nil {
-		return empty, mailprocessing.ErrUnavailable
+		return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	raw, e := json.Marshal(proof)
 	if e != nil {
-		return empty, mailprocessing.ErrUnavailable
+		return empty, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_standard_proofs(profile_id,policy_version,route_id,actor_id,confirmed_at,doc) VALUES($1,$2,$3,$4,$5,$6)`, in.ProfileID, proof.PolicyVersion, routeID, actor, now, raw); e != nil {
 		return empty, processingError(e)

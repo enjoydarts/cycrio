@@ -163,6 +163,7 @@ func readCredentialInput(w http.ResponseWriter, r *http.Request) (string, int64,
 }
 
 func writeCredentialError(w http.ResponseWriter, err error) {
+	recordTelemetryError(w, err)
 	switch {
 	case errors.Is(err, credentials.ErrInvalid):
 		writeError(w, http.StatusBadRequest, "invalid_request")

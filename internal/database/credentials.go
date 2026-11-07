@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
@@ -22,19 +23,19 @@ func NewCredentialRepository(pool *pgxpool.Pool) *CredentialRepository {
 func (r *CredentialRepository) List(ctx context.Context) ([]credentials.Summary, error) {
 	rows, err := r.pool.Query(ctx, `SELECT provider,state,version,updated_at FROM provider_credentials ORDER BY provider`)
 	if err != nil {
-		return nil, credentials.ErrUnavailable
+		return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	items := []credentials.Summary{}
 	for rows.Next() {
 		var s credentials.Summary
-		if rows.Scan(&s.Provider, &s.State, &s.Version, &s.UpdatedAt) != nil {
-			return nil, credentials.ErrUnavailable
+		if err := rows.Scan(&s.Provider, &s.State, &s.Version, &s.UpdatedAt); err != nil {
+			return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 		}
 		items = append(items, s)
 	}
-	if rows.Err() != nil {
-		return nil, credentials.ErrUnavailable
+	if err := rows.Err(); err != nil {
+		return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return items, nil
 }
@@ -46,7 +47,7 @@ func lockCredential(ctx context.Context, tx pgx.Tx, provider string, expected in
 		return s, credentials.ErrInvalid
 	}
 	if err != nil {
-		return s, credentials.ErrUnavailable
+		return s, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	if expected < 0 || expected == math.MaxInt64 || s.Version != expected {
 		return s, credentials.ErrConflict
@@ -56,13 +57,13 @@ func lockCredential(ctx context.Context, tx pgx.Tx, provider string, expected in
 func updateCredential(ctx context.Context, tx pgx.Tx, actor, provider, state, action string, version int64) (credentials.Summary, error) {
 	var s credentials.Summary
 	if err := tx.QueryRow(ctx, `UPDATE provider_credentials SET state=$2,version=$3,updated_at=now() WHERE provider=$1 RETURNING provider,state,version,updated_at`, provider, state, version).Scan(&s.Provider, &s.State, &s.Version, &s.UpdatedAt); err != nil {
-		return s, credentials.ErrUnavailable
+		return s, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO credential_audit(id,actor_id,action,provider,version,outcome) VALUES($1,$2,$3,$4,$5,'success')`, uuid.NewString(), actor, action, provider, version); err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+	if err := tx.Commit(ctx); err != nil {
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return s, nil
 }
@@ -72,7 +73,7 @@ func (r *CredentialRepository) Put(ctx context.Context, actor string, expected i
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	previous, err := lockCredential(ctx, tx, v.Provider, expected)
@@ -80,10 +81,10 @@ func (r *CredentialRepository) Put(ctx context.Context, actor string, expected i
 		return credentials.Summary{}, err
 	}
 	if _, err := tx.Exec(ctx, `UPDATE credential_versions SET state='superseded' WHERE provider=$1 AND state='active'`, v.Provider); err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO credential_versions(id,provider,version,key_id,ciphertext,state,created_by) VALUES($1,$2,$3,$4,$5,'active',$6)`, v.ID, v.Provider, v.Version, v.Envelope.KeyID, v.Envelope.Ciphertext, actor); err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	action := "credential_updated"
 	if previous.Version == 0 {
@@ -94,7 +95,7 @@ func (r *CredentialRepository) Put(ctx context.Context, actor string, expected i
 func (r *CredentialRepository) Disable(ctx context.Context, actor, provider string, expected int64) (credentials.Summary, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	previous, err := lockCredential(ctx, tx, provider, expected)
@@ -105,26 +106,26 @@ func (r *CredentialRepository) Disable(ctx context.Context, actor, provider stri
 		return credentials.Summary{}, credentials.ErrConflict
 	}
 	if _, err := tx.Exec(ctx, `UPDATE credential_versions SET state='disabled' WHERE provider=$1 AND state<>'disabled'`, provider); err != nil {
-		return credentials.Summary{}, credentials.ErrUnavailable
+		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return updateCredential(ctx, tx, actor, provider, "disabled", "credential_disabled", expected+1)
 }
 func (r *CredentialRepository) Audit(ctx context.Context) ([]credentials.AuditEntry, error) {
 	rows, err := r.pool.Query(ctx, `SELECT id,actor_id,action,provider,version,outcome,created_at FROM credential_audit ORDER BY created_at DESC,id DESC LIMIT 50`)
 	if err != nil {
-		return nil, credentials.ErrUnavailable
+		return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	defer rows.Close()
 	items := []credentials.AuditEntry{}
 	for rows.Next() {
 		var a credentials.AuditEntry
-		if rows.Scan(&a.ID, &a.ActorID, &a.Action, &a.Provider, &a.Version, &a.Outcome, &a.CreatedAt) != nil {
-			return nil, credentials.ErrUnavailable
+		if err := rows.Scan(&a.ID, &a.ActorID, &a.Action, &a.Provider, &a.Version, &a.Outcome, &a.CreatedAt); err != nil {
+			return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 		}
 		items = append(items, a)
 	}
-	if rows.Err() != nil {
-		return nil, credentials.ErrUnavailable
+	if err := rows.Err(); err != nil {
+		return nil, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return items, nil
 }
@@ -135,14 +136,14 @@ func (r *CredentialRepository) Resolve(ctx context.Context, id string) (credenti
 		return v, credentials.ErrNotFound
 	}
 	if err != nil {
-		return credentials.CredentialVersion{}, credentials.ErrUnavailable
+		return credentials.CredentialVersion{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return v, nil
 }
 func (r *CredentialRepository) HasEncryptedCredentials(ctx context.Context) (bool, error) {
 	var exists bool
-	if r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials) OR EXISTS(SELECT 1 FROM mail_discovered_messages) OR EXISTS(SELECT 1 FROM erased_identities) OR EXISTS(SELECT 1 FROM clerk_erasure_outbox) OR EXISTS(SELECT 1 FROM research_call_traces)`).Scan(&exists) != nil {
-		return false, credentials.ErrUnavailable
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials) OR EXISTS(SELECT 1 FROM mail_discovered_messages) OR EXISTS(SELECT 1 FROM erased_identities) OR EXISTS(SELECT 1 FROM clerk_erasure_outbox) OR EXISTS(SELECT 1 FROM research_call_traces)`).Scan(&exists); err != nil {
+		return false, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return exists, nil
 }

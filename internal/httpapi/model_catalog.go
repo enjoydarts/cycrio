@@ -286,6 +286,7 @@ func catalogFilter(raw string) (modelcatalog.Filter, error) {
 }
 
 func writeCatalogError(w http.ResponseWriter, err error) {
+	recordTelemetryError(w, err)
 	switch {
 	case errors.Is(err, modelcatalog.ErrInvalid):
 		writeError(w, 400, "invalid_request")

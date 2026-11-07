@@ -189,6 +189,7 @@ func billingDuplicateFilter(raw string) (billing.DuplicateFilter, error) {
 	return out, nil
 }
 func writeBillingError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, billing.ErrInvalid):
 		writeError(w, 400, "invalid_request")

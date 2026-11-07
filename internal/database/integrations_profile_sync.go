@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 	"time"
 
@@ -20,7 +21,7 @@ func (r *IntegrationRepository) SyncProfile(ctx context.Context, actor string, i
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	// Serialize same-owner synchronizations before reading the profile. This
@@ -38,7 +39,7 @@ func (r *IntegrationRepository) SyncProfile(ctx context.Context, actor string, i
 	}
 	var version int64
 	if e = tx.QueryRow(ctx, `SELECT version,clerk_instance_id FROM integration_settings WHERE singleton FOR SHARE`).Scan(&version, &target.InstanceID); e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if version != in.ExpectedVersion {
 		return out, integrations.ErrConflict
@@ -52,22 +53,22 @@ func (r *IntegrationRepository) SyncProfile(ctx context.Context, actor string, i
 		return out, integrations.ErrNotReady
 	}
 	if e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	secret, e := credentials.OpenVersion(r.keyring, v)
 	if e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	defer clear(secret)
 	var oldAt, oldVersion int64
 	var oldBlocked, oldDeleted bool
 	e = tx.QueryRow(ctx, `SELECT event_at,object_updated_at,blocked,deleted FROM integration_profiles WHERE issuer=$1 AND subject=$2 FOR UPDATE`, r.issuer, target.Subject).Scan(&oldAt, &oldVersion, &oldBlocked, &oldDeleted)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	profile, e := reader.ReadProfile(ctx, target, secret)
 	if e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if profile.Subject != target.Subject || profile.UpdatedAt <= 0 || profile.UpdatedAt > time.Now().Add(5*time.Minute).UnixMilli() || profile.Email != "" && !validIntegrationAddress(profile.Email) {
 		return out, integrations.ErrUnavailable
@@ -82,28 +83,28 @@ func (r *IntegrationRepository) SyncProfile(ctx context.Context, actor string, i
 		if !blocked && profile.Email != "" {
 			envelope, e := r.keyring.Seal([]byte(profile.Email), profileAAD(r.issuer, target.Subject, at))
 			if e != nil {
-				return out, integrations.ErrUnavailable
+				return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 			}
 			key, ciphertext = envelope.KeyID, envelope.Ciphertext
 		}
 		_, e = tx.Exec(ctx, `INSERT INTO integration_profiles(issuer,subject,event_at,object_updated_at,blocked,deleted,key_id,ciphertext) VALUES($1,$2,$3,$4,$5,$6,$7,$8) ON CONFLICT(issuer,subject) DO UPDATE SET event_at=EXCLUDED.event_at,object_updated_at=EXCLUDED.object_updated_at,blocked=EXCLUDED.blocked,deleted=EXCLUDED.deleted,key_id=EXCLUDED.key_id,ciphertext=EXCLUDED.ciphertext,synced_at=clock_timestamp()`, r.issuer, target.Subject, at, profile.UpdatedAt, blocked, profile.Deleted, key, ciphertext)
 		if e != nil {
-			return out, integrations.ErrUnavailable
+			return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 		}
 		if blocked {
 			if _, e = tx.Exec(ctx, `UPDATE users SET state='disabled' WHERE id=$1 AND state='active'`, actor); e != nil {
-				return out, integrations.ErrUnavailable
+				return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 			}
 		}
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO integration_audit(id,actor_id,action,version) VALUES($1,$2,'profile_synced',$3)`, uuid.NewString(), actor, version); e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
 	if e = tx.QueryRow(ctx, `SELECT ciphertext IS NOT NULL AND NOT blocked AND NOT deleted,synced_at FROM integration_profiles WHERE issuer=$1 AND subject=$2`, r.issuer, target.Subject).Scan(&out.ProfileReady, &out.ProfileSyncedAt); e != nil {
-		return out, integrations.ErrUnavailable
+		return out, diagnostics.Wrap(integrations.ErrUnavailable, e)
 	}
-	if tx.Commit(ctx) != nil {
-		return integrations.ProfileSyncResult{}, integrations.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return integrations.ProfileSyncResult{}, diagnostics.Wrap(integrations.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }

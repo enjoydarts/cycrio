@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
 	"time"
@@ -32,7 +33,7 @@ func safeError(err error) error {
 			return known
 		}
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, err)
 }
 func credentialAAD(v CredentialVersion) []byte {
 	data, _ := json.Marshal(struct {
@@ -78,12 +79,12 @@ func (s *Service) Save(ctx context.Context, owner, id string, in SaveInput) (Acc
 	defer clear(p.Password)
 	plain, err := json.Marshal(p)
 	if err != nil {
-		return Account{}, ErrUnavailable
+		return Account{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	defer clear(plain)
 	v.Envelope, err = s.keyring.Seal(plain, credentialAAD(v))
 	if err != nil {
-		return Account{}, ErrUnavailable
+		return Account{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	a, err := s.repository.Save(ctx, owner, id, in.ExpectedVersion, label, v)
 	return a, safeError(err)

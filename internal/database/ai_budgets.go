@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/aibudget"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"math/big"
@@ -39,7 +40,7 @@ func budgetLocks(ctx context.Context, tx pgx.Tx, actor, owner string, write bool
 				}
 				return aibudget.ErrForbidden
 			}
-			return aibudget.ErrUnavailable
+			return diagnostics.Wrap(aibudget.ErrUnavailable, err)
 		}
 		if id == actor && state != "active" {
 			return aibudget.ErrForbidden
@@ -50,7 +51,7 @@ func budgetLocks(ctx context.Context, tx pgx.Tx, actor, owner string, write bool
 		if errors.Is(err, pgx.ErrNoRows) {
 			return aibudget.ErrForbidden
 		}
-		return aibudget.ErrUnavailable
+		return diagnostics.Wrap(aibudget.ErrUnavailable, err)
 	}
 	return nil
 }
@@ -58,7 +59,7 @@ func budgetLocks(ctx context.Context, tx pgx.Tx, actor, owner string, write bool
 func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (aibudget.State, error) {
 	loc, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
-		return aibudget.State{}, aibudget.ErrUnavailable
+		return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 	}
 	local := now.In(loc)
 	from := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, loc)
@@ -66,7 +67,7 @@ func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (
 	s := aibudget.State{UserID: owner, Month: from.Format("2006-01"), Timezone: "Asia/Tokyo", From: from, To: to, SpentUSD: "0"}
 	err = tx.QueryRow(ctx, `SELECT version,monthly_limit_usd::text FROM ai_user_budgets WHERE owner_id=$1`, owner).Scan(&s.Version, &s.MonthlyLimitUSD)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return s, aibudget.ErrUnavailable
+		return s, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 	}
 	err = tx.QueryRow(ctx, `SELECT
  COALESCE(sum(adopted_amount) FILTER(WHERE started_at >= $2 AND started_at < $3 AND cost_kind<>'unknown' AND currency='USD'),0)::text,
@@ -75,7 +76,7 @@ func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (
  count(*) FILTER(WHERE started_at >= $2 AND started_at < $3 AND cost_kind<>'unknown' AND currency<>'USD')
  FROM ai_calls WHERE scope='user' AND consuming_user_id=$1 AND ((started_at >= $2 AND started_at < $3) OR status='calling')`, owner, from, to).Scan(&s.SpentUSD, &s.UnknownCalls, &s.PendingCalls, &s.NonUSDCalls)
 	if err != nil {
-		return s, aibudget.ErrUnavailable
+		return s, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 	}
 	if s.MonthlyLimitUSD != nil {
 		spent, ok := new(big.Rat).SetString(s.SpentUSD)
@@ -98,8 +99,8 @@ func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (
 // The caller holds the consuming user's NO KEY UPDATE lock through call insertion.
 func checkAIBudget(ctx context.Context, tx pgx.Tx, owner string) error {
 	var now time.Time
-	if tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now) != nil {
-		return aibudget.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); diagnosticErr != nil {
+		return diagnostics.Wrap(aibudget.ErrUnavailable, diagnosticErr)
 	}
 	s, err := readAIBudget(ctx, tx, owner, now)
 	if err != nil {
@@ -128,7 +129,7 @@ func (r *AIBudgetRepository) Save(ctx context.Context, actor, owner string, in a
 func (r *AIBudgetRepository) transact(ctx context.Context, actor, owner string, in *aibudget.Input) (aibudget.State, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return aibudget.State{}, aibudget.ErrUnavailable
+		return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	if err = budgetLocks(ctx, tx, actor, owner, in != nil); err != nil {
@@ -138,30 +139,30 @@ func (r *AIBudgetRepository) transact(ctx context.Context, actor, owner string, 
 		var version int64
 		err = tx.QueryRow(ctx, `SELECT version FROM ai_user_budgets WHERE owner_id=$1`, owner).Scan(&version)
 		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-			return aibudget.State{}, aibudget.ErrUnavailable
+			return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 		}
 		if version != in.ExpectedVersion {
 			return aibudget.State{}, aibudget.ErrConflict
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO ai_user_budgets(owner_id,version,monthly_limit_usd)VALUES($1,1,$2::numeric) ON CONFLICT(owner_id) DO UPDATE SET version=ai_user_budgets.version+1,monthly_limit_usd=EXCLUDED.monthly_limit_usd`, owner, in.MonthlyLimitUSD)
 		if err != nil {
-			return aibudget.State{}, aibudget.ErrUnavailable
+			return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 		}
 		_, err = tx.Exec(ctx, `INSERT INTO ai_user_budget_audit(owner_id,actor_id,version,monthly_limit_usd)VALUES($1,$2,$3,$4::numeric)`, owner, actor, version+1, in.MonthlyLimitUSD)
 		if err != nil {
-			return aibudget.State{}, aibudget.ErrUnavailable
+			return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
 		}
 	}
 	var now time.Time
-	if tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now) != nil {
-		return aibudget.State{}, aibudget.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); diagnosticErr != nil {
+		return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, diagnosticErr)
 	}
 	s, err := readAIBudget(ctx, tx, owner, now)
 	if err != nil {
 		return s, err
 	}
-	if tx.Commit(ctx) != nil {
-		return s, aibudget.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return s, diagnostics.Wrap(aibudget.ErrUnavailable, diagnosticErr)
 	}
 	return s, nil
 }

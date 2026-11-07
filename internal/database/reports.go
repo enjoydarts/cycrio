@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/reports"
@@ -38,7 +39,7 @@ func (r *ReportsRepository) Read(ctx context.Context, owner, month string) (repo
 	// PostgreSQL READ ONLY transaction cannot take the required FOR SHARE lock.
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
-		return out, reports.ErrUnavailable
+		return out, diagnostics.Wrap(reports.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	var state string
@@ -47,25 +48,25 @@ func (r *ReportsRepository) Read(ctx context.Context, owner, month string) (repo
 		return out, reports.ErrNotFound
 	}
 	if err != nil {
-		return out, reports.ErrUnavailable
+		return out, diagnostics.Wrap(reports.ErrUnavailable, err)
 	}
 	contracts := []reports.Contract{}
 	jst := time.FixedZone("Asia/Tokyo", 9*60*60)
 	rows, err := tx.Query(ctx, `SELECT id,service,plan,status,contract_kind,amount,currency,interval_unit,interval_count,to_char(subscription_effective_next_billing(subscriptions,$2::date),'YYYY-MM-DD'),next_billing_mode,display_name,to_char(access_end_date,'YYYY-MM-DD'),to_char(trial_end_date,'YYYY-MM-DD'),auto_renew,subscription_billing_suppression_reason(subscriptions,$2::date) IS NOT NULL FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL ORDER BY service,id`, owner, now.In(jst).Format("2006-01-02"))
 	if err != nil {
-		return out, reports.ErrUnavailable
+		return out, diagnostics.Wrap(reports.ErrUnavailable, err)
 	}
 	for rows.Next() {
 		var c reports.Contract
-		if rows.Scan(&c.ID, &c.Service, &c.Plan, &c.Status, &c.ContractKind, &c.Amount, &c.Currency, &c.IntervalUnit, &c.IntervalCount, &c.NextBillingDate, &c.NextBillingMode, &c.DisplayName, &c.AccessEndDate, &c.TrialEndDate, &c.AutoRenew, &c.BillingDateSuppressed) != nil {
+		if diagnosticErr := rows.Scan(&c.ID, &c.Service, &c.Plan, &c.Status, &c.ContractKind, &c.Amount, &c.Currency, &c.IntervalUnit, &c.IntervalCount, &c.NextBillingDate, &c.NextBillingMode, &c.DisplayName, &c.AccessEndDate, &c.TrialEndDate, &c.AutoRenew, &c.BillingDateSuppressed); diagnosticErr != nil {
 			rows.Close()
-			return out, reports.ErrUnavailable
+			return out, diagnostics.Wrap(reports.ErrUnavailable, diagnosticErr)
 		}
 		contracts = append(contracts, c)
 	}
 	rows.Close()
-	if rows.Err() != nil {
-		return out, reports.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return out, diagnostics.Wrap(reports.ErrUnavailable, diagnosticErr)
 	}
 	records := []reports.Record{}
 	rows, err = tx.Query(ctx, `SELECT s.id,s.service,s.plan,to_char(b.occurred_on,'YYYY-MM'),b.currency,b.kind,sum(b.amount::numeric)::text,count(*),s.display_name
@@ -74,26 +75,26 @@ func (r *ReportsRepository) Read(ctx context.Context, owner, month string) (repo
  GROUP BY s.id,s.service,s.plan,s.display_name,to_char(b.occurred_on,'YYYY-MM'),b.currency,b.kind
  ORDER BY to_char(b.occurred_on,'YYYY-MM'),s.service,s.id,b.currency,b.kind`, owner, start.Format("2006-01-02"), end.Format("2006-01-02"))
 	if err != nil {
-		return out, reports.ErrUnavailable
+		return out, diagnostics.Wrap(reports.ErrUnavailable, err)
 	}
 	for rows.Next() {
 		var record reports.Record
-		if rows.Scan(&record.SubscriptionID, &record.Service, &record.Plan, &record.Month, &record.Currency, &record.Kind, &record.Amount, &record.Count, &record.DisplayName) != nil {
+		if diagnosticErr := rows.Scan(&record.SubscriptionID, &record.Service, &record.Plan, &record.Month, &record.Currency, &record.Kind, &record.Amount, &record.Count, &record.DisplayName); diagnosticErr != nil {
 			rows.Close()
-			return out, reports.ErrUnavailable
+			return out, diagnostics.Wrap(reports.ErrUnavailable, diagnosticErr)
 		}
 		records = append(records, record)
 	}
 	rows.Close()
-	if rows.Err() != nil {
-		return out, reports.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return out, diagnostics.Wrap(reports.ErrUnavailable, diagnosticErr)
 	}
 	out, err = reports.Build(now, month, contracts, records)
 	if err != nil {
 		return reports.Report{}, err
 	}
-	if tx.Commit(ctx) != nil {
-		return reports.Report{}, reports.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return reports.Report{}, diagnostics.Wrap(reports.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }

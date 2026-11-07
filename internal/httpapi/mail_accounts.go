@@ -89,6 +89,7 @@ func registerMailAccounts(mux *http.ServeMux, service MailAccountService, protec
 	})
 }
 func writeMailError(w http.ResponseWriter, err error) {
+	recordTelemetryError(w, err)
 	switch {
 	case errors.Is(err, mailaccounts.ErrInvalid), errors.Is(err, modelcatalog.ErrInvalid):
 		writeError(w, 400, "invalid_request")

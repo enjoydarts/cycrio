@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math/big"
 	"strconv"
 	"strings"
@@ -83,7 +84,7 @@ func (r *PriceResearchRepository) RepairResearchPrices(ctx context.Context, runI
 		report.Evaluated++
 		m, base, err := readModel(ctx, tx, t.id, true)
 		if err != nil {
-			return report, priceresearch.ErrUnavailable
+			return report, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 		}
 		if t.provider != "openai" || m.Provider != t.provider || m.ModelID != t.modelID || m.DeletedAt != nil || m.APIPrice == nil || m.APIPrice.Source != "research" || m.APIPrice.CapturedAt.Before(*started) || m.APIPrice.CapturedAt.After(*finished) {
 			report.Skipped++
@@ -152,7 +153,7 @@ func (r *PriceResearchRepository) RepairResearchPrices(ctx context.Context, runI
 		if correction != nil {
 			p, e := addCatalogPrice(ctx, tx, m.ID, "", *correction)
 			if e != nil {
-				return report, priceresearch.ErrUnavailable
+				return report, diagnostics.Wrap(priceresearch.ErrUnavailable, e)
 			}
 			prior = &p
 		}
@@ -169,10 +170,10 @@ func (r *PriceResearchRepository) RepairResearchPrices(ctx context.Context, runI
 		base.ResearchCheckedAt = m.ResearchCheckedAt
 		m = mergeOverrides(m)
 		if err = writeModel(ctx, tx, m, &base); err != nil {
-			return report, priceresearch.ErrUnavailable
+			return report, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 		}
 		if err = auditCatalog(ctx, tx, *actor, "model_updated", m.ID); err != nil {
-			return report, priceresearch.ErrUnavailable
+			return report, diagnostics.Wrap(priceresearch.ErrUnavailable, err)
 		}
 	}
 	if apply {
@@ -193,8 +194,8 @@ func verifiedPriorResearchPrice(ctx context.Context, tx pgx.Tx, modelID, modelNa
 		if err = rows.Scan(&raw); err != nil {
 			return nil, researchError(err)
 		}
-		if json.Unmarshal(raw, &p) != nil {
-			return nil, priceresearch.ErrUnavailable
+		if diagnosticErr := json.Unmarshal(raw, &p); diagnosticErr != nil {
+			return nil, diagnostics.Wrap(priceresearch.ErrUnavailable, diagnosticErr)
 		}
 		if q, ok := researchSnapshotQuote(p, modelName); ok && priceresearch.MatchOpenAIStandardQuote(q, official) {
 			return &p, nil

@@ -34,6 +34,7 @@ func registerPriceResearch(mux *http.ServeMux, s PriceResearchService, protect p
 			}
 			v, err := handler(w, r, p)
 			if err != nil {
+				recordTelemetryError(w, err)
 				code, status := "dependency_unavailable", 503
 				switch {
 				case errors.Is(err, priceresearch.ErrInvalid), errors.Is(err, modelcatalog.ErrInvalid):

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"math"
 	"time"
 
@@ -44,7 +45,7 @@ func notificationError(e error) error {
 	case subscriptions.ErrNotFound:
 		return notifications.ErrNotFound
 	default:
-		return notifications.ErrUnavailable
+		return diagnostics.Wrap(notifications.ErrUnavailable, e)
 	}
 }
 func (r *NotificationRepository) begin(ctx context.Context, owner string) (pgx.Tx, error) {
@@ -61,8 +62,8 @@ func notificationPreferences(ctx context.Context, tx pgx.Tx, owner string) (noti
 		return notifications.Preferences{}, notificationError(e)
 	}
 	var p notifications.Preferences
-	if json.Unmarshal(raw, &p) != nil {
-		return p, notifications.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &p); diagnosticErr != nil {
+		return p, diagnostics.Wrap(notifications.ErrUnavailable, diagnosticErr)
 	}
 	return notifications.NormalizePreferences(p)
 }
@@ -152,8 +153,8 @@ func scanNotification(row pgx.Row) (notifications.Item, error) {
 	if e != nil {
 		return item, notificationError(e)
 	}
-	if json.Unmarshal(raw, &item.Facts) != nil {
-		return item, notifications.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &item.Facts); diagnosticErr != nil {
+		return item, diagnostics.Wrap(notifications.ErrUnavailable, diagnosticErr)
 	}
 	return item, nil
 }

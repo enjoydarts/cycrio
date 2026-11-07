@@ -66,6 +66,7 @@ func registerAIBudgets(mux *http.ServeMux, service AIBudgetService, protect prot
 	}
 }
 func writeBudgetError(w http.ResponseWriter, err error) {
+	recordTelemetryError(w, err)
 	switch {
 	case errors.Is(err, aibudget.ErrInvalid):
 		writeError(w, 400, "invalid_request")

@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/overview"
@@ -35,7 +36,7 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 	out.Window = window
 	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
-		return out, overview.ErrUnavailable
+		return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	// The shared owner lock keeps deletion/disable from crossing this read. Every
@@ -46,7 +47,7 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 		return out, overview.ErrNotFound
 	}
 	if err != nil {
-		return out, overview.ErrUnavailable
+		return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 	}
 	if err = tx.QueryRow(ctx, `WITH dated AS MATERIALIZED (SELECT status,subscription_effective_next_billing(subscriptions,$2::date) AS due,subscription_billing_suppression_reason(subscriptions,$2::date) IS NOT NULL AS excluded FROM subscriptions WHERE owner_id=$1 AND deleted_at IS NULL)
  SELECT count(*),count(*) FILTER(WHERE status='active'),count(*) FILTER(WHERE status='ended'),count(*) FILTER(WHERE status='unknown'),
@@ -56,48 +57,48 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
  count(*) FILTER(WHERE status<>'ended' AND due>=$3::date),
  count(*) FILTER(WHERE status<>'ended' AND excluded)
  FROM dated`, owner, out.AsOf, out.WindowEnd).Scan(&out.Subscriptions.Total, &out.Subscriptions.Active, &out.Subscriptions.Ended, &out.Subscriptions.Unknown, &out.Subscriptions.Upcoming, &out.Subscriptions.Overdue, &out.Subscriptions.Undated, &out.Subscriptions.Later, &out.Subscriptions.Excluded); err != nil {
-		return out, overview.ErrUnavailable
+		return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 	}
 	rows, err := tx.Query(ctx, `SELECT id,service,plan,amount,currency,interval_unit,interval_count,to_char(due,'YYYY-MM-DD'),status,provenance,next_billing_mode,display_name,contract_kind,to_char(effective_date,'YYYY-MM-DD'),to_char(access_end_date,'YYYY-MM-DD'),to_char(trial_end_date,'YYYY-MM-DD'),auto_renew FROM subscriptions CROSS JOIN LATERAL (SELECT subscription_effective_next_billing(subscriptions,$2::date) AS due) d WHERE owner_id=$1 AND deleted_at IS NULL AND status<>'ended' AND due>=$2::date AND due<$3::date ORDER BY due,service,id LIMIT 10`, owner, out.AsOf, out.WindowEnd)
 	if err != nil {
-		return out, overview.ErrUnavailable
+		return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 	}
 	for rows.Next() {
 		var item overview.Upcoming
-		if rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance, &item.NextBillingMode, &item.DisplayName, &item.ContractKind, &item.EffectiveDate, &item.AccessEndDate, &item.TrialEndDate, &item.AutoRenew) != nil {
+		if diagnosticErr := rows.Scan(&item.ID, &item.Service, &item.Plan, &item.Amount, &item.Currency, &item.IntervalUnit, &item.IntervalCount, &item.NextBillingDate, &item.Status, &item.Provenance, &item.NextBillingMode, &item.DisplayName, &item.ContractKind, &item.EffectiveDate, &item.AccessEndDate, &item.TrialEndDate, &item.AutoRenew); diagnosticErr != nil {
 			rows.Close()
-			return out, overview.ErrUnavailable
+			return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 		}
 		out.Upcoming = append(out.Upcoming, item)
 	}
 	rows.Close()
-	if rows.Err() != nil {
-		return out, overview.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 	}
-	if tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidate_groups`, owner, "").Scan(&out.AttentionMessages) != nil {
-		return out, overview.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, candidateCTE+`SELECT count(*) FROM candidate_groups`, owner, "").Scan(&out.AttentionMessages); diagnosticErr != nil {
+		return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 	}
 	rows, err = tx.Query(ctx, `SELECT id,label,state FROM mail_accounts WHERE owner_id=$1 ORDER BY created_at,id`, owner)
 	if err != nil {
-		return out, overview.ErrUnavailable
+		return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 	}
 	for rows.Next() {
 		var item overview.Connection
-		if rows.Scan(&item.ID, &item.Label, &item.State) != nil {
+		if diagnosticErr := rows.Scan(&item.ID, &item.Label, &item.State); diagnosticErr != nil {
 			rows.Close()
-			return out, overview.ErrUnavailable
+			return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 		}
 		out.Connections = append(out.Connections, item)
 	}
 	rows.Close()
-	if rows.Err() != nil {
-		return out, overview.ErrUnavailable
+	if diagnosticErr := rows.Err(); diagnosticErr != nil {
+		return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 	}
 	for i := range out.Connections {
 		item := &out.Connections[i]
 		automation, err := automationState(ctx, tx, owner, item.ID)
 		if err != nil {
-			return out, overview.ErrUnavailable
+			return out, diagnostics.Wrap(overview.ErrUnavailable, err)
 		}
 		item.AutomationState = automation.State
 		item.AutomationReason = automation.Reason
@@ -109,8 +110,8 @@ func (r *OverviewRepository) Read(ctx context.Context, owner string) (overview.R
 		item.RetryAt = automation.RetryAt
 		item.NextCheckAt = automation.NextCheckAt
 	}
-	if tx.Commit(ctx) != nil {
-		return out, overview.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return out, diagnostics.Wrap(overview.ErrUnavailable, diagnosticErr)
 	}
 	return out, nil
 }

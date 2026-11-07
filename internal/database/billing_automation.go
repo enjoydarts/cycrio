@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/billing"
@@ -104,8 +105,8 @@ func (r *BillingRepository) recordSource(ctx context.Context, owner, account, re
 		return false, billingError(err)
 	}
 	var event ai.Event
-	if json.Unmarshal(raw, &event) != nil {
-		return false, billing.ErrUnavailable
+	if diagnosticErr := json.Unmarshal(raw, &event); diagnosticErr != nil {
+		return false, diagnostics.Wrap(billing.ErrUnavailable, diagnosticErr)
 	}
 	work, err := tx.Begin(ctx)
 	if err != nil {

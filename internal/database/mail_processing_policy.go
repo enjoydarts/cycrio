@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -20,7 +21,7 @@ func processingPolicy(ctx context.Context, q runtimeQuery, id string, lock bool)
 		return p, nil
 	}
 	if e != nil {
-		return p, mailprocessing.ErrUnavailable
+		return p, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if e = processingStandardProof(ctx, q, &p); e != nil {
 		return p, e
@@ -38,7 +39,7 @@ func processingState(ctx context.Context, q runtimeQuery, lock bool) (mailproces
 		suffix = " FOR SHARE"
 	}
 	if e := q.QueryRow(ctx, `SELECT version,active_id FROM ai_runtime_settings WHERE singleton`+suffix).Scan(&s.RuntimeVersion, &id); e != nil {
-		return s, p, mailprocessing.ErrUnavailable
+		return s, p, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if id == nil {
 		return s, p, nil
@@ -62,7 +63,7 @@ func (r *MailProcessingRepository) AdminRead(ctx context.Context, actor string) 
 	}
 	tx, e := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if e != nil {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
+		return mailprocessing.PolicyState{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = runtimeAdmin(ctx, tx, actor, false); e != nil {
@@ -80,7 +81,7 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 	}
 	tx, e := r.pool.Begin(ctx)
 	if e != nil {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
+		return mailprocessing.PolicyState{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	defer tx.Rollback(ctx)
 	if e = runtimeAdmin(ctx, tx, actor, true); e != nil {
@@ -88,7 +89,7 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 	}
 	var active *string
 	if e = tx.QueryRow(ctx, `SELECT active_id FROM ai_runtime_settings WHERE singleton FOR SHARE`).Scan(&active); e != nil {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
+		return mailprocessing.PolicyState{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if active == nil || *active != in.ProfileID {
 		return mailprocessing.PolicyState{}, mailprocessing.ErrConflict
@@ -96,7 +97,7 @@ func (r *MailProcessingRepository) SavePolicy(ctx context.Context, actor string,
 	var v int64
 	e = tx.QueryRow(ctx, `SELECT version FROM mail_processing_policies WHERE profile_id=$1 FOR UPDATE`, in.ProfileID).Scan(&v)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
-		return mailprocessing.PolicyState{}, mailprocessing.ErrUnavailable
+		return mailprocessing.PolicyState{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if v != in.ExpectedVersion {
 		return mailprocessing.PolicyState{}, mailprocessing.ErrConflict
@@ -138,13 +139,13 @@ func writeProcessingPolicy(ctx context.Context, tx pgx.Tx, actor string, in mail
 	// First-write races have no existing policy row to lock; inspect the version
 	// after the upsert before auditing, so a losing CAS cannot report success.
 	if e = tx.QueryRow(ctx, `SELECT version FROM mail_processing_policies WHERE profile_id=$1`, in.ProfileID).Scan(&v); e != nil {
-		return mailprocessing.ErrUnavailable
+		return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	if v != in.ExpectedVersion+1 {
 		return mailprocessing.ErrConflict
 	}
 	if _, e = tx.Exec(ctx, `INSERT INTO mail_processing_policy_audit(id,actor_id,profile_id,version,action) VALUES($1,$2,$3,$4,'policy_saved')`, uuid.NewString(), actor, in.ProfileID, v); e != nil {
-		return mailprocessing.ErrUnavailable
+		return diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
 	return nil
 }

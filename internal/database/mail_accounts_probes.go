@@ -3,6 +3,7 @@ package database
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -17,7 +18,7 @@ func scanMailProbe(row pgx.Row) (mailaccounts.Probe, error) {
 		return p, mailaccounts.ErrNotFound
 	}
 	if err != nil {
-		return p, mailaccounts.ErrUnavailable
+		return p, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	return p, nil
 }
@@ -37,8 +38,8 @@ func (r *MailAccountRepository) RequestProbe(ctx context.Context, owner, id stri
 		if existing.AccountID != id {
 			return mailaccounts.Probe{}, mailaccounts.ErrConflict
 		}
-		if tx.Commit(ctx) != nil {
-			return mailaccounts.Probe{}, mailaccounts.ErrUnavailable
+		if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+			return mailaccounts.Probe{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 		}
 		return existing, nil
 	}
@@ -49,8 +50,8 @@ func (r *MailAccountRepository) RequestProbe(ctx context.Context, owner, id stri
 		return mailaccounts.Probe{}, mailaccounts.ErrConflict
 	}
 	var pending bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_account_probes WHERE account_id=$1 AND state IN ('queued','leased','running'))`, id).Scan(&pending) != nil {
-		return mailaccounts.Probe{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_account_probes WHERE account_id=$1 AND state IN ('queued','leased','running'))`, id).Scan(&pending); diagnosticErr != nil {
+		return mailaccounts.Probe{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	if pending {
 		return mailaccounts.Probe{}, mailaccounts.ErrConflict
@@ -63,8 +64,11 @@ func (r *MailAccountRepository) RequestProbe(ctx context.Context, owner, id stri
 	if err != nil {
 		return mailaccounts.Probe{}, err
 	}
-	if auditMail(ctx, tx, owner, id, "probe_requested", a.Version) != nil || tx.Commit(ctx) != nil {
-		return mailaccounts.Probe{}, mailaccounts.ErrUnavailable
+	if err := auditMail(ctx, tx, owner, id, "probe_requested", a.Version); err != nil {
+		return mailaccounts.Probe{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return mailaccounts.Probe{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	return p, nil
 }
@@ -78,34 +82,34 @@ func (r *MailAccountRepository) Probe(ctx context.Context, owner, id, probe stri
 	if err != nil {
 		return p, err
 	}
-	if tx.Commit(ctx) != nil {
-		return mailaccounts.Probe{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return mailaccounts.Probe{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return p, nil
 }
 func (r *MailAccountRepository) Claim(ctx context.Context) ([]mailaccounts.Lease, error) {
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, mailaccounts.ErrUnavailable
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	defer tx.Rollback(ctx)
 	// A leased job has not read credentials; a running job is never automatically retried.
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_probes SET state='queued',lease_id=NULL,lease_until=NULL WHERE state='leased' AND lease_until<=clock_timestamp()`); err != nil {
-		return nil, mailaccounts.ErrUnavailable
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_probes SET state='failed',error_code='lease_expired',finished_at=clock_timestamp(),lease_id=NULL,lease_until=NULL WHERE state='running' AND lease_until<=clock_timestamp()`); err != nil {
-		return nil, mailaccounts.ErrUnavailable
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	rows, err := tx.Query(ctx, `SELECT id FROM mail_account_probes WHERE state='queued' ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 10`)
 	if err != nil {
-		return nil, mailaccounts.ErrUnavailable
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	items := []mailaccounts.Lease{}
 	for rows.Next() {
 		var l mailaccounts.Lease
-		if rows.Scan(&l.ProbeID) != nil {
+		if diagnosticErr := rows.Scan(&l.ProbeID); diagnosticErr != nil {
 			rows.Close()
-			return nil, mailaccounts.ErrUnavailable
+			return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 		}
 		l.LeaseID = uuid.NewString()
 		items = append(items, l)
@@ -113,15 +117,15 @@ func (r *MailAccountRepository) Claim(ctx context.Context) ([]mailaccounts.Lease
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
-		return nil, mailaccounts.ErrUnavailable
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	for _, l := range items {
 		if _, err := tx.Exec(ctx, `UPDATE mail_account_probes SET state='leased',lease_id=$2,lease_until=clock_timestamp()+interval '2 minutes' WHERE id=$1`, l.ProbeID, l.LeaseID); err != nil {
-			return nil, mailaccounts.ErrUnavailable
+			return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 		}
 	}
-	if tx.Commit(ctx) != nil {
-		return nil, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return items, nil
 }
@@ -140,32 +144,35 @@ func (r *MailAccountRepository) lockMailWork(ctx context.Context, l mailaccounts
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, w, mailaccounts.ErrNotFound
 		}
-		return nil, w, mailaccounts.ErrUnavailable
+		return nil, w, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	tx, err := r.pool.Begin(ctx)
 	if err != nil {
-		return nil, w, mailaccounts.ErrUnavailable
+		return nil, w, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
-	fail := func() (pgx.Tx, lockedMailWork, error) { tx.Rollback(ctx); return nil, w, mailaccounts.ErrUnavailable }
-	if tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR UPDATE`, w.owner).Scan(&w.ownerState) != nil {
-		return fail()
+	fail := func(cause error) (pgx.Tx, lockedMailWork, error) {
+		tx.Rollback(ctx)
+		return nil, w, diagnostics.Wrap(mailaccounts.ErrUnavailable, cause)
 	}
-	if tx.QueryRow(ctx, `SELECT state,version,credential_version FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.account, w.owner).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion) != nil {
-		return fail()
+	if cause := tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR UPDATE`, w.owner).Scan(&w.ownerState); cause != nil {
+		return fail(cause)
 	}
-	if tx.QueryRow(ctx, `SELECT state,credential_id,config_version,coalesce(lease_id::text,'') FROM mail_account_probes WHERE id=$1 FOR UPDATE`, l.ProbeID).Scan(&w.probeState, &w.credential, &w.configVersion, &w.lease) != nil {
-		return fail()
+	if cause := tx.QueryRow(ctx, `SELECT state,version,credential_version FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR UPDATE`, w.account, w.owner).Scan(&w.accountState, &w.accountVersion, &w.credentialVersion); cause != nil {
+		return fail(cause)
+	}
+	if cause := tx.QueryRow(ctx, `SELECT state,credential_id,config_version,coalesce(lease_id::text,'') FROM mail_account_probes WHERE id=$1 FOR UPDATE`, l.ProbeID).Scan(&w.probeState, &w.credential, &w.configVersion, &w.lease); cause != nil {
+		return fail(cause)
 	}
 	// Evaluate real time only after all row locks have been acquired. A SELECT's
 	// projected expressions may be evaluated before its FOR UPDATE lock wait.
-	if tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_account_probes WHERE id=$1`, l.ProbeID).Scan(&w.alive) != nil {
-		return fail()
+	if cause := tx.QueryRow(ctx, `SELECT coalesce(lease_until>clock_timestamp(),false) FROM mail_account_probes WHERE id=$1`, l.ProbeID).Scan(&w.alive); cause != nil {
+		return fail(cause)
 	}
 	return tx, w, nil
 }
 func endMailProbe(ctx context.Context, tx pgx.Tx, l mailaccounts.Lease, state, code string) error {
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_probes SET state=$2,error_code=$3,finished_at=clock_timestamp(),lease_id=NULL,lease_until=NULL WHERE id=$1`, l.ProbeID, state, code); err != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	return nil
 }
@@ -181,19 +188,22 @@ func (r *MailAccountRepository) Start(ctx context.Context, l mailaccounts.Lease)
 	var v mailaccounts.CredentialVersion
 	err = tx.QueryRow(ctx, `SELECT id,owner_id,account_id,version,key_id,ciphertext,(SELECT provider FROM mail_accounts a WHERE a.id=mail_account_credentials.account_id) FROM mail_account_credentials WHERE id=$1 AND owner_id=$2 AND account_id=$3 AND version=$4 AND state='active'`, w.credential, w.owner, w.account, w.credentialVersion).Scan(&v.ID, &v.OwnerID, &v.AccountID, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext, &v.Provider)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return mailaccounts.Work{}, mailaccounts.ErrUnavailable
+		return mailaccounts.Work{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	if w.ownerState != "active" || w.accountState == "disconnected" || w.configVersion != w.accountVersion || errors.Is(err, pgx.ErrNoRows) {
-		if endMailProbe(ctx, tx, l, "cancelled", "cancelled") != nil || tx.Commit(ctx) != nil {
-			return mailaccounts.Work{}, mailaccounts.ErrUnavailable
+		if err := endMailProbe(ctx, tx, l, "cancelled", "cancelled"); err != nil {
+			return mailaccounts.Work{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return mailaccounts.Work{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 		}
 		return mailaccounts.Work{}, mailaccounts.ErrNotFound
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_account_probes SET state='running',started_at=clock_timestamp(),lease_until=clock_timestamp()+interval '90 seconds' WHERE id=$1`, l.ProbeID); err != nil {
-		return mailaccounts.Work{}, mailaccounts.ErrUnavailable
+		return mailaccounts.Work{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
-	if tx.Commit(ctx) != nil {
-		return mailaccounts.Work{}, mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.Commit(ctx); diagnosticErr != nil {
+		return mailaccounts.Work{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	return mailaccounts.Work{Credential: v}, nil
 }
@@ -210,12 +220,15 @@ func (r *MailAccountRepository) Finish(ctx context.Context, l mailaccounts.Lease
 		return nil
 	}
 	var current bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_account_credentials WHERE id=$1 AND account_id=$2 AND owner_id=$3 AND version=$4 AND state='active')`, w.credential, w.account, w.owner, w.credentialVersion).Scan(&current) != nil {
-		return mailaccounts.ErrUnavailable
+	if diagnosticErr := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM mail_account_credentials WHERE id=$1 AND account_id=$2 AND owner_id=$3 AND version=$4 AND state='active')`, w.credential, w.account, w.owner, w.credentialVersion).Scan(&current); diagnosticErr != nil {
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnosticErr)
 	}
 	if w.ownerState != "active" || w.accountState == "disconnected" || w.configVersion != w.accountVersion || !current {
-		if endMailProbe(ctx, tx, l, "cancelled", "cancelled") != nil || tx.Commit(ctx) != nil {
-			return mailaccounts.ErrUnavailable
+		if err := endMailProbe(ctx, tx, l, "cancelled", "cancelled"); err != nil {
+			return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 		}
 		return nil
 	}
@@ -231,10 +244,13 @@ func (r *MailAccountRepository) Finish(ctx context.Context, l mailaccounts.Lease
 		}
 	}
 	if _, err := tx.Exec(ctx, `UPDATE mail_accounts SET checked_at=now(),last_error=$2,state=CASE WHEN $2='' THEN 'ready' WHEN $2 IN ('authentication_failed','credentials_unavailable') THEN 'needs_reauth' ELSE state END,updated_at=now() WHERE id=$1`, w.account, code); err != nil {
-		return mailaccounts.ErrUnavailable
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
-	if endMailProbe(ctx, tx, l, state, code) != nil || tx.Commit(ctx) != nil {
-		return mailaccounts.ErrUnavailable
+	if err := endMailProbe(ctx, tx, l, state, code); err != nil {
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return diagnostics.Wrap(mailaccounts.ErrUnavailable, err)
 	}
 	return nil
 }

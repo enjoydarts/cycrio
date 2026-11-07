@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"regexp"
@@ -22,13 +23,13 @@ func scanRuntimeCall(row interface{ Scan(...any) error }) (airuntime.Call, error
 	if err != nil {
 		return c, runtimeError(err)
 	}
-	if json.Unmarshal(usage, &c.Usage) != nil {
-		return c, airuntime.ErrUnavailable
+	if err := json.Unmarshal(usage, &c.Usage); err != nil {
+		return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 	}
 	if c.Cost.Amount != nil {
 		v, err := ai.NormalizeAmount(*c.Cost.Amount)
 		if err != nil {
-			return c, airuntime.ErrUnavailable
+			return c, diagnostics.Wrap(airuntime.ErrUnavailable, err)
 		}
 		c.Cost.Amount = &v
 	}

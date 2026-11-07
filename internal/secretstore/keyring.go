@@ -17,6 +17,8 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 var (
@@ -236,7 +238,7 @@ func (k *Keyring) Open(envelope Envelope, aad []byte) ([]byte, error) {
 	}
 	plain, err := k.keys[envelope.KeyID].Open(nil, nil, envelope.Ciphertext, boundAAD(envelope.KeyID, aad))
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	return plain, nil
 }

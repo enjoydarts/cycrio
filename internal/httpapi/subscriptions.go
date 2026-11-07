@@ -155,6 +155,7 @@ func normalizeSubscription(s *subscriptions.Subscription) {
 	}
 }
 func writeSubscriptionError(w http.ResponseWriter, e error) {
+	recordTelemetryError(w, e)
 	switch {
 	case errors.Is(e, subscriptions.ErrInvalid):
 		writeError(w, 400, "invalid_request")

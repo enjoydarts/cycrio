@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/auth"
 	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
+	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/enjoydarts/cycrio/internal/telemetry"
 )
 
@@ -110,6 +113,47 @@ func TestTelemetryPartialPanicAbortsResponse(t *testing.T) {
 type detailedTelemetryFixture struct {
 	telemetryFixture
 	values []any
+}
+
+func TestTelemetryBoundaryKeepsRecordedAndDomainCauses(t *testing.T) {
+	for _, domainWriter := range []bool{false, true} {
+		f := &detailedTelemetryFixture{}
+		original := errors.New("database transaction failed: SQLSTATE 40001")
+		h := telemetryBoundary(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if domainWriter {
+				writeSubscriptionError(w, diagnostics.Wrap(subscriptions.ErrUnavailable, original))
+			} else {
+				diagnostics.Record(r.Context(), original)
+				writeError(w, 503, "dependency_unavailable")
+			}
+		}), f)
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, httptest.NewRequest("GET", "/v1/subscriptions?private=secret", nil))
+		if w.Code != 503 || len(f.values) != 1 {
+			t.Fatalf("original error not reported: values=%v status=%d", f.values, w.Code)
+		}
+		err, ok := f.values[0].(error)
+		if !ok || !errors.Is(err, original) {
+			t.Fatal("original cause lost", f.values)
+		}
+		if strings.Contains(w.Body.String(), "SQLSTATE") {
+			t.Fatal("private diagnostic leaked to client")
+		}
+	}
+}
+
+func TestTelemetryFallbackReportsRoutePatternWithoutPrivateURL(t *testing.T) {
+	f := &detailedTelemetryFixture{}
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/test/{id}", func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) })
+	telemetryBoundary(mux, f).ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/v1/test/private-id?token=secret", nil))
+	if len(f.values) != 1 {
+		t.Fatal("HTTP failure detail missing", f.values)
+	}
+	text := fmt.Sprint(f.values[0])
+	if !strings.Contains(text, "GET /v1/test/{id}") || strings.Contains(text, "private-id") || strings.Contains(text, "secret") {
+		t.Fatal(text)
+	}
 }
 
 func (f *detailedTelemetryFixture) ReportException(owner, operation, kind string, value any) {
