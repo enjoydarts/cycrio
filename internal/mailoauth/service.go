@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/google/uuid"
 	"math"
@@ -58,11 +59,14 @@ func (s *Service) config(ctx context.Context, provider, id string) (Config, erro
 	raw, e := s.resolve(ctx, id)
 	defer clear(raw)
 	if e != nil {
-		return Config{}, mailaccounts.ErrUnavailable
+		return Config{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnostics.Snapshot(e, func(text string) string { return diagnostics.ScrubKnown(text, string(raw)) }))
 	}
 	var c Config
-	if json.Unmarshal(raw, &c) != nil || !ValidateConfig(provider, c) {
-		return Config{}, mailaccounts.ErrUnavailable
+	if e := json.Unmarshal(raw, &c); e != nil {
+		return Config{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnostics.Snapshot(e, func(text string) string { return diagnostics.ScrubKnown(text, string(raw), c.ClientID, c.ClientSecret) }))
+	}
+	if !ValidateConfig(provider, c) {
+		return Config{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, errors.New("OAuth client configuration is invalid"))
 	}
 	return c, nil
 }
@@ -75,7 +79,7 @@ func (s *Service) Providers(ctx context.Context) ([]ProviderStatus, error) {
 			_, e = s.config(ctx, p, id)
 			ready = e == nil
 		} else if !errors.Is(e, mailaccounts.ErrNotFound) {
-			return nil, mailaccounts.ErrUnavailable
+			return nil, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnostics.Snapshot(e, diagnostics.ScrubText))
 		}
 		out = append(out, ProviderStatus{p, ready})
 	}
@@ -84,7 +88,7 @@ func (s *Service) Providers(ctx context.Context) ([]ProviderStatus, error) {
 func randomProof() (string, error) {
 	b := make([]byte, 32)
 	if _, e := rand.Read(b); e != nil {
-		return "", mailaccounts.ErrUnavailable
+		return "", diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
@@ -105,7 +109,7 @@ func (s *Service) Begin(ctx context.Context, owner, account string, in BeginInpu
 	}
 	id, e := s.repo.ActiveClient(ctx, in.Provider)
 	if e != nil {
-		return BeginResult{}, mailaccounts.ErrUnavailable
+		return BeginResult{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnostics.Snapshot(e, diagnostics.ScrubText))
 	}
 	c, e := s.config(ctx, in.Provider, id)
 	if e != nil {
@@ -127,7 +131,9 @@ func (s *Service) Begin(ctx context.Context, owner, account string, in BeginInpu
 	challenge := base64.RawURLEncoding.EncodeToString(h[:])
 	u, e := s.client.AuthorizeURL(in.Provider, c, state, challenge)
 	if e != nil {
-		return BeginResult{}, mailaccounts.ErrUnavailable
+		return BeginResult{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, diagnostics.Snapshot(e, func(text string) string {
+			return diagnostics.ScrubKnown(text, c.ClientID, c.ClientSecret, state, challenge, verifier)
+		}))
 	}
 	p := Pending{OwnerID: owner, AccountID: account, Provider: in.Provider, Label: label, ExpectedVersion: in.ExpectedVersion, ClientID: id, Verifier: verifier, ExpiresAt: time.Now().UTC().Add(10 * time.Minute)}
 	if e = s.repo.SavePending(ctx, ProofHash(state), ProofHash(browser), p); e != nil {

@@ -15,6 +15,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
+	"github.com/enjoydarts/cycrio/internal/maildiagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 )
 
@@ -73,7 +74,7 @@ func (c *Client) get(ctx context.Context, address string, max int) ([]byte, int,
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, address, nil)
 	if err != nil {
-		return nil, 0, failure("invalid_response")
+		return nil, 0, c.diagnosticFailure("invalid_response", address, 0, nil, nil, err)
 	}
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	if !c.isGmail() {
@@ -81,7 +82,7 @@ func (c *Client) get(ctx context.Context, address string, max int) ([]byte, int,
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, 0, failure("connection_failed")
+		return nil, 0, c.diagnosticFailure("connection_failed", address, 0, nil, nil, err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != 200 {
@@ -92,14 +93,18 @@ func (c *Client) get(ctx context.Context, address string, max int) ([]byte, int,
 		if resp.StatusCode == 404 {
 			code = "source_missing"
 		}
-		return nil, resp.StatusCode, failure(code)
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 65537))
+		if len(body) > 65536 {
+			body = nil
+		}
+		return nil, resp.StatusCode, c.diagnosticFailure(code, address, resp.StatusCode, resp.Header, body, readErr)
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, int64(max)+1))
 	if len(raw) > max {
-		return nil, 200, failure("input_too_large")
+		return nil, 200, c.diagnosticFailure("input_too_large", address, 200, resp.Header, nil, nil)
 	}
 	if err != nil {
-		return nil, 200, failure("connection_failed")
+		return nil, 200, c.diagnosticFailure("connection_failed", address, 200, resp.Header, nil, err)
 	}
 	return raw, 200, nil
 }
@@ -108,10 +113,27 @@ func (c *Client) getJSON(ctx context.Context, address string, out any) (int, err
 	if err != nil {
 		return status, err
 	}
-	if json.Unmarshal(b, out) != nil {
-		return status, failure("invalid_response")
+	if err := json.Unmarshal(b, out); err != nil {
+		return status, c.diagnosticFailure("invalid_response", address, status, nil, nil, err)
 	}
 	return status, nil
+}
+
+func (c *Client) diagnosticFailure(code, address string, status int, headers http.Header, body []byte, cause error) error {
+	secrets := []string{c.token}
+	if u, err := url.Parse(address); err == nil {
+		parts := strings.Split(u.Path, "/")
+		for index, part := range parts {
+			if index > 0 && (parts[index-1] == "messages" || parts[index-1] == "mailFolders") && part != "" {
+				decoded, _ := url.PathUnescape(part)
+				secrets = append(secrets, part, decoded)
+			}
+		}
+		for _, values := range u.Query() {
+			secrets = append(secrets, values...)
+		}
+	}
+	return maildiagnostics.Failure(code, c.provider, "mail_api", status, headers, body, cause, secrets...)
 }
 func graphLink(link, path string) bool {
 	u, e := url.Parse(link)

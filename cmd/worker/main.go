@@ -83,15 +83,19 @@ func run() (result error) {
 	}
 	defer func() { _ = client.Close(context.Background()) }()
 	task := client.NewStandaloneTask(infrastructure.TaskName, func(ctx hatchet.Context, input infrastructure.Input) (infrastructure.Output, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_check", "", "", func() (infrastructure.Output, error) { return infrastructure.Check(ctx, input, pool.Ping) })
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_check", "", "", func(ctx context.Context) (infrastructure.Output, error) {
+			return infrastructure.Check(ctx, input, pool.Ping)
+		})
 	})
 	catalog := catalogruntime.New(pool, keyring)
 	catalogTask := client.NewStandaloneTask(catalogTaskName, func(ctx hatchet.Context, input CatalogSyncInput) (CatalogSyncOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_catalog_sync", "", "", func() (CatalogSyncOutput, error) { return executeCatalogSync(ctx, input, catalog.SyncProvider) })
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), nil, "worker_catalog_sync", "", "", func(ctx context.Context) (CatalogSyncOutput, error) {
+			return executeCatalogSync(ctx, input, catalog.SyncProvider)
+		})
 	}, hatchet.WithRetries(0))
 	research := priceresearchruntime.New(pool, keyring)
 	researchTask := client.NewStandaloneTask(priceResearchTaskName, func(ctx hatchet.Context, input priceresearch.Lease) (PriceResearchOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_price_research", "research", input.RunID, func() (PriceResearchOutput, error) {
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_price_research", "research", input.RunID, func(ctx context.Context) (PriceResearchOutput, error) {
 			if err := research.Execute(ctx, input); err != nil {
 				return PriceResearchOutput{Status: "failed"}, hideWorkerCause("price research unavailable", err)
 			}
@@ -100,7 +104,7 @@ func run() (result error) {
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(9*time.Minute))
 	execution := airuntimeconfig.New(pool, keyring)
 	aiTask := client.NewStandaloneTask(aiTestTaskName, func(ctx hatchet.Context, input airuntime.Lease) (AITestOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_ai_test", "ai_test", input.TestRunID, func() (AITestOutput, error) {
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_ai_test", "ai_test", input.TestRunID, func(ctx context.Context) (AITestOutput, error) {
 			if err := execution.Run(ctx, input); err != nil {
 				if errors.Is(err, airuntime.ErrConflict) {
 					return AITestOutput{Status: "ignored"}, nil
@@ -112,7 +116,7 @@ func run() (result error) {
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
 	mail := mailruntime.New(pool, keyring)
 	mailTask := client.NewStandaloneTask(mailProbeTaskName, func(ctx hatchet.Context, input mailaccounts.Lease) (MailProbeOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_probe", "probe", input.ProbeID, func() (MailProbeOutput, error) {
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_probe", "probe", input.ProbeID, func(ctx context.Context) (MailProbeOutput, error) {
 			if err := database.WithMailOperation(ctx, pool, "probe", input.ProbeID, func(ctx context.Context) error { return mail.Run(ctx, input) }); err != nil {
 				return MailProbeOutput{Status: "failed"}, hideWorkerCause("mail connection check unavailable", err)
 			}
@@ -124,7 +128,7 @@ func run() (result error) {
 	discoveryWake := make(chan struct{}, 1)
 	automationWake := make(chan struct{}, 1)
 	discoverTask := client.NewStandaloneTask(mailDiscoverTaskName, func(ctx hatchet.Context, input mailsync.Lease) (MailDiscoverOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_discovery", "sync", input.RunID, func() (MailDiscoverOutput, error) {
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_discovery", "sync", input.RunID, func(ctx context.Context) (MailDiscoverOutput, error) {
 			out := MailDiscoverOutput{Status: "ignored"}
 			err := database.WithMailOperation(ctx, pool, "sync", input.RunID, func(ctx context.Context) (err error) {
 				out, err = executeMailDiscovery(ctx, input, discovery.Execute, discoveryWake, automationWake)
@@ -137,7 +141,7 @@ func run() (result error) {
 	defer func() { _ = processing.Close() }()
 	processingWake := make(chan struct{}, 1)
 	processingTask := client.NewStandaloneTask(mailProcessingTaskName, func(ctx hatchet.Context, input mailprocessing.Lease) (MailProcessingOutput, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_processing", "processing", input.RunID, func() (MailProcessingOutput, error) {
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_mail_processing", "processing", input.RunID, func(ctx context.Context) (MailProcessingOutput, error) {
 			out := MailProcessingOutput{Status: "ignored"}
 			err := database.WithMailOperation(ctx, pool, "processing", input.RunID, func(ctx context.Context) (err error) {
 				out, err = executeMailProcessing(ctx, input, processing.Execute, processingWake, automationWake)
@@ -149,7 +153,9 @@ func run() (result error) {
 	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
 	notificationService := notificationruntime.NewService(notificationRepository, notificationruntime.NewResendSender(nil))
 	notificationTask := client.NewStandaloneTask(notificationTaskName, func(ctx hatchet.Context, input notificationruntime.Task) (notificationruntime.Result, error) {
-		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_notification_delivery", "notification", input.DeliveryID, func() (notificationruntime.Result, error) { return notificationService.Execute(ctx, input) })
+		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_notification_delivery", "notification", input.DeliveryID, func(ctx context.Context) (notificationruntime.Result, error) {
+			return notificationService.Execute(ctx, input)
+		})
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(30*time.Second))
 	groups := workerGroups(name, workerTasks{check: task, catalog: catalogTask, priceResearch: researchTask, aiTest: aiTask, mailProbe: mailTask, mailDiscovery: discoverTask, mailProcessing: processingTask, notification: notificationTask})
 	cleanup, err := startWorkerGroups(groups, func(group workerGroup) (workerStarter, error) {

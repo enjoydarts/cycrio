@@ -3,6 +3,7 @@ package mailprocessing
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"io"
@@ -57,10 +58,10 @@ func safe(e error) error {
 	}
 	for _, known := range []error{ErrInvalid, ErrConflict, ErrNotFound} {
 		if errors.Is(e, known) {
-			return known
+			return diagnostics.Wrap(known, e)
 		}
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, e)
 }
 func (s *Service) AdminRead(ctx context.Context, actor string) (PolicyState, error) {
 	if !ValidID(actor) {

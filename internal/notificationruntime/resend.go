@@ -8,12 +8,15 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/mail"
 	"strings"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/notifications"
 	"github.com/google/uuid"
 )
@@ -121,6 +124,9 @@ func (s *ResendSender) Send(ctx context.Context, apiKey []byte, delivery Deliver
 	}
 	content, err := notifications.RenderEmail(delivery.Candidate)
 	if err != nil {
+		diagnostics.Record(ctx, diagnostics.Snapshot(err, func(text string) string {
+			return diagnostics.ScrubKnown(text, string(apiKey), delivery.From, delivery.To, delivery.Candidate.Service)
+		}))
 		return invalid
 	}
 	body, err := json.Marshal(struct {
@@ -131,8 +137,15 @@ func (s *ResendSender) Send(ctx context.Context, apiKey []byte, delivery Deliver
 		HTML    string   `json:"html"`
 	}{delivery.From, []string{delivery.To}, content.Subject, content.Text, content.HTML})
 	if err != nil {
+		diagnostics.Record(ctx, diagnostics.Snapshot(err, func(text string) string {
+			return diagnostics.ScrubKnown(text, string(apiKey), delivery.From, delivery.To, delivery.Candidate.Service)
+		}))
 		return invalid
 	}
+	scrub := func(text string) string {
+		return diagnostics.ScrubKnown(text, string(apiKey), delivery.From, delivery.To, content.Subject, content.Text, content.HTML, delivery.Candidate.Service, string(body))
+	}
+	record := func(err error) { diagnostics.RecordUnexpected(ctx, diagnostics.Snapshot(err, scrub)) }
 	unknown := SendResult{State: Unknown}
 	if s == nil || s.client == nil {
 		return unknown
@@ -143,6 +156,7 @@ func (s *ResendSender) Send(ctx context.Context, apiKey []byte, delivery Deliver
 	// provider idempotency header must not make this body replayable by net/http.
 	req, err := http.NewRequestWithContext(bounded, http.MethodPost, "https://api.resend.com/emails", io.NopCloser(bytes.NewReader(body)))
 	if err != nil {
+		record(err)
 		return unknown
 	}
 	req.ContentLength = int64(len(body))
@@ -151,15 +165,26 @@ func (s *ResendSender) Send(ctx context.Context, apiKey []byte, delivery Deliver
 	req.Header.Set("Idempotency-Key", "cycrio-notification-"+id)
 	res, err := s.client.Do(req)
 	if err != nil {
+		record(err)
 		if res != nil && res.Body != nil {
 			res.Body.Close()
 		}
 		return unknown
 	}
 	if res == nil || res.Body == nil {
+		record(errors.New("Resend response missing body"))
 		return unknown
 	}
 	defer res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		raw, readErr := io.ReadAll(io.LimitReader(res.Body, 4097))
+		defer clear(raw)
+		if readErr != nil {
+			record(fmt.Errorf("Resend HTTP %d: %w", res.StatusCode, readErr))
+		} else {
+			diagnostics.RecordUnexpected(ctx, resendHTTPDiagnostic(res.StatusCode, raw, scrub))
+		}
+	}
 	// A conflict can mean the same idempotent request is already in flight.
 	// Timeouts and early requests likewise provide no definitive send outcome.
 	if res.StatusCode >= 400 && res.StatusCode < 500 && res.StatusCode != 408 && res.StatusCode != 409 && res.StatusCode != 425 {
@@ -170,17 +195,23 @@ func (s *ResendSender) Send(ctx context.Context, apiKey []byte, delivery Deliver
 	}
 	raw, err := io.ReadAll(io.LimitReader(res.Body, 4097))
 	if err != nil || len(raw) > 4096 {
+		if err != nil {
+			record(err)
+		} else {
+			record(errors.New("Resend acknowledgement exceeded size limit"))
+		}
 		return unknown
 	}
 	providerID, ok := acknowledgementID(raw)
 	if !ok {
+		record(errors.New("Resend HTTP 200: invalid acknowledgement ID or JSON shape"))
 		return unknown
 	}
 	return SendResult{State: Accepted, ProviderID: providerID}
 }
 
-// Only an unambiguous provider ACK is acceptance. Upstream bodies and errors
-// are never returned or logged, including on rejection or malformed responses.
+// Only an unambiguous provider ACK is acceptance. Raw bodies never leave this
+// transport; separately recorded diagnostics contain sanitized technical fields.
 func acknowledgementID(raw []byte) (string, bool) {
 	d := json.NewDecoder(bytes.NewReader(raw))
 	token, err := d.Token()

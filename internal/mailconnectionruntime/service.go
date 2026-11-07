@@ -10,6 +10,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/fastmail"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
+	"github.com/enjoydarts/cycrio/internal/maildiagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailoauth"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
@@ -59,8 +60,17 @@ func (f *Factory) connection(ctx context.Context, v mailaccounts.CredentialVersi
 		encoded, e := f.resolve(ctx, s.OAuthClientID)
 		defer clear(encoded)
 		var config mailoauth.Config
-		if e != nil || json.Unmarshal(encoded, &config) != nil || !mailoauth.ValidateConfig(s.Provider, config) {
-			return s, mailaccounts.AdapterError{Code: "credentials_unavailable"}
+		fail := func(cause error) (mailaccounts.ConnectionSecret, error) {
+			return s, maildiagnostics.Failure("credentials_unavailable", s.Provider, "oauth_configuration", 0, nil, nil, cause, string(s.AccessToken), string(s.Password), string(encoded), config.ClientID, config.ClientSecret)
+		}
+		if e != nil {
+			return fail(e)
+		}
+		if e = json.Unmarshal(encoded, &config); e != nil {
+			return fail(e)
+		}
+		if !mailoauth.ValidateConfig(s.Provider, config) {
+			return fail(nil)
 		}
 		if len(s.AccessToken) > 0 && s.ExpiresAt.After(time.Now().Add(time.Minute)) {
 			return s, nil

@@ -251,6 +251,7 @@ func (r *pooledContentReader) ReadMessage(ctx context.Context, login string, pas
 }
 
 func (r *pooledContentReader) readText(ctx context.Context, login string, password []byte, source mailcontent.Source, receivedAt **time.Time) ([]byte, error) {
+	ctx = withMailDiagnostics(ctx, login, password, source.Folder)
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	if r.client == nil || !validName(source.Folder) || source.UIDValidity == 0 || source.UID == 0 || (!source.FullEmail && source.MaxTextBytes <= 0) {
 		return nil, invalid

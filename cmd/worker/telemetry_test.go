@@ -26,7 +26,7 @@ func TestCapturedTaskReportsPersistedFailureOnce(t *testing.T) {
 	read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
 		return database.JobTelemetryOutcome{OwnerID: "owner", State: "unknown", Code: "execution_panic"}, nil
 	}
-	_, err := captureWorkerTask(ctx, read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, errors.New("PRIVATE") })
+	_, err := captureWorkerTask(ctx, read, "worker_mail_processing", "processing", "run", func(ctx context.Context) (int, error) { return 0, errors.New("PRIVATE") })
 	if err == nil || len(r.events) != 1 || r.events[0].owner != "owner" || r.events[0].kind != "task_panic" {
 		t.Fatalf("unexpected capture: %v", r.events)
 	}
@@ -38,7 +38,7 @@ func TestCapturedTaskSanitizesPanicAndOutcomeFailure(t *testing.T) {
 	read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
 		return database.JobTelemetryOutcome{}, errors.New("PRIVATE")
 	}
-	_, err := captureWorkerTask(ctx, read, "worker_mail_probe", "probe", "run", func() (int, error) { panic("PRIVATE") })
+	_, err := captureWorkerTask(ctx, read, "worker_mail_probe", "probe", "run", func(ctx context.Context) (int, error) { panic("PRIVATE") })
 	if err == nil || err.Error() != "worker task unavailable" || len(r.events) != 2 || r.events[0].owner != "cycrio-system" || r.events[0].kind != "outcome_unavailable" || r.events[1].kind != "task_panic" {
 		t.Fatalf("unexpected capture: %v %v", r.events, err)
 	}
@@ -51,7 +51,7 @@ func TestCapturedTaskIgnoresExpectedRejectionAndSuccess(t *testing.T) {
 		read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
 			return database.JobTelemetryOutcome{OwnerID: "owner", State: "failed", Code: code}, nil
 		}
-		_, _ = captureWorkerTask(ctx, read, "worker_mail_probe", "probe", "run", func() (int, error) { return 1, nil })
+		_, _ = captureWorkerTask(ctx, read, "worker_mail_probe", "probe", "run", func(ctx context.Context) (int, error) { return 1, nil })
 		if len(r.events) != 0 {
 			t.Fatalf("reported expected result %q: %v", code, r.events)
 		}
@@ -70,7 +70,7 @@ func TestPollerReportsClaimAndSubmissionFailures(t *testing.T) {
 func TestCapturedTaskReportsFailureWithoutPrivateError(t *testing.T) {
 	r := &failureRecorder{}
 	ctx := withWorkerTelemetry(context.Background(), r)
-	_, err := captureWorkerTask(ctx, nil, "worker_catalog_sync", "", "", func() (int, error) {
+	_, err := captureWorkerTask(ctx, nil, "worker_catalog_sync", "", "", func(ctx context.Context) (int, error) {
 		return 0, errors.New("PRIVATE provider response")
 	})
 	if err == nil || len(r.events) != 1 || r.events[0] != (recordedFailure{"cycrio-system", "worker_catalog_sync", "task_failed"}) {
@@ -139,7 +139,7 @@ func TestReporterPanicDoesNotCancelHealthyWorker(t *testing.T) {
 	ctx, cancel := withWorkerShutdown(context.Background())
 	defer cancel(nil)
 	ctx = withWorkerTelemetry(ctx, panickingFailureReporter{})
-	value, err := captureWorkerTask(ctx, nil, "worker_catalog_sync", "", "", func() (int, error) {
+	value, err := captureWorkerTask(ctx, nil, "worker_catalog_sync", "", "", func(ctx context.Context) (int, error) {
 		return 7, errors.New("task failure")
 	})
 	if value != 7 || err == nil || err.Error() != "task failure" || ctx.Err() != nil {
@@ -209,7 +209,7 @@ func TestWorkerTelemetryPreservesTaskErrorPanicAndStoredReason(t *testing.T) {
 					return database.JobTelemetryOutcome{State: "failed", Code: "invalid_json"}, nil
 				}
 			}
-			_, _ = captureWorkerTask(ctx, read, "worker_mail_processing", "processing", "run", func() (int, error) {
+			_, _ = captureWorkerTask(ctx, read, "worker_mail_processing", "processing", "run", func(ctx context.Context) (int, error) {
 				if mode == "panic" {
 					panic(original)
 				}
@@ -266,7 +266,7 @@ func TestPrivateWorkerCauseStaysOutOfFormattingAndFrameworkReturn(t *testing.T) 
 		t.Fatal("cause leaked in JSON")
 	}
 	r := &detailedFailureRecorder{}
-	_, returned := captureWorkerTask(withWorkerTelemetry(context.Background(), r), nil, "worker_mail_discovery", "", "", func() (int, error) { return 0, err })
+	_, returned := captureWorkerTask(withWorkerTelemetry(context.Background(), r), nil, "worker_mail_discovery", "", "", func(ctx context.Context) (int, error) { return 0, err })
 	if returned.Error() != "mail discovery unavailable" || errors.Unwrap(returned) != nil {
 		t.Fatal("framework received private cause")
 	}
@@ -281,7 +281,7 @@ func TestWorkerTelemetryRetainsOriginalFailureWhenOutcomeReadFails(t *testing.T)
 	read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
 		return database.JobTelemetryOutcome{}, errors.New("outcome database connection refused")
 	}
-	_, _ = captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, original })
+	_, _ = captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func(ctx context.Context) (int, error) { return 0, original })
 	if len(r.values) != 2 || r.values[1] != original || r.events[1].kind != "task_failed" {
 		t.Fatalf("original failure was replaced by outcome read: %+v %v", r.events, r.values)
 	}
@@ -296,7 +296,7 @@ func TestWorkerTelemetryReportsPersistedAIHTTPFailureDetails(t *testing.T) {
 		}
 		return out, nil
 	}
-	_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, nil })
+	_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func(ctx context.Context) (int, error) { return 0, nil })
 	if err != nil || len(r.values) != 1 || fmt.Sprint(r.values[0]) != "provider_http (provider=liquid, stage=classification, http_status=422)" {
 		t.Fatalf("persisted AI failure details lost: %v %v", r.values, err)
 	}
@@ -316,7 +316,7 @@ func TestWorkerTelemetryRejectsUntrustedAIDiagnosticMetadata(t *testing.T) {
 			}
 			return out, nil
 		}
-		_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, nil })
+		_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func(ctx context.Context) (int, error) { return 0, nil })
 		if err != nil || len(r.values) != 1 || fmt.Sprint(r.values[0]) != "provider_http" {
 			t.Fatalf("untrusted metadata reached reporter: %v %v", r.values, err)
 		}

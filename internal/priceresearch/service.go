@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 	"github.com/google/uuid"
 	"sort"
@@ -16,6 +18,21 @@ type Service struct {
 	repository Repository
 	client     Client
 	resolve    CredentialResolver
+}
+
+// Product rejections retain their normal outcome; infrastructure/provider and
+// ledger failures must remain identifiable even if outcome lookup also fails.
+func recordResearchFailure(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	for _, expected := range []error{ErrInvalid, ErrConflict, ErrNotFound, ErrDispatched, ErrCredentialsRequired, credentials.ErrNotFound, credentials.ErrInvalid, credentials.ErrConflict, modelcatalog.ErrNotFound, modelcatalog.ErrInvalid, modelcatalog.ErrConflict, modelcatalog.ErrCredentialsRequired, context.Canceled} {
+		if errors.Is(err, expected) {
+			diagnostics.Record(ctx, err)
+			return
+		}
+	}
+	diagnostics.RecordUnexpected(ctx, err)
 }
 
 func NewService(r Repository, c Client, resolve CredentialResolver) *Service {
@@ -73,6 +90,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	}
 	key, err := s.resolve(ctx, e.CredentialID)
 	if err != nil || len(key) == 0 {
+		if err != nil && !errors.Is(err, ErrCredentialsRequired) {
+			recordResearchFailure(ctx, err)
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -86,6 +106,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	// Recheck after resolving the active encrypted version, immediately before sending.
 	check, err := s.repository.Prepare(ctx, l)
 	if err != nil {
+		if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrCredentialsRequired) && !errors.Is(err, ErrDispatched) {
+			recordResearchFailure(ctx, err)
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -101,6 +124,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		return s.finish(ctx, l, e, Result{}, "")
 	}
 	if err = s.repository.Begin(ctx, l); err != nil {
+		if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrCredentialsRequired) && !errors.Is(err, ErrDispatched) {
+			recordResearchFailure(ctx, err)
+		}
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
@@ -126,6 +152,9 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		if batched, ok := s.repository.(BatchRepository); ok {
 			indices, err = batched.BatchIndices(ctx, l)
 			if err != nil {
+				if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrCredentialsRequired) {
+					recordResearchFailure(ctx, err)
+				}
 				if ctx.Err() != nil {
 					return ctx.Err()
 				}
@@ -152,6 +181,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	result, err := s.client.Research(ctx, request)
 	code := ""
 	if err != nil {
+		recordResearchFailure(ctx, err)
 		code = "research_failed"
 	}
 	return s.finish(ctx, l, e, result, code)
@@ -184,6 +214,9 @@ func (s *Service) researchGroup(ctx context.Context, lease Lease, request Reques
 	}
 	callID, err := grouped.BeginGroupCall(ctx, lease, indices)
 	if err != nil {
+		if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrCredentialsRequired) {
+			recordResearchFailure(ctx, err)
+		}
 		if ctx.Err() != nil {
 			return out, ""
 		}
@@ -197,11 +230,13 @@ func (s *Service) researchGroup(ctx context.Context, lease Lease, request Reques
 	result, err := s.client.Research(ctx, request)
 	code := ""
 	if err != nil {
+		recordResearchFailure(ctx, err)
 		code = "research_failed"
 	}
 	bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if recorder.FinishCall(bounded, lease, callID, result, code) != nil {
+	if err := recorder.FinishCall(bounded, lease, callID, result, code); err != nil {
+		recordResearchFailure(ctx, err)
 		code = "research_failed"
 	}
 	result.CallsRecorded = true
@@ -227,13 +262,18 @@ func (s *Service) researchModels(ctx context.Context, lease Lease, request Reque
 				index := indices[position]
 				callID, err := recorder.BeginCall(ctx, lease, index)
 				if err != nil {
+					if !errors.Is(err, ErrConflict) && !errors.Is(err, ErrCredentialsRequired) {
+						recordResearchFailure(ctx, err)
+					}
 					if ctx.Err() != nil {
 						continue
 					}
 					codes[position] = "configuration_changed"
 					if batched, ok := s.repository.(BatchRepository); ok {
 						bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-						_ = batched.SkipTarget(bounded, lease, index, "configuration_changed")
+						if err := batched.SkipTarget(bounded, lease, index, "configuration_changed"); err != nil {
+							recordResearchFailure(ctx, err)
+						}
 						cancel()
 					}
 					continue
@@ -243,10 +283,12 @@ func (s *Service) researchModels(ctx context.Context, lease Lease, request Reque
 				codes[position] = ""
 				results[position], err = s.client.Research(ctx, single)
 				if err != nil {
+					recordResearchFailure(ctx, err)
 					codes[position] = "research_failed"
 				}
 				bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-				if recorder.FinishCall(bounded, lease, callID, results[position], codes[position]) != nil {
+				if err := recorder.FinishCall(bounded, lease, callID, results[position], codes[position]); err != nil {
+					recordResearchFailure(ctx, err)
 					codes[position] = "research_failed"
 				}
 				cancel()

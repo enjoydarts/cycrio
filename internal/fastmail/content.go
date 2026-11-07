@@ -34,6 +34,7 @@ func (c *Client) ReadMessage(ctx context.Context, login string, password []byte,
 }
 
 func (c *Client) readText(ctx context.Context, login string, password []byte, source mailcontent.Source, receivedAt **time.Time) ([]byte, error) {
+	ctx = withMailDiagnostics(ctx, login, password, source.Folder)
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	generationError := func() error {
 		if source.StrictGeneration {

@@ -15,6 +15,7 @@ import (
 
 // Discover reads one bounded UID window without fetching or changing messages.
 func (c *Client) Discover(ctx context.Context, login string, password []byte, input mailsync.PageRequest) (mailsync.Page, error) {
+	ctx = withMailDiagnostics(ctx, login, password, input.Folder)
 	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	since, e1 := time.Parse(time.DateOnly, input.Since)
 	before, e2 := time.Parse(time.DateOnly, input.Before)

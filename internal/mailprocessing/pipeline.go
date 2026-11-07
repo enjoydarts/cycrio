@@ -8,6 +8,8 @@ import (
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/aibudget"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
@@ -34,7 +36,13 @@ func (s *Service) Execute(ctx context.Context, l Lease) (err error) {
 	if e != nil {
 		return safe(e)
 	}
-	return s.executeWork(ctx, l, w)
+	err, failure := s.executeWorkDiagnostic(ctx, l, w)
+	if failure.panicked {
+		diagnostics.RecordUnexpected(ctx, failure.cause)
+	} else {
+		diagnostics.Record(ctx, failure.cause)
+	}
+	return err
 }
 
 func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) {
@@ -42,15 +50,18 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
 	defer cancel()
 	completion := Completion{State: "failed", Events: []ai.Event{}}
-	// All adapter panics are reduced to fixed metadata before crossing the worker boundary.
+	var panicSecrets []string
+	// Preserve diagnostics privately while persisting the existing fixed outcome.
 	defer func() {
-		if recover() != nil {
+		if value := recover(); value != nil {
+			recordWorkPanic(ctx, value, panicSecrets...)
 			completion = Completion{State: "unknown", ErrorCode: "execution_panic", Events: []ai.Event{}, ReceivedAt: completion.ReceivedAt}
 		}
 		finish, stop := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer stop()
 		if e := s.repo.Finish(finish, l, completion); e != nil {
-			err = ErrUnavailable
+			diagnostics.RecordUnexpected(ctx, e)
+			err = diagnostics.Wrap(ErrUnavailable, e)
 		}
 	}()
 	if s.keys == nil {
@@ -68,9 +79,14 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	if !api {
 		decoded = json.Unmarshal(raw, &credential)
 	}
+	panicSecrets = append(panicSecrets, string(credential.Login), string(credential.Password))
 	defer clear(credential.Login)
 	defer clear(credential.Password)
 	if e != nil || decoded != nil || !api && (len(credential.Login) == 0 || len(credential.Password) == 0) {
+		diagnostics.RecordUnexpected(ctx, e)
+		if e == nil {
+			diagnostics.RecordUnexpected(ctx, decoded)
+		}
 		completion.ErrorCode = "credentials_unavailable"
 		return nil
 	}
@@ -86,6 +102,7 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		validity, uid, valid = decodeSourceReference(sourceBytes)
 	}
 	if e != nil || !valid {
+		diagnostics.RecordUnexpected(ctx, e)
 		completion.ErrorCode = "source_missing"
 		return nil
 	}
@@ -104,6 +121,7 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		reader = nil
 	}
 	if e != nil {
+		recordReaderFailure(ctx, e)
 		completion.ErrorCode = SourceErrorCode(e)
 		return nil
 	}
@@ -126,11 +144,13 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		text, e = reader.ReadText(readCtx, string(credential.Login), credential.Password, source)
 	}
 	defer clear(text)
+	panicSecrets = append(panicSecrets, string(text))
 	if e == nil {
 		e = readCtx.Err()
 	}
 	stop()
 	if e != nil {
+		recordReaderFailure(ctx, e)
 		completion.ErrorCode = SourceErrorCode(e)
 		return nil
 	}
@@ -144,6 +164,7 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	}
 	first, outcome, e := s.call(ctx, l, w, "classification", w.Profile.Primary, classifierInstructions, text)
 	if e != nil {
+		diagnostics.RecordUnexpected(ctx, e)
 		completion.State = "unknown"
 		completion.ErrorCode = "recording_failed"
 		return ErrUnavailable
@@ -163,6 +184,7 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	}
 	second, outcome, e := s.call(ctx, l, w, "extraction", w.Profile.Secondary, extractorInstructions, text)
 	if e != nil {
+		diagnostics.RecordUnexpected(ctx, e)
 		completion.State = "unknown"
 		completion.ErrorCode = "recording_failed"
 		return ErrUnavailable
@@ -292,7 +314,12 @@ func classify(err error) (string, int) {
 }
 func safeDo(ctx context.Context, client InferenceClient, in ai.Request) (result ai.Response, err error) {
 	defer func() {
-		if recover() != nil {
+		if value := recover(); value != nil {
+			secrets := []string{string(in.Key), in.Input.Text, in.Input.Instructions}
+			for _, criterion := range in.Input.ClassificationCriteria {
+				secrets = append(secrets, criterion)
+			}
+			recordWorkPanic(ctx, value, secrets...)
 			result = ai.Response{}
 			err = &ai.Error{Code: "transport_error"}
 		}
@@ -310,6 +337,11 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 	key, e := s.resolve(ctx, model.CredentialID)
 	defer clear(key)
 	if e != nil || len(key) == 0 {
+		if e != nil && !errors.Is(e, credentials.ErrNotFound) && !errors.Is(e, airuntime.ErrCredentialsRequired) && !errors.Is(e, ErrNotFound) && !errors.Is(e, context.Canceled) && !errors.Is(e, context.DeadlineExceeded) {
+			diagnostics.RecordUnexpected(ctx, diagnostics.Snapshot(e, func(value string) string {
+				return diagnostics.ScrubKnown(value, string(key), string(text), instructions)
+			}))
+		}
 		return empty, "credentials_unavailable", nil
 	}
 	call, e := s.beginBudgetCall(ctx, l, stage, w.Profile.TimeoutSeconds)
@@ -331,6 +363,7 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 	}
 	callCtx, stop := context.WithTimeout(ctx, time.Duration(w.Profile.TimeoutSeconds)*time.Second)
 	response, e := safeDo(callCtx, s.client, ai.Request{Provider: model.Provider, ModelID: model.ModelID, ProviderSlug: w.Profile.OpenRouterProvider, WorkspaceID: w.Profile.AnthropicWorkspaceID, Input: ai.RequestInput{Text: string(text), Instructions: instructions}, Key: key, MaxOutputTokens: w.Profile.MaxOutputTokens, Price: model.Price})
+	recordProviderFailure(ctx, e)
 	outcome, status := classify(e)
 	if callCtx.Err() != nil {
 		outcome, _ = classify(callCtx.Err())
@@ -361,6 +394,7 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 	defer stopSave()
 	_, e = s.repo.FinishCall(save, call.ID, airuntime.CallUpdate{Outcome: outcome, HTTPStatus: status, GenerationID: response.GenerationID, ActualModelID: response.ActualModelID, ActualProvider: response.ActualProvider, Usage: response.Usage, Cost: response.Cost})
 	if e != nil {
+		diagnostics.RecordUnexpected(ctx, e)
 		return response, "recording_failed", e
 	}
 	return response, outcome, nil

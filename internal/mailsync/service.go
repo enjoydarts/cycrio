@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
@@ -37,10 +38,10 @@ func safe(err error) error {
 	}
 	for _, e := range []error{ErrInvalid, ErrConflict, ErrNotFound} {
 		if errors.Is(err, e) {
-			return e
+			return diagnostics.Wrap(e, err)
 		}
 	}
-	return ErrUnavailable
+	return diagnostics.Wrap(ErrUnavailable, err)
 }
 func (s *Service) Request(ctx context.Context, owner, id string, in Input) (Run, error) {
 	if !ValidID(owner) || !ValidID(id) || !ValidInput(in) {
@@ -140,6 +141,14 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	}
 	defer clear(p.Login)
 	defer clear(p.Password)
+	defer func() {
+		if value := recover(); value != nil {
+			safe := diagnostics.Panic(value, string(p.Login), string(p.Password))
+			cause := diagnostics.Wrap(safe, safe)
+			diagnostics.RecordUnexpected(ctx, cause)
+			panic(cause)
+		}
+	}()
 	if e == nil && api && (w.Page.CursorEnvelope.KeyID != "" || len(w.Page.CursorEnvelope.Ciphertext) != 0) {
 		var cursor []byte
 		cursor, e = s.keyring.Open(w.Page.CursorEnvelope, CursorAAD(w))
@@ -150,6 +159,12 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		clear(cursor)
 	}
 	if e != nil || decodeErr != nil || !api && (len(p.Login) == 0 || len(p.Password) == 0) {
+		if s.keyring != nil {
+			diagnostics.RecordUnexpected(ctx, e)
+			if e == nil {
+				diagnostics.RecordUnexpected(ctx, decodeErr)
+			}
+		}
 		code = "credentials_unavailable"
 	} else {
 		callctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -160,14 +175,17 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 			scanner = nil
 		}
 		if e != nil {
+			recordDiscoveryFailure(ctx, e)
 			code = ErrorCode(e)
 		} else if scanner == nil {
 			code = "connection_failed"
 		} else {
 			page, e = scanner.Discover(callctx, string(p.Login), p.Password, w.Page)
 			if e != nil {
+				recordDiscoveryFailure(ctx, e)
 				code = ErrorCode(e)
 			} else if callctx.Err() != nil {
+				recordDiscoveryFailure(ctx, callctx.Err())
 				code = ErrorCode(callctx.Err())
 			} else if api && page.Cursor == "" {
 				code = "invalid_response"
@@ -191,6 +209,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 				ref.Envelope, e = s.keyring.Seal(tuple, MessageAAD(w, ref.ID))
 				clear(tuple)
 				if e != nil {
+					diagnostics.RecordUnexpected(ctx, e)
 					code = "credentials_unavailable"
 					break
 				}
@@ -201,6 +220,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 				page.CursorEnvelope, e = s.keyring.Seal(cursor, CursorAAD(w))
 				clear(cursor)
 				if e != nil {
+					diagnostics.RecordUnexpected(ctx, e)
 					code = "credentials_unavailable"
 				}
 			}
@@ -218,6 +238,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 			ref.Envelope, e = s.keyring.Seal(tuple, MessageAAD(w, ref.ID))
 			clear(tuple)
 			if e != nil {
+				diagnostics.RecordUnexpected(ctx, e)
 				code = "credentials_unavailable"
 				break
 			}
@@ -231,4 +252,16 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	finish, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	return safe(s.repository.Finish(finish, l, page, refs, code))
+}
+
+func recordDiscoveryFailure(ctx context.Context, err error) {
+	if err == nil {
+		return
+	}
+	switch ErrorCode(err) {
+	case "authentication_failed", "credentials_unavailable", "cancelled", "uid_validity_changed", "folder_limit":
+		diagnostics.Record(ctx, err)
+	default:
+		diagnostics.RecordUnexpected(ctx, err)
+	}
 }

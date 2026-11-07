@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 type workerFailureReporter interface{ Report(string, string, string) }
@@ -63,12 +64,16 @@ func capturePollerPanic(ctx context.Context) {
 
 type jobOutcomeReader func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error)
 
-func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operation, jobKind, id string, execute func() (T, error)) (out T, err error) {
+func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operation, jobKind, id string, execute func(context.Context) (T, error)) (out T, err error) {
+	ctx, scope := diagnostics.WithScope(ctx)
 	started := time.Now()
 	defer func() {
 		panicValue := recover()
 		panicked := panicValue != nil
 		var failure any = err
+		if original := scope.Error(); original != nil {
+			failure = original
+		}
 		if private, ok := err.(*privateWorkerCause); ok {
 			err = errors.New(private.message)
 		}
@@ -86,7 +91,7 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 				reportWorkerFailure(ctx, "", operation, "outcome_unavailable", readErr)
 				if panicked {
 					reportWorkerFailure(ctx, "", operation, "task_panic", failure)
-				} else if failure != nil {
+				} else if err != nil || diagnostics.IsUnexpected(scope.Error()) {
 					reportWorkerFailure(ctx, "", operation, "task_failed", failure)
 				}
 				return
@@ -97,7 +102,7 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 			kind = "task_panic"
 		} else if unexpectedJobFailure(outcome) {
 			kind = "task_failed"
-		} else if err != nil {
+		} else if err != nil || diagnostics.IsUnexpected(scope.Error()) {
 			kind = "task_failed"
 		}
 		if kind != "" {
@@ -110,7 +115,7 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 			reportWorkerFailure(ctx, outcome.OwnerID, operation, kind, failure)
 		}
 	}()
-	return execute()
+	return execute(ctx)
 }
 
 // Reconstruct diagnostics exclusively from fixed provider/stage names and an

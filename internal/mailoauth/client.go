@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
+	"github.com/enjoydarts/cycrio/internal/maildiagnostics"
 )
 
 type Config struct{ ClientID, ClientSecret, RedirectURI string }
@@ -128,15 +129,22 @@ func (c *Client) requestToken(ctx context.Context, provider string, config Confi
 	if provider == "outlook" {
 		form.Set("scope", scope)
 	}
+	secrets := []string{config.ClientID, config.ClientSecret, previousRefresh}
+	for _, field := range []string{"code", "code_verifier", "refresh_token"} {
+		secrets = append(secrets, form[field]...)
+	}
+	fail := func(code string, status int, headers http.Header, body []byte, cause error) (Token, error) {
+		return Token{}, maildiagnostics.Failure(code, provider, "oauth_token", status, headers, body, cause, secrets...)
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
 	if err != nil {
-		return Token{}, mailaccounts.AdapterError{Code: "connection_failed"}
+		return fail("connection_failed", 0, nil, nil, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	res, err := c.http.Do(req)
 	if err != nil {
-		return Token{}, mailaccounts.AdapterError{Code: "connection_failed"}
+		return fail("connection_failed", 0, nil, nil, err)
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusOK {
@@ -144,11 +152,15 @@ func (c *Client) requestToken(ctx context.Context, provider string, config Confi
 		if res.StatusCode == 400 || res.StatusCode == 401 || res.StatusCode == 403 {
 			code = "authentication_failed"
 		}
-		return Token{}, mailaccounts.AdapterError{Code: code}
+		body, readErr := io.ReadAll(io.LimitReader(res.Body, 65537))
+		if len(body) > 65536 {
+			body = nil
+		}
+		return fail(code, res.StatusCode, res.Header, body, readErr)
 	}
 	body, err := io.ReadAll(io.LimitReader(res.Body, 65537))
 	if err != nil || len(body) > 65536 {
-		return Token{}, mailaccounts.AdapterError{Code: "invalid_response"}
+		return fail("invalid_response", res.StatusCode, res.Header, nil, err)
 	}
 	var payload struct {
 		AccessToken  string  `json:"access_token"`
@@ -157,18 +169,21 @@ func (c *Client) requestToken(ctx context.Context, provider string, config Confi
 		ExpiresIn    int64   `json:"expires_in"`
 		Scope        *string `json:"scope"`
 	}
-	if json.Unmarshal(body, &payload) != nil || !validTokenValue(payload.AccessToken) || !strings.EqualFold(payload.TokenType, "Bearer") || payload.ExpiresIn <= 0 || payload.ExpiresIn > int64((1<<63-1)/int64(time.Second)) {
-		return Token{}, mailaccounts.AdapterError{Code: "invalid_response"}
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return fail("invalid_response", res.StatusCode, res.Header, nil, err)
+	}
+	if !validTokenValue(payload.AccessToken) || !strings.EqualFold(payload.TokenType, "Bearer") || payload.ExpiresIn <= 0 || payload.ExpiresIn > int64((1<<63-1)/int64(time.Second)) {
+		return fail("invalid_response", res.StatusCode, res.Header, nil, nil)
 	}
 	// Refresh responses may omit scope when it is unchanged (RFC 6749 section 6).
 	if payload.Scope == nil && previousRefresh == "" || payload.Scope != nil && !sufficientScope(provider, *payload.Scope) {
-		return Token{}, mailaccounts.AdapterError{Code: "invalid_response"}
+		return fail("invalid_response", res.StatusCode, res.Header, nil, nil)
 	}
 	if payload.RefreshToken == "" {
 		payload.RefreshToken = previousRefresh
 	}
 	if !validTokenValue(payload.RefreshToken) {
-		return Token{}, mailaccounts.AdapterError{Code: "invalid_response"}
+		return fail("invalid_response", res.StatusCode, res.Header, nil, nil)
 	}
 	return Token{AccessToken: payload.AccessToken, RefreshToken: payload.RefreshToken, Expiry: time.Now().UTC().Add(time.Duration(payload.ExpiresIn) * time.Second)}, nil
 }

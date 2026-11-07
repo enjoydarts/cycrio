@@ -3,6 +3,7 @@ package notificationruntime
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 var (
@@ -50,7 +51,7 @@ func (service *Service) Execute(ctx context.Context, task Task) (Result, error) 
 		if errors.Is(err, ErrInvalidTask) {
 			return Result{}, ErrInvalidTask
 		}
-		return Result{}, ErrUnavailable
+		return Result{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	if result.Status != TaskIgnored && result.Status != TaskRecorded {
 		return Result{}, ErrUnavailable

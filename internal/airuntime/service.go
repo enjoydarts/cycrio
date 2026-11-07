@@ -3,6 +3,7 @@ package airuntime
 import (
 	"context"
 	"errors"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
@@ -102,6 +103,7 @@ func (s *Service) Run(ctx context.Context, lease Lease) error {
 	first, primaryOutcome, recordErr := s.call(ctx, execution, lease, "classification", execution.Profile.Primary, classifierInstructions)
 	completion.PrimaryOutcome = &primaryOutcome
 	if recordErr != nil {
+		diagnostics.Record(ctx, recordErr)
 		completion.State = "unknown"
 		_ = finish()
 		return ErrUnavailable
@@ -114,6 +116,7 @@ func (s *Service) Run(ctx context.Context, lease Lease) error {
 	second, secondaryOutcome, recordErr := s.call(ctx, execution, lease, "extraction", execution.Profile.Secondary, extractorInstructions)
 	completion.SecondaryOutcome = &secondaryOutcome
 	if recordErr != nil {
+		diagnostics.Record(ctx, recordErr)
 		completion.State = "unknown"
 		_ = finish()
 		return ErrUnavailable
@@ -135,7 +138,7 @@ func (s *Service) call(ctx context.Context, execution Execution, lease Lease, st
 		if errors.Is(err, ErrConflict) || errors.Is(err, ErrInvalid) || errors.Is(err, ErrNotFound) || errors.Is(err, ErrCredentialsRequired) {
 			return empty, "configuration_unavailable", nil
 		}
-		return empty, "execution_unavailable", ErrUnavailable
+		return empty, "execution_unavailable", diagnostics.Wrap(ErrUnavailable, err)
 	}
 	if len(syntheticMail) > execution.Profile.MaxInputBytes {
 		return empty, "input_too_large", nil
@@ -149,7 +152,7 @@ func (s *Service) call(ctx context.Context, execution Execution, lease Lease, st
 		if errors.Is(err, ErrCredentialsRequired) || errors.Is(err, ErrNotFound) {
 			return empty, "credentials_unavailable", nil
 		}
-		return empty, "execution_unavailable", ErrUnavailable
+		return empty, "execution_unavailable", diagnostics.Wrap(ErrUnavailable, err)
 	}
 	if len(key) == 0 {
 		return empty, "credentials_unavailable", nil
@@ -161,7 +164,16 @@ func (s *Service) call(ctx context.Context, execution Execution, lease Lease, st
 		return empty, "recording_failed", err
 	}
 	callCtx, cancel := context.WithTimeout(ctx, time.Duration(execution.Profile.TimeoutSeconds)*time.Second)
+	defer preserveProviderPanic(ctx, string(key), syntheticMail, instructions)
 	result, callErr := s.client.Do(callCtx, ai.Request{Provider: model.Provider, ModelID: model.ModelID, ProviderSlug: execution.Profile.OpenRouterProvider, WorkspaceID: execution.Profile.AnthropicWorkspaceID, Input: ai.RequestInput{Text: syntheticMail, Instructions: instructions}, Key: key, MaxOutputTokens: execution.Profile.MaxOutputTokens, Price: model.Price})
+	if callErr != nil {
+		code, _ := classifyError(callErr)
+		if code == "invalid_request" || code == "refusal" || code == "request_cancelled" || errors.Is(callErr, context.Canceled) {
+			diagnostics.Record(ctx, callErr)
+		} else {
+			diagnostics.RecordUnexpected(ctx, callErr)
+		}
+	}
 	timeout := errors.Is(callCtx.Err(), context.DeadlineExceeded)
 	cancel()
 	outcome, status := classifyError(callErr)
@@ -183,6 +195,7 @@ func (s *Service) call(ctx context.Context, execution Execution, lease Lease, st
 	defer saveCancel()
 	_, err = s.repo.FinishCall(saveCtx, call.ID, CallUpdate{Outcome: outcome, HTTPStatus: status, GenerationID: result.GenerationID, ActualModelID: result.ActualModelID, ActualProvider: result.ActualProvider, Usage: result.Usage, Cost: result.Cost})
 	if err != nil {
+		diagnostics.RecordUnexpected(ctx, err)
 		return result, "recording_failed", err
 	}
 	return result, outcome, nil
@@ -218,18 +231,28 @@ func (s *Service) Reconcile(ctx context.Context, actor, id string) (Call, error)
 	defer cancel()
 	key, err := s.resolve(lookupCtx, call.CredentialID)
 	defer clear(key)
+	defer preserveProviderPanic(ctx, string(key))
 	if err != nil {
 		if errors.Is(err, ErrCredentialsRequired) || errors.Is(err, ErrNotFound) {
 			return Call{}, ErrCredentialsRequired
 		}
-		return Call{}, ErrUnavailable
+		return Call{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	if len(key) == 0 {
 		return Call{}, ErrCredentialsRequired
 	}
 	report, err := s.client.Reconcile(lookupCtx, ai.ReconcileRequest{GenerationID: *call.GenerationID, Key: key})
 	if err != nil {
-		return Call{}, ErrUnavailable
+		return Call{}, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	return s.repo.ReconcileCall(ctx, actor, id, report)
+}
+
+func preserveProviderPanic(ctx context.Context, secrets ...string) {
+	if value := recover(); value != nil {
+		safe := diagnostics.Panic(value, secrets...)
+		cause := diagnostics.Wrap(safe, safe)
+		diagnostics.RecordUnexpected(ctx, cause)
+		panic(cause)
+	}
 }

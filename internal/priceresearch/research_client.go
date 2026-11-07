@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
 const maxResearchBody = 2 << 20
@@ -43,11 +45,14 @@ func NewClient(transport http.RoundTripper) *HTTPClient {
 func publicDialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
 	}
 	ips, err := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
-	if err != nil || len(ips) == 0 {
-		return nil, ErrUnavailable
+	if err != nil {
+		return nil, diagnostics.Wrap(ErrUnavailable, err)
+	}
+	if len(ips) == 0 {
+		return nil, researchError(errors.New("DNS returned no public addresses"))
 	}
 	for _, ip := range ips {
 		if !publicIP(ip) {
@@ -56,13 +61,15 @@ func publicDialContext(ctx context.Context, network, address string) (net.Conn, 
 	}
 	var dialer net.Dialer
 	dialer.Timeout = 10 * time.Second
+	var dialErr error
 	for _, ip := range ips {
 		conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(ip.String(), port))
 		if err == nil {
 			return conn, nil
 		}
+		dialErr = err
 	}
-	return nil, ErrUnavailable
+	return nil, researchError(dialErr)
 }
 
 func publicIP(ip netip.Addr) bool {
@@ -113,7 +120,7 @@ func officialURL(raw, provider string) (string, bool) {
 	return u.String(), true
 }
 
-func researchError() error { return ErrUnavailable }
+func researchError(cause error) error { return diagnostics.Wrap(ErrUnavailable, cause) }
 
 // OfficialSearchSources accepts sources reported by the search tool itself,
 // independently of whether a model price can be extracted from those pages.
@@ -192,11 +199,15 @@ Classify from official docs, never names: text_generation requires ordinary text
 	}
 	body, _ := json.Marshal(payload)
 	out.Trace = captureResearchTrace(body, r, nil)
+	diagnosticRequest := ai.Request{Provider: r.Provider, Key: r.Key, Input: ai.RequestInput{Text: prompt}}
+	privateFailure := func(cause error) error {
+		return researchError(ai.TransportDiagnostic(cause, diagnosticRequest))
+	}
 	ctx, cancel := context.WithTimeout(ctx, researchRequestTimeout)
 	defer cancel()
 	req, e := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if e != nil {
-		return out, researchError()
+		return out, privateFailure(e)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if r.Provider == "openai" {
@@ -211,7 +222,7 @@ Classify from official docs, never names: text_generation requires ordinary text
 	client := &http.Client{Transport: c.transport, Timeout: researchRequestTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return ErrUnavailable }}
 	resp, e := client.Do(req)
 	if e != nil {
-		return out, researchError()
+		return out, privateFailure(e)
 	}
 	defer resp.Body.Close()
 	out.HTTPStatus = resp.StatusCode
@@ -222,14 +233,18 @@ Classify from official docs, never names: text_generation requires ordinary text
 		traceRaw = traceRaw[:maxTraceResponse]
 	}
 	out.Trace.Response = maskResearchTrace(traceRaw, r.Key)
-	if e != nil || len(raw) > maxResearchBody {
+	if e != nil {
 		out.FailureCode = "invalid_response"
-		return out, researchError()
+		return out, privateFailure(e)
+	}
+	if len(raw) > maxResearchBody {
+		out.FailureCode = "invalid_response"
+		return out, researchError(fmt.Errorf("research response exceeds %d bytes", maxResearchBody))
 	}
 	var envelope map[string]json.RawMessage
-	if json.Unmarshal(raw, &envelope) != nil {
+	if e := json.Unmarshal(raw, &envelope); e != nil {
 		out.FailureCode = "invalid_response"
-		return out, researchError()
+		return out, privateFailure(e)
 	}
 	out.Usage = ai.ParseResearchUsage(r.Provider, envelope["usage"])
 	text, sources, calls, complete := researchOutput(r.Provider, envelope)
@@ -256,32 +271,40 @@ Classify from official docs, never names: text_generation requires ordinary text
 		out.GenerationID = id
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return out, researchError()
+		var details map[string]any
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		_ = decoder.Decode(&details)
+		cause := fmt.Errorf("research provider HTTP %d", resp.StatusCode)
+		if detail := ai.ProviderDiagnostic(details, resp.Header, diagnosticRequest); detail != nil {
+			cause = fmt.Errorf("research provider HTTP %d: %w", resp.StatusCode, detail)
+		}
+		return out, researchError(cause)
 	}
-	if strictJSON(raw, nil) != nil {
+	if e := strictJSON(raw, nil); e != nil {
 		out.FailureCode = "invalid_response"
-		return out, researchError()
+		return out, privateFailure(e)
 	}
 	if r.TestOnly && calls < 1 {
 		out.FailureCode = "search_unverified"
-		return out, researchError()
+		return out, researchError(errors.New("research search usage could not be verified"))
 	}
 	if r.TestOnly {
 		out.Sources = OfficialSearchSources(sources, targetProvider)
 		if len(out.Sources) == 0 {
-			return out, researchError()
+			return out, researchError(errors.New("research response has no verified official sources"))
 		}
 		return out, nil
 	}
 	if !complete {
 		out.FailureCode = "incomplete_response"
-		return out, researchError()
+		return out, researchError(fmt.Errorf("research provider response incomplete: %s", out.ResponseState))
 	}
 	var parseErr error
 	out.Models, out.Quotes, out.ModelIssues, parseErr = inspectResearchModels(text, r.Targets)
 	if parseErr != nil {
 		out.FailureCode = "invalid_results"
-		return out, researchError()
+		return out, privateFailure(parseErr)
 	}
 	for _, q := range out.Models {
 		out.Sources = append(out.Sources, q.SourceURL)
@@ -468,7 +491,7 @@ func strictJSON(raw []byte, dst any) error {
 	var value func(int) error
 	value = func(depth int) error {
 		if depth > 32 {
-			return ErrInvalid
+			return diagnostics.Wrap(ErrInvalid, errors.New("research JSON nesting exceeds 32 levels"))
 		}
 		tok, err := dec.Token()
 		if err != nil {
@@ -488,7 +511,7 @@ func strictJSON(raw []byte, dst any) error {
 				}
 				key, ok := k.(string)
 				if !ok || keys[key] {
-					return ErrInvalid
+					return diagnostics.Wrap(ErrInvalid, errors.New("research JSON object contains a duplicate or invalid key"))
 				}
 				keys[key] = true
 				if err := value(depth + 1); err != nil {
@@ -502,22 +525,25 @@ func strictJSON(raw []byte, dst any) error {
 				}
 			}
 		default:
-			return ErrInvalid
+			return diagnostics.Wrap(ErrInvalid, errors.New("research JSON contains an unexpected delimiter"))
 		}
 		_, err = dec.Token()
 		return err
 	}
 	if err := value(0); err != nil {
-		return ErrInvalid
+		return diagnostics.Wrap(ErrInvalid, err)
 	}
 	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
-		return ErrInvalid
+		if err == nil {
+			err = errors.New("research JSON contains trailing values")
+		}
+		return diagnostics.Wrap(ErrInvalid, err)
 	}
 	if dst != nil {
 		decoder := json.NewDecoder(bytes.NewReader(raw))
 		decoder.DisallowUnknownFields()
-		if decoder.Decode(dst) != nil {
-			return ErrInvalid
+		if err := decoder.Decode(dst); err != nil {
+			return diagnostics.Wrap(ErrInvalid, err)
 		}
 	}
 	return nil

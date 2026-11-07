@@ -16,6 +16,7 @@ import (
 
 	"github.com/emersion/go-imap/v2"
 	"github.com/emersion/go-imap/v2/imapclient"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 )
 
@@ -54,6 +55,7 @@ func (e *tlsHandshakeError) Error() string { return "mail TLS handshake failed" 
 func (e *tlsHandshakeError) Unwrap() error { return e.cause }
 
 func (c *Client) Check(ctx context.Context, login string, password []byte) ([]mailaccounts.RemoteFolder, error) {
+	ctx = withMailDiagnostics(ctx, login, password, "")
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	conn, err := c.connect(ctx)
@@ -180,5 +182,5 @@ func checkError(ctx context.Context, wire *boundedConn, err error, fallback stri
 		// identity. Use the transport evidence without inspecting protocol text.
 		code = "connection_failed"
 	}
-	return mailaccounts.AdapterError{Code: code}
+	return diagnostics.Wrap(mailaccounts.AdapterError{Code: code}, imapDiagnostic(ctx, err))
 }

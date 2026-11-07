@@ -62,7 +62,7 @@ func TestServiceUsesFixedErrorsAndRejectsUnknownRepositoryStatuses(t *testing.T)
 		if errors.Is(err, ErrInvalidTask) {
 			want = ErrInvalidTask
 		}
-		if e != want || result != (Result{}) || strings.Contains(e.Error(), "synthetic-key") || strings.Contains(e.Error(), "verified@example.com") {
+		if !errors.Is(e, want) || result != (Result{}) || strings.Contains(e.Error(), "synthetic-key") || strings.Contains(e.Error(), "verified@example.com") {
 			t.Fatal("private repository details leaked", result, e)
 		}
 	}

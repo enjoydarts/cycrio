@@ -2,6 +2,8 @@ package priceresearch
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -25,25 +27,28 @@ func (c *HTTPClient) openAIStandardPrices(ctx context.Context) (map[string]Quote
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, openAIStandardURL, nil)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, researchError(err)
 	}
 	req.Header.Set("Accept", "text/markdown")
 	client := &http.Client{Transport: c.transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, ErrUnavailable
+		return nil, researchError(err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, ErrUnavailable
+		return nil, researchError(fmt.Errorf("official pricing document HTTP %d", resp.StatusCode))
 	}
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResearchBody+1))
-	if err != nil || len(raw) > maxResearchBody {
-		return nil, ErrUnavailable
+	if err != nil {
+		return nil, researchError(err)
+	}
+	if len(raw) > maxResearchBody {
+		return nil, researchError(errors.New("official pricing document exceeds response size limit"))
 	}
 	prices := ParseOpenAIStandardPrices(string(raw))
 	if len(prices) == 0 {
-		return nil, ErrUnavailable
+		return nil, researchError(errors.New("official pricing document contains no recognized price rows"))
 	}
 	c.officialPrices = prices
 	c.officialExpires = time.Now().Add(5 * time.Minute)
