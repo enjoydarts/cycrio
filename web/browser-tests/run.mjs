@@ -186,6 +186,9 @@ try {
     await wait(
       "document.body.innerText.includes('https://jmap.franklymail.com/jmap/session')",
     );
+    await wait(
+      `Array.from(document.querySelectorAll('img[src="/brand/services/franklymail.png"]')).some(image => image.complete && image.naturalWidth > 0)`,
+    );
     assert.equal(
       await js(
         "return document.querySelector('#mail-host')===null && document.querySelector('#mail-port')===null",

@@ -386,6 +386,7 @@ test('mail providers are independent from personal connection labels', async () 
     ['outlook', 'outlook'],
     ['hotmail', 'outlook'],
     ['fastmail', 'fastmail'],
+    ['franklymail', 'franklymail'],
   ])
     assert.equal(resolveMailLogo(name)?.slug, slug);
   assert.equal(resolveMailLogo('imap'), null);

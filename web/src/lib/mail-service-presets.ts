@@ -41,6 +41,7 @@ export const mailServicePresets: readonly MailServicePreset[] = [
     id: 'franklymail',
     label: 'FranklyMail（JMAP）',
     provider: 'franklymail',
+    logoSlug: 'franklymail',
     setup:
       '完全なメールボックスのメールアドレスと、FranklyMailで発行したアプリパスワードを入力してください。ダッシュボードのログイン情報やAPIキーはJMAP接続には使えません。接続先のSession URLは https://jmap.franklymail.com/jmap/session に固定されています。',
     helpUrl: 'https://franklymail.com/guides/jmap',

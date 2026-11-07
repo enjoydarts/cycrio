@@ -7,6 +7,7 @@ test('FranklyMail uses an explicit JMAP preset without migrating IMAP accounts',
   const preset = mailServicePresets.find((p) => p.id === 'franklymail');
   assert.ok(preset);
   assert.equal(preset.provider, 'franklymail');
+  assert.equal(preset.logoSlug, 'franklymail');
   assert.equal(preset.label, 'FranklyMail（JMAP）');
   assert.equal(preset.host, undefined);
   assert.equal(preset.helpUrl, 'https://franklymail.com/guides/jmap');
