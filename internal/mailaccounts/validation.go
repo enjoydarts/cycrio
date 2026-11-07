@@ -35,7 +35,7 @@ func validSave(owner, id string, in SaveInput) (string, bool) {
 		}
 		return label, true
 	}
-	if (in.Provider != "" && in.Provider != "fastmail") || in.Host != "" || in.Port != 0 {
+	if (in.Provider != "" && in.Provider != "fastmail" && in.Provider != "franklymail") || in.Host != "" || in.Port != 0 {
 		return "", false
 	}
 	if !validOwned(owner, id, in.ExpectedVersion) || label == "" || !cleanText(label, 320) || utf8.RuneCountInString(label) > 80 || !cleanText(in.Login, 254) || len(in.AppPassword) < 8 || len(in.AppPassword) > 1024 {

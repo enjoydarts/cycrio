@@ -179,21 +179,56 @@ test('missing tokens and cancellation during token lookup never send a private r
   assert.equal(calls, 0);
 });
 
+test('FranklyMail password save sends no custom endpoint and strips response secrets', async () => {
+  let sent: any;
+  const api = createMailAPI('', async (_url, init) => {
+    sent = JSON.parse(String(init?.body));
+    return Response.json({
+      ...account(),
+      provider: 'franklymail',
+      login: 'owner@example.com',
+      app_password: 'secret-value',
+    });
+  });
+  const saved = await api.save(
+    ids.account,
+    {
+      provider: 'franklymail',
+      expected_version: 0,
+      label: 'JMAP',
+      login: 'owner@example.com',
+      app_password: 'secret-value',
+      host: 'attacker.example',
+      port: 143,
+    },
+    async () => 's',
+  );
+  assert.equal(sent.provider, 'franklymail');
+  assert.equal(sent.host, undefined);
+  assert.equal(sent.port, undefined);
+  assert.equal('login' in saved, false);
+  assert.equal('app_password' in saved, false);
+});
+
 test('mail API accepts all supported providers and preserves only IMAP endpoint metadata', async () => {
   const api = createMailAPI('', async () =>
     Response.json({
-      accounts: ['fastmail', 'imap', 'gmail', 'outlook'].map((provider, i) => ({
-        ...account(),
-        id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
-        provider,
-        ...(provider === 'imap' ? { host: 'imap.example.com', port: 143 } : {}),
-      })),
+      accounts: ['fastmail', 'imap', 'gmail', 'outlook', 'franklymail'].map(
+        (provider, i) => ({
+          ...account(),
+          id: `00000000-0000-4000-8000-${String(i).padStart(12, '0')}`,
+          provider,
+          ...(provider === 'imap'
+            ? { host: 'imap.example.com', port: 143 }
+            : {}),
+        }),
+      ),
     }),
   );
   const rows = await api.list(async () => 's');
   assert.deepEqual(
     rows.map((row) => row.provider),
-    ['fastmail', 'imap', 'gmail', 'outlook'],
+    ['fastmail', 'imap', 'gmail', 'outlook', 'franklymail'],
   );
   assert.equal(rows[1].host, 'imap.example.com');
   assert.equal(rows[1].port, 143);

@@ -1,9 +1,43 @@
 package mailaccounts
 
 import (
+	"bytes"
 	"github.com/google/uuid"
 	"testing"
 )
+
+func TestFranklyMailInputAndCredentialBinding(t *testing.T) {
+	owner, id := uuid.NewString(), uuid.NewString()
+	in := SaveInput{Provider: "franklymail", Label: "FranklyMail", Login: "person@example.test", AppPassword: "dummy-app-password"}
+	if _, ok := validSave(owner, id, in); !ok {
+		t.Fatal("FranklyMail password connection rejected")
+	}
+	for _, change := range []func(*SaveInput){
+		func(v *SaveInput) { v.Host = "jmap.franklymail.com" },
+		func(v *SaveInput) { v.Port = 443 },
+		func(v *SaveInput) { v.Login = "mailbox" },
+		func(v *SaveInput) { v.Login = "Person <person@example.test>" },
+		func(v *SaveInput) { v.AppPassword = "secret\nvalue" },
+	} {
+		bad := in
+		change(&bad)
+		if _, ok := validSave(owner, id, bad); ok {
+			t.Fatal("invalid FranklyMail input accepted")
+		}
+	}
+	v := CredentialVersion{OwnerID: owner, AccountID: id, ID: uuid.NewString(), Version: 1}
+	legacy := CredentialAAD(v)
+	for _, provider := range []string{"fastmail", "imap", "gmail", "outlook"} {
+		v.Provider = provider
+		if !bytes.Equal(legacy, CredentialAAD(v)) {
+			t.Fatal("legacy credential AAD changed", provider)
+		}
+	}
+	v.Provider = "franklymail"
+	if bytes.Equal(legacy, CredentialAAD(v)) {
+		t.Fatal("FranklyMail AAD not provider-bound")
+	}
+}
 
 func TestConnectionInputSeparatesIMAPFromOAuthAndLegacy(t *testing.T) {
 	owner, id := uuid.NewString(), uuid.NewString()

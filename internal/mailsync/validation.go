@@ -12,7 +12,11 @@ import (
 
 const MaxCursorBytes = 128 << 10
 
-func APIProvider(provider string) bool { return provider == "gmail" || provider == "outlook" }
+// APIProvider selects encrypted opaque message IDs and cursors. Authentication
+// is resolved by the connection factory; this does not imply OAuth.
+func APIProvider(provider string) bool {
+	return provider == "gmail" || provider == "outlook" || provider == "franklymail"
+}
 
 func ValidRemoteID(id string) bool {
 	return id != "" && len(id) <= 2048 && utf8.ValidString(id) && !strings.ContainsAny(id, "/\\") && !strings.ContainsFunc(id, unicode.IsControl)

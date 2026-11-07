@@ -36,11 +36,17 @@ func safeError(err error) error {
 	return diagnostics.Wrap(ErrUnavailable, err)
 }
 func credentialAAD(v CredentialVersion) []byte {
+	// Preserve the context used by all existing connections. JMAP credentials
+	// bind their provider explicitly without invalidating stored IMAP/OAuth data.
+	provider, purpose := "fastmail", "fastmail-imap/v1"
+	if v.Provider == "franklymail" {
+		provider, purpose = v.Provider, "mail-connection/v1"
+	}
 	data, _ := json.Marshal(struct {
 		Owner, Account, ID string
 		Revision           int64
 		Provider, Purpose  string
-	}{v.OwnerID, v.AccountID, v.ID, v.Version, "fastmail", "fastmail-imap/v1"})
+	}{v.OwnerID, v.AccountID, v.ID, v.Version, provider, purpose})
 	return data
 }
 

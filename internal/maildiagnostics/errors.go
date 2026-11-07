@@ -22,7 +22,7 @@ var endpointURL = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
 func Failure(code, provider, stage string, status int, headers http.Header, body []byte, cause error, secrets ...string) error {
 	public := mailaccounts.AdapterError{Code: code}
 	switch provider {
-	case "gmail", "google", "google_workspace", "gmail_workspace", "outlook", "microsoft":
+	case "gmail", "google", "google_workspace", "gmail_workspace", "outlook", "microsoft", "franklymail":
 	default:
 		provider = "mail"
 	}

@@ -29,6 +29,35 @@ function setup(overrides: Partial<MailAPI> = {}) {
   return { controller, api, denied: () => denied };
 }
 
+test('FranklyMail saves mailbox credentials without an IMAP endpoint and clears the secret after saving', async () => {
+  let sent: any;
+  const { controller: c } = setup({
+    list: async () => [],
+    save: async (id, input) => {
+      sent = input;
+      return account({ id, provider: 'franklymail' });
+    },
+  });
+  await c.refresh();
+  c.newAccount();
+  c.chooseService('franklymail');
+  assert.equal(c.state().form?.provider, 'franklymail');
+  c.edit({
+    label: 'JMAP',
+    login: 'owner@example.com',
+    app_password: 'app-secret',
+  });
+  await c.save();
+  assert.equal(sent.provider, 'franklymail');
+  assert.equal(sent.login, 'owner@example.com');
+  assert.equal(sent.app_password, 'app-secret');
+  assert.equal(sent.host, undefined);
+  assert.equal(sent.port, undefined);
+  assert.equal(c.state().form?.app_password, '');
+  c.chooseService('imap');
+  assert.equal(c.state().form?.provider, 'franklymail');
+});
+
 test('preset selection fills IMAP endpoint, clears credentials on service changes and saves through the existing API', async () => {
   let sent: any;
   const { controller: c } = setup({

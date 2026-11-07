@@ -123,11 +123,12 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 	var page Page
 	var refs []MessageRef
 	api := APIProvider(w.Credential.Provider)
+	passwordAuth := !api || w.Credential.Provider == "franklymail"
 	w.Page.Provider = w.Credential.Provider
 	var raw []byte
 	if s.keyring == nil {
 		e = secretstore.ErrUnavailable
-	} else if !api {
+	} else if passwordAuth {
 		raw, e = s.keyring.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
 	}
 	defer clear(raw)
@@ -136,7 +137,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		Password []byte `json:"password"`
 	}
 	var decodeErr error
-	if !api {
+	if passwordAuth {
 		decodeErr = json.Unmarshal(raw, &p)
 	}
 	defer clear(p.Login)
@@ -158,7 +159,7 @@ func (s *Service) Execute(ctx context.Context, l Lease) error {
 		w.Page.Cursor = string(cursor)
 		clear(cursor)
 	}
-	if e != nil || decodeErr != nil || !api && (len(p.Login) == 0 || len(p.Password) == 0) {
+	if e != nil || decodeErr != nil || passwordAuth && (len(p.Login) == 0 || len(p.Password) == 0) {
 		if s.keyring != nil {
 			diagnostics.RecordUnexpected(ctx, e)
 			if e == nil {

@@ -203,7 +203,7 @@
           >
           {#if !view.mail.accounts.length && view.mail.status === 'ready'}<p>
               Gmail・Google
-              Workspace・Outlook.com・Fastmail・Yahoo!メール・iCloud
+              Workspace・Outlook.com・Fastmail・FranklyMail（JMAP）・Yahoo!メール・iCloud
               MailなどのIMAP に対応しています。
             </p>{/if}
         </section>

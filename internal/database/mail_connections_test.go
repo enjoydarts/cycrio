@@ -45,13 +45,15 @@ func TestMailConnectionProviderMetadataAndOwnerBoundary(t *testing.T) {
 	if e != nil || len(list) != 1 || list[0].Provider != "imap" {
 		t.Fatal("provider list", e)
 	}
-	in.Provider = "fastmail"
 	in.Host = ""
 	in.Port = 0
 	in.Login = "user@example.com"
 	in.AppPassword = "dummy-password"
 	in.ExpectedVersion = 1
-	if _, e = s.Save(ctx, owner.ID, id, in); !errors.Is(e, mailaccounts.ErrConflict) {
-		t.Fatal("provider replacement accepted", e)
+	for _, provider := range []string{"fastmail", "franklymail"} {
+		in.Provider = provider
+		if _, e = s.Save(ctx, owner.ID, id, in); !errors.Is(e, mailaccounts.ErrConflict) {
+			t.Fatal("IMAP provider replacement accepted", provider, e)
+		}
 	}
 }

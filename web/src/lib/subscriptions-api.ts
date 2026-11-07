@@ -56,7 +56,7 @@ export type Subscription = SubscriptionValues &
       received_at?: string | null;
       account_id?: string;
       account_label?: string;
-      provider?: 'gmail' | 'outlook' | 'fastmail' | 'imap';
+      provider?: 'gmail' | 'outlook' | 'fastmail' | 'franklymail' | 'imap';
       provenance?: 'automatic' | 'owner_confirmed';
       result_id: string;
       event_index: number;
@@ -191,6 +191,7 @@ export function parseSubscription(value: unknown): Subscription {
                 'gmail',
                 'outlook',
                 'fastmail',
+                'franklymail',
                 'imap',
               ] as const),
             };

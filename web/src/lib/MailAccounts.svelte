@@ -58,6 +58,7 @@
   const account = $derived(view.accounts.find((a) => a.id === view.selected));
   const providerNames: Record<MailAccount['provider'], string> = {
     fastmail: 'Fastmail',
+    franklymail: 'FranklyMail（JMAP）',
     imap: 'IMAP',
     gmail: 'Gmail / Google Workspace',
     outlook: 'Outlook.com / Hotmail',
@@ -330,7 +331,10 @@
             Workspace は組織の管理者による許可が必要な場合があります。アプリの
             Google ログインとは別の認可です。 Fastmail
             は専用のアプリパスワードで <code>imap.fastmail.com:993</code
-            >（TLS）に接続します。 汎用 IMAP は 993（TLS）または
+            >（TLS）に接続します。FranklyMail
+            はメールボックスのメールアドレスとアプリパスワードで
+            <code>https://jmap.franklymail.com/jmap/session</code
+            >（JMAP）に接続します。 汎用 IMAP は 993（TLS）または
             143（STARTTLS）を使います。保存だけでは同期しません。本文取得・AI
             送信は「メール解析」で期間と条件を一度確認してから開始します。開始後は、新着の確認と解析を自動で続けます。
           </p>

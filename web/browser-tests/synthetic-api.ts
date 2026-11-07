@@ -1,4 +1,5 @@
 import type { Subscription } from '../src/lib/subscriptions-api.ts';
+import { mailFranklyFixture } from './mail-frankly-fixture.ts';
 import { budgetFixture } from './budget-fixture.ts';
 import { priceResearchFixture } from './price-research-fixture.ts';
 import { notificationFixture } from './notification-fixture.ts';
@@ -45,6 +46,7 @@ const response = (body: unknown) =>
 // This fake checks transport contracts and returns fixed synthetic records.
 // Business parsing, normalization, and controller behavior run in real components.
 export function installAPI(mode: string, initial: Subscription) {
+  const mailFrankly = mode === 'mail-frankly' ? mailFranklyFixture() : null;
   const healthchecks =
     mode === 'healthchecks' || mode === 'posthog'
       ? healthchecksFixture(mode)
@@ -86,6 +88,8 @@ export function installAPI(mode: string, initial: Subscription) {
       )
         fail('Unexpected authorization');
       if (research && url.origin === location.origin) return research(url);
+      if (mailFrankly && url.origin === location.origin)
+        return mailFrankly(url, method, body);
       if (healthchecks && url.origin === location.origin)
         return healthchecks(url, method, body);
       if (scheduled && url.origin === location.origin)

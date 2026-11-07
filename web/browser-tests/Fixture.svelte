@@ -1,5 +1,7 @@
 <script lang="ts">
   import AdminCredentials from '../src/lib/AdminCredentials.svelte';
+  import MailAccounts from '../src/lib/MailAccounts.svelte';
+  import { createMailAPI } from '../src/lib/mail-api.ts';
   import { createAPI } from '../src/lib/api.ts';
   import SubscriptionForm from '../src/lib/SubscriptionForm.svelte';
   import PriceResearch from '../src/lib/PriceResearch.svelte';
@@ -217,7 +219,15 @@
   }}
 />
 
-{#if mode.startsWith('scheduled-')}
+{#if mode === 'mail-frankly'}
+  <main>
+    <MailAccounts
+      api={createMailAPI('/synthetic')}
+      token={async () => 'synthetic'}
+      onDenied={denied}
+    />
+  </main>
+{:else if mode.startsWith('scheduled-')}
   <main class="daily library-page">
     <LibraryPanel
       ><div class="library-content">

@@ -2,9 +2,18 @@ package maildiagnostics
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 	"testing"
 )
+
+func TestFranklyMailRetainsProviderAndSafeTransportReason(t *testing.T) {
+	err := Failure("connection_failed", "franklymail", "jmap_session", 429, http.Header{"X-Request-Id": []string{"request-synthetic"}}, nil, nil)
+	cause := errors.Unwrap(err)
+	if cause == nil || !strings.Contains(cause.Error(), "provider=franklymail") || !strings.Contains(cause.Error(), "HTTP 429") || !strings.Contains(cause.Error(), "request-synthetic") {
+		t.Fatal(cause)
+	}
+}
 
 func TestProviderEnvelopeRetainsTechnicalReasonAndRequestID(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{

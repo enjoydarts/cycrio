@@ -16,9 +16,14 @@ import (
 )
 
 func TestMailAPISyncEncryptedCursorResumeAndAccountDeduplication(t *testing.T) {
+	for _, provider := range []string{"gmail", "franklymail"} {
+		t.Run(provider, func(t *testing.T) { testMailAPISyncEncryptedCursorResumeAndAccountDeduplication(t, provider) })
+	}
+}
+func testMailAPISyncEncryptedCursorResumeAndAccountDeduplication(t *testing.T, provider string) {
 	_, pool, _, r, owner, _, account := syncFixture(t)
 	ctx := context.Background()
-	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider='gmail' WHERE id=$1`, account); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider=$2 WHERE id=$1`, account, provider); err != nil {
 		t.Fatal(err)
 	}
 	in := syncInput()
@@ -26,7 +31,7 @@ func TestMailAPISyncEncryptedCursorResumeAndAccountDeduplication(t *testing.T) {
 		t.Fatal(err)
 	}
 	lease, work := syncStart(t, r)
-	if work.Page.Provider != "gmail" || work.Credential.Provider != "gmail" {
+	if work.Page.Provider != provider || work.Credential.Provider != provider {
 		t.Fatal("provider missing", work)
 	}
 	refs := syncRefs(1)
@@ -85,10 +90,15 @@ func TestMailAPISyncEncryptedCursorResumeAndAccountDeduplication(t *testing.T) {
 }
 
 func TestMailAPIAutomationBootstrapCursorCopiesAndEmptyPagesAdvance(t *testing.T) {
+	for _, provider := range []string{"outlook", "franklymail"} {
+		t.Run(provider, func(t *testing.T) { testMailAPIAutomationBootstrapCursorCopiesAndEmptyPagesAdvance(t, provider) })
+	}
+}
+func testMailAPIAutomationBootstrapCursorCopiesAndEmptyPagesAdvance(t *testing.T, provider string) {
 	f, automation, in := automaticFixture(t)
 	ctx := context.Background()
 	pool := f.runtime.pool
-	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider='outlook' WHERE id=$1`, f.account); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider=$2 WHERE id=$1`, f.account, provider); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := automation.Save(ctx, f.owner, f.account, in); err != nil {
@@ -99,7 +109,7 @@ func TestMailAPIAutomationBootstrapCursorCopiesAndEmptyPagesAdvance(t *testing.T
 	}
 	r := NewMailSyncRepository(pool)
 	lease, work := syncStart(t, r)
-	if work.Page.Mode != "bootstrap" || work.Page.Provider != "outlook" {
+	if work.Page.Mode != "bootstrap" || work.Page.Provider != provider {
 		t.Fatal(work.Page)
 	}
 	first := secretstore.Envelope{KeyID: "test", Ciphertext: []byte("bootstrap-next")}
@@ -170,10 +180,15 @@ func TestMailAPIAutomationBootstrapCursorCopiesAndEmptyPagesAdvance(t *testing.T
 }
 
 func TestMailAPIAutomationMapsExistingReferenceAcrossLabels(t *testing.T) {
+	for _, provider := range []string{"gmail", "franklymail"} {
+		t.Run(provider, func(t *testing.T) { testMailAPIAutomationMapsExistingReferenceAcrossLabels(t, provider) })
+	}
+}
+func testMailAPIAutomationMapsExistingReferenceAcrossLabels(t *testing.T, provider string) {
 	f, automation, in := automaticFixture(t)
 	ctx := context.Background()
 	pool := f.runtime.pool
-	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider='gmail' WHERE id=$1`, f.account); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider=$2 WHERE id=$1`, f.account, provider); err != nil {
 		t.Fatal(err)
 	}
 	original := f.add(t, 1)[0]
@@ -226,10 +241,15 @@ func TestMailAPIAutomationMapsExistingReferenceAcrossLabels(t *testing.T) {
 }
 
 func TestMailAPIProcessingRequiresSelectedDiscoveredMembership(t *testing.T) {
+	for _, provider := range []string{"gmail", "franklymail"} {
+		t.Run(provider, func(t *testing.T) { testMailAPIProcessingRequiresSelectedDiscoveredMembership(t, provider) })
+	}
+}
+func testMailAPIProcessingRequiresSelectedDiscoveredMembership(t *testing.T, provider string) {
 	f := processingSetup(t)
 	ctx := context.Background()
 	pool := f.runtime.pool
-	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider='gmail' WHERE id=$1`, f.account); err != nil {
+	if _, err := pool.Exec(ctx, `UPDATE mail_accounts SET provider=$2 WHERE id=$1`, f.account, provider); err != nil {
 		t.Fatal(err)
 	}
 	message := f.add(t, 1)[0]
@@ -278,9 +298,14 @@ func TestMailAPIProcessingRequiresSelectedDiscoveredMembership(t *testing.T) {
 }
 
 func TestMailAPIProcessingLoadsProviderFromAccount(t *testing.T) {
+	for _, provider := range []string{"gmail", "franklymail"} {
+		t.Run(provider, func(t *testing.T) { testMailAPIProcessingLoadsProviderFromAccount(t, provider) })
+	}
+}
+func testMailAPIProcessingLoadsProviderFromAccount(t *testing.T, provider string) {
 	f := processingSetup(t)
 	ctx := context.Background()
-	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_accounts SET provider='gmail' WHERE id=$1`, f.account); err != nil {
+	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_accounts SET provider=$2 WHERE id=$1`, f.account, provider); err != nil {
 		t.Fatal(err)
 	}
 	message := f.add(t, 1)[0]
@@ -308,7 +333,7 @@ func TestMailAPIProcessingLoadsProviderFromAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, work := f.start(t)
-	if work.Credential.Provider != "gmail" {
+	if work.Credential.Provider != provider {
 		t.Fatal("processing factory lost provider")
 	}
 	if len(work.ReaderFolders) != 2 {

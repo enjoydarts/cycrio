@@ -46,6 +46,7 @@ Cycrio（サイクリオ）は、請求・更新メールから契約情報を�
 | Gmail / Google Workspace | Gmail API・OAuthによる読み取り                                |
 | Outlook.com / Hotmail    | Microsoft Graph・OAuth。個人Microsoftアカウント向け           |
 | Fastmail                 | IMAP・専用アプリパスワード                                    |
+| FranklyMail              | JMAP・専用アプリパスワード。[設定ガイド](docs/franklymail-jmap.md) |
 | 汎用IMAP                 | TLS対応の公開メールサーバー。主要サービスの接続プリセットあり |
 
 Yahoo!メール（日本／海外）、iCloud Mail、OCN、BIGLOBE、So-net、@niftyなどはIMAPのプリセットから接続できます。利用プラン・IMAP有効化・アプリパスワードなどの条件は、接続画面の案内で確認してください。

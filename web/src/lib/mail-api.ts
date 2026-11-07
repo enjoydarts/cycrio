@@ -33,7 +33,7 @@ export type MailFolder = {
 };
 export type MailAccount = {
   id: string;
-  provider: 'fastmail' | 'imap' | 'gmail' | 'outlook';
+  provider: 'fastmail' | 'franklymail' | 'imap' | 'gmail' | 'outlook';
   host?: string;
   port?: number;
   label: string;
@@ -48,7 +48,7 @@ export type MailAccount = {
   folders: MailFolder[];
 };
 export type MailSave = {
-  provider?: 'fastmail' | 'imap';
+  provider?: 'fastmail' | 'franklymail' | 'imap';
   host?: string;
   port?: number;
   expected_version: number;
@@ -145,7 +145,9 @@ function parseAccount(value: unknown): MailAccount {
     !record(value) ||
     !uuid(value.id) ||
     typeof value.provider !== 'string' ||
-    !['fastmail', 'imap', 'gmail', 'outlook'].includes(value.provider) ||
+    !['fastmail', 'franklymail', 'imap', 'gmail', 'outlook'].includes(
+      value.provider,
+    ) ||
     (value.host !== undefined &&
       (typeof value.host !== 'string' || value.host.length > 253)) ||
     (value.port !== undefined && value.port !== 993 && value.port !== 143) ||
@@ -345,6 +347,7 @@ export function createMailAPI(base: string, fetcher: typeof fetch = fetch) {
       if (
         input.provider !== undefined &&
         input.provider !== 'fastmail' &&
+        input.provider !== 'franklymail' &&
         input.provider !== 'imap'
       )
         throw new ApiError('invalid_request');

@@ -69,20 +69,21 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		return nil
 	}
 	api := mailsync.APIProvider(w.Credential.Provider)
+	passwordAuth := !api || w.Credential.Provider == "franklymail"
 	var raw []byte
-	if !api {
+	if passwordAuth {
 		raw, e = s.keys.Open(w.Credential.Envelope, mailaccounts.CredentialAAD(w.Credential))
 	}
 	defer clear(raw)
 	var credential struct{ Login, Password []byte }
 	var decoded error
-	if !api {
+	if passwordAuth {
 		decoded = json.Unmarshal(raw, &credential)
 	}
 	panicSecrets = append(panicSecrets, string(credential.Login), string(credential.Password))
 	defer clear(credential.Login)
 	defer clear(credential.Password)
-	if e != nil || decoded != nil || !api && (len(credential.Login) == 0 || len(credential.Password) == 0) {
+	if e != nil || decoded != nil || passwordAuth && (len(credential.Login) == 0 || len(credential.Password) == 0) {
 		diagnostics.RecordUnexpected(ctx, e)
 		if e == nil {
 			diagnostics.RecordUnexpected(ctx, decoded)

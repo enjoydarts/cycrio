@@ -311,6 +311,8 @@ test('mail component SSR shows explicit Fastmail boundaries and never includes a
   }).body;
   for (const text of [
     'imap.fastmail.com:993',
+    'https://jmap.franklymail.com/jmap/session',
+    'FranklyMail',
     'アプリパスワード',
     '本文',
     'AI',

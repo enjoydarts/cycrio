@@ -8,6 +8,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/fastmail"
+	"github.com/enjoydarts/cycrio/internal/jmapmail"
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/maildiagnostics"
@@ -88,6 +89,8 @@ func (f *Factory) connection(ctx context.Context, v mailaccounts.CredentialVersi
 		return nil, e
 	}
 	switch s.Provider {
+	case "franklymail":
+		return jmapmail.NewClient(string(s.Login), s.Password, nil), nil
 	case "fastmail":
 		return fastmail.NewClient(), nil
 	case "imap":

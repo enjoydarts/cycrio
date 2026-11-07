@@ -174,6 +174,86 @@ try {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
     });
+    await visit('mail-frankly', width);
+    await wait(button('＋ メールを接続') + '!==undefined');
+    await click(button('＋ メールを接続'));
+    await wait("document.querySelector('#mail-provider')!==null");
+    await input(
+      "document.querySelector('#mail-provider')",
+      'franklymail',
+      'change',
+    );
+    await wait(
+      "document.body.innerText.includes('https://jmap.franklymail.com/jmap/session')",
+    );
+    assert.equal(
+      await js(
+        "return document.querySelector('#mail-host')===null && document.querySelector('#mail-port')===null",
+      ),
+      true,
+    );
+    assert.equal(
+      await js("return document.querySelector('#mail-login').type"),
+      'email',
+    );
+    assert.equal(
+      await js("return document.querySelector('#mail-password').type"),
+      'password',
+    );
+    assert.equal(
+      await js(
+        'return document.querySelector(\'a[href="https://franklymail.com/guides/jmap"]\')!==null',
+      ),
+      true,
+    );
+    await layout();
+    await screenshot(`mail-frankly-${width}`);
+    await input("document.querySelector('#mail-label')", '合成FranklyMail');
+    await input(
+      "document.querySelector('#mail-login')",
+      'synthetic@example.com',
+    );
+    await input(
+      "document.querySelector('#mail-password')",
+      'synthetic-app-password',
+    );
+    await click(button('接続情報を保存'));
+    await wait("window.browserTest.requests.some(r=>r.method==='PUT')");
+    assert.deepEqual(
+      await js(
+        "return window.browserTest.requests.find(r=>r.method==='PUT').body",
+      ),
+      {
+        expected_version: 0,
+        label: '合成FranklyMail',
+        login: 'synthetic@example.com',
+        app_password: 'synthetic-app-password',
+        provider: 'franklymail',
+      },
+    );
+    await wait("document.body.innerText.includes('接続情報を保存しました')");
+    assert.equal(
+      await js(
+        "return document.body.innerText.includes('synthetic-app-password')",
+      ),
+      false,
+    );
+    await click(button('接続情報を編集'));
+    await wait("document.querySelector('#mail-password')!==null");
+    assert.equal(
+      await js("return document.querySelector('#mail-password').value"),
+      '',
+    );
+    assert.equal(
+      await js("return document.querySelector('#mail-login').value"),
+      '',
+    );
+    assert.equal(
+      await js("return document.querySelector('#mail-provider').disabled"),
+      true,
+    );
+    await layout();
+    results.push({ scenario: `${width}-mail-frankly`, status: 'pass' });
     await visit('healthchecks', width);
     if (width === 1280) results.push(await runTelemetryProbe(api, session));
     const healthchecksService =

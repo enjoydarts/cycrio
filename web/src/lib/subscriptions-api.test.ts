@@ -87,6 +87,13 @@ test('subscription sources preserve validated account metadata and reject partia
   const parsed = parseSubscription({ ...subscription(), sources: [source] });
   assert.equal(parsed.sources[0].account_label, 'Personal');
   assert.equal(parsed.sources[0].provider, 'gmail');
+  assert.equal(
+    parseSubscription({
+      ...subscription(),
+      sources: [{ ...source, provider: 'franklymail' }],
+    }).sources[0].provider,
+    'franklymail',
+  );
   assert.throws(() =>
     parseSubscription({
       ...subscription(),

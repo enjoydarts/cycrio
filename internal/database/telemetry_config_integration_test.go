@@ -32,11 +32,9 @@ func TestTelemetryConfigurationLifecycleAndMigration(t *testing.T) {
 	}
 	provider := automationMigrationProvider(t, pool)
 	down, err := provider.DownTo(ctx, 46)
-	if err != nil || len(down) != 1 || down[0].Direction != "down" || down[0].Source.Version != 47 {
-		t.Fatal(down, err)
-	}
+	assertMigrationRange(t, down, err, latestMigrationVersion, 47)
 	up, err := provider.Up(ctx)
-	assertMigrationRange(t, up, err, 47, 47)
+	assertMigrationRange(t, up, err, 47, latestMigrationVersion)
 	service := credentials.NewService(NewCredentialRepository(pool), keys)
 	value := `{"project_token":"phc_synthetic123","host":"https://us.i.posthog.com"}`
 	if _, err = service.Put(ctx, actor.ID, "posthog", 0, value); err != nil {

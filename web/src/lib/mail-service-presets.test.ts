@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+test('FranklyMail uses an explicit JMAP preset without migrating IMAP accounts', async () => {
+  const { mailServicePresets, mailServiceForAccount } =
+    await import('./mail-service-presets.ts');
+  const preset = mailServicePresets.find((p) => p.id === 'franklymail');
+  assert.ok(preset);
+  assert.equal(preset.provider, 'franklymail');
+  assert.equal(preset.label, 'FranklyMail（JMAP）');
+  assert.equal(preset.host, undefined);
+  assert.equal(preset.helpUrl, 'https://franklymail.com/guides/jmap');
+  assert.match(preset.setup, /https:\/\/jmap.franklymail.com\/jmap\/session/);
+  assert.match(preset.setup, /ダッシュボード|APIキー/);
+  assert.equal(
+    mailServiceForAccount({ provider: 'franklymail' }).id,
+    'franklymail',
+  );
+  assert.equal(
+    mailServiceForAccount({ provider: 'imap', host: 'imap.franklymail.com' })
+      .id,
+    'imap',
+  );
+});
+
 for (const [id, host, condition] of [
   ['ocn', 'imap.ocn.ne.jp', /メールパスワード/],
   ['biglobe', 'mail.biglobe.ne.jp', /スタンダード/],
