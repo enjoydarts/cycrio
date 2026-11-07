@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/enjoydarts/cycrio/internal/ai"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"io"
 	"net/http"
 	"runtime"
@@ -12,6 +14,88 @@ import (
 	"testing"
 	"time"
 )
+
+type typedDiagnostic struct{ error }
+
+func (typedDiagnostic) DiagnosticType() string { return "*net.DNSError" }
+func TestPreservesSanitizedOriginalErrorType(t *testing.T) {
+	items := sanitizeExceptions(typedDiagnostic{errors.New("lookup api.example.test: no such host")}, "task_failed")
+	if len(items) == 0 || items[0].Type != "*net.DNSError" {
+		t.Fatal("original type lost", items)
+	}
+}
+
+func TestProviderValidationDetailsReachOfficialSDKWithoutInput(t *testing.T) {
+	client := ai.NewClient(&http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 422, Header: http.Header{"X-Request-Id": []string{"req_68f2ca9753aa410d"}}, Body: io.NopCloser(strings.NewReader(`{"detail":[{"type":"string_too_long","loc":["body","state"],"msg":"String should have at most 32768 characters","input":"private mail body private@example.com","ctx":{"max_length":32768}}]}`))}, nil
+	})})
+	_, cause := client.Do(context.Background(), ai.Request{Provider: "liquid", ModelID: "d1", Key: []byte("synthetic-private-key"), Input: ai.RequestInput{Text: "private mail body private@example.com"}})
+	if cause == nil {
+		t.Fatal("expected validation error")
+	}
+	wire := make(chan []byte, 1)
+	reporter := newReporter(context.Background(), true, func(context.Context) (Config, error) { return testConfig, nil }, nil, "worker", transportFunc(func(req *http.Request) (*http.Response, error) {
+		raw, _ := io.ReadAll(req.Body)
+		wire <- raw
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+	}), time.Hour)
+	defer reporter.Close()
+	waitConfig(t, reporter)
+	ctx, scope := diagnostics.WithScope(context.Background())
+	diagnostics.Record(ctx, cause)
+	reporter.ReportException("cycrio-system", "worker_mail_processing", "task_failed", scope.Error())
+	select {
+	case raw := <-wire:
+		for _, technical := range []string{"HTTP 422", "string_too_long", "32768", "body.state", "req_68f2ca9753aa410d", "internal/ai/client.go"} {
+			if !strings.Contains(string(raw), technical) {
+				t.Fatal("technical field missing", technical, string(raw))
+			}
+		}
+		for _, private := range []string{"private mail body", "private@example.com", "synthetic-private-key"} {
+			if strings.Contains(string(raw), private) {
+				t.Fatal("private value sent", private)
+			}
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("provider validation not sent")
+	}
+}
+
+func TestExceptionRetainsDeepOriginalCause(t *testing.T) {
+	var err error = errors.New("String should have at most 32768 characters; field state; SQLSTATE 40001")
+	for i := 0; i < 7; i++ {
+		err = diagnostics.Wrap(errors.New("service unavailable"), err)
+	}
+	items := sanitizeExceptions(err, "task_failed")
+	if len(items) != 8 || !strings.Contains(items[len(items)-1].Value, "32768") {
+		t.Fatal("deepest technical cause lost", items)
+	}
+}
+
+func originalProviderFailure() error {
+	return diagnostics.Wrap(errors.New("provider unavailable"), errors.New("string_too_long at state; max_length 32768"))
+}
+func TestReportExceptionUsesCapturedOriginAfterItReturns(t *testing.T) {
+	wire := make(chan []byte, 1)
+	reporter := newReporter(context.Background(), true, func(context.Context) (Config, error) { return testConfig, nil }, nil, "worker", transportFunc(func(req *http.Request) (*http.Response, error) {
+		raw, _ := io.ReadAll(req.Body)
+		wire <- raw
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+	}), time.Hour)
+	defer reporter.Close()
+	waitConfig(t, reporter)
+	reporter.ReportException("cycrio-system", "worker_mail_processing", "task_failed", originalProviderFailure())
+	select {
+	case raw := <-wire:
+		for _, technical := range []string{"originalProviderFailure", "string_too_long", "32768"} {
+			if !strings.Contains(string(raw), technical) {
+				t.Fatal("origin or technical detail lost", technical, string(raw))
+			}
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("not sent")
+	}
+}
 
 func TestScrubTextRetainsTechnicalDetailsAndRemovesPrivateValues(t *testing.T) {
 	for _, message := range []string{"dial tcp: connection refused", "database transaction serialization failure", "provider returned HTTP 503: upstream unavailable", "cannot read properties of undefined (reading 'foo')", "ReferenceError: sk_foo is not defined", "database failed\ncaused by SQLSTATE 40001: serialization failure", "expected interface{}, got struct Foo{}", "cannot assign map[string]interface{} to Foo"} {

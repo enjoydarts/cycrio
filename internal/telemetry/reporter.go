@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 )
@@ -149,7 +150,7 @@ func (r *Reporter) report(ownerID, operation, kind string, value any) {
 	if r.closed || !r.config.valid() {
 		return
 	}
-	e := event{owner: ownerID, operation: operation, kind: kind, version: r.version, frames: safeFrames()}
+	e := event{owner: ownerID, operation: operation, kind: kind, version: r.version, frames: safeFramesFor(value)}
 	if value != nil {
 		e.exceptions = sanitizeExceptions(value, kind)
 	}
@@ -192,8 +193,21 @@ func allowedKind(value string) bool {
 func safeFrames() []posthog.StackFrame {
 	pcs := make([]uintptr, 64)
 	n := runtime.Callers(3, pcs)
-	frames := runtime.CallersFrames(pcs[:n])
-	result := make([]posthog.StackFrame, 0, n)
+	return framesFromPCs(pcs[:n])
+}
+
+func safeFramesFor(value any) []posthog.StackFrame {
+	if err, ok := value.(error); ok {
+		if pcs := diagnostics.Stack(err); len(pcs) > 0 {
+			return framesFromPCs(pcs)
+		}
+	}
+	return safeFrames()
+}
+
+func framesFromPCs(pcs []uintptr) []posthog.StackFrame {
+	frames := runtime.CallersFrames(pcs)
+	result := make([]posthog.StackFrame, 0, len(pcs))
 	for {
 		f, more := frames.Next()
 		if frame, ok := safeFrame(f); ok {
@@ -248,7 +262,7 @@ func safeFrame(f runtime.Frame) (posthog.StackFrame, bool) {
 	inApp := strings.HasPrefix(f.Function, module) || strings.HasPrefix(filename, "cmd/")
 	// Keep the complete stack, but distinguish instrumentation from the
 	// business code whose failure the exception is intended to diagnose.
-	if strings.HasPrefix(filename, "internal/telemetry/") || filename == "internal/httpapi/telemetry.go" || filename == "cmd/worker/telemetry.go" {
+	if strings.HasPrefix(filename, "internal/telemetry/") || strings.HasPrefix(filename, "internal/diagnostics/") || filename == "internal/httpapi/telemetry.go" || filename == "cmd/worker/telemetry.go" {
 		inApp = false
 	}
 	return posthog.StackFrame{Filename: filename, LineNo: f.Line, Function: fn, InApp: inApp, Platform: "go", Lang: "go"}, true

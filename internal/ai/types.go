@@ -4,6 +4,8 @@ package ai
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 
 	"github.com/enjoydarts/cycrio/internal/modelcatalog"
 )
@@ -71,13 +73,23 @@ type Reconciliation struct {
 	Cost           Cost   `json:"cost"`
 }
 
-// Error deliberately carries no provider text, URLs, or wrapped transport error.
+// Error exposes only a stable public code. Sanitized technical diagnostics are
+// accessible explicitly through Unwrap for internal error reporting.
 type Error struct {
 	Code       string `json:"code"`
 	HTTPStatus int    `json:"http_status"`
+	cause      error
 }
 
 func (e *Error) Error() string { return e.Code }
+func (e *Error) Unwrap() error { return e.cause }
+func (e *Error) Format(s fmt.State, verb rune) {
+	if verb == 'q' {
+		fmt.Fprintf(s, "%q", e.Code)
+		return
+	}
+	io.WriteString(s, e.Code)
+}
 
 type HTTPError = Error
 

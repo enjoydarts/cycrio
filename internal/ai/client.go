@@ -12,6 +12,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 )
 
@@ -108,7 +109,7 @@ func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 		return out, &Error{Code: "invalid_request"}
 	}
 	b, _ := json.Marshal(body)
-	m, status, err := c.call(ctx, http.MethodPost, endpoint, b, r.Provider, r.Key, r.WorkspaceID)
+	m, status, headers, err := c.call(ctx, http.MethodPost, endpoint, b, r.Provider, r.Key, r.WorkspaceID, r)
 	if err != nil {
 		return out, err
 	}
@@ -133,7 +134,10 @@ func (c *Client) Do(ctx context.Context, r Request) (Response, error) {
 	}
 	out.ActualModelID = safeMetadata(str(m["model"]), r)
 	out.ActualProvider = safeMetadata(str(m["provider"]), r)
-	fail := func(code string) (Response, error) { return out, &Error{Code: code, HTTPStatus: status} }
+	fail := func(code string) (Response, error) {
+		cause := failureDiagnostic(code, status, m, headers, r)
+		return out, &Error{Code: code, HTTPStatus: status, cause: diagnostics.Wrap(cause, cause)}
+	}
 	if status < 200 || status >= 300 {
 		return fail("provider_http")
 	}
@@ -294,12 +298,13 @@ func anthropicRefusal(m map[string]any) bool {
 	return false
 }
 
-func (c *Client) call(ctx context.Context, method, endpoint string, body []byte, provider string, key []byte, workspace string) (map[string]any, int, error) {
+func (c *Client) call(ctx context.Context, method, endpoint string, body []byte, provider string, key []byte, workspace string, input Request) (map[string]any, int, http.Header, error) {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, bytes.NewReader(body))
 	if err != nil {
-		return nil, 0, &Error{Code: "invalid_request"}
+		cause := transportDiagnostic(err, input)
+		return nil, 0, nil, &Error{Code: "invalid_request", cause: diagnostics.Wrap(cause, cause)}
 	}
 	req.Header.Set("Authorization", "Bearer "+string(key))
 	req.Header.Set("Content-Type", "application/json")
@@ -319,43 +324,50 @@ func (c *Client) call(ctx context.Context, method, endpoint string, body []byte,
 		if ctx.Err() != nil {
 			code = "request_cancelled"
 		}
-		return nil, 0, &Error{Code: code}
+		cause := transportDiagnostic(err, input)
+		return nil, 0, nil, &Error{Code: code, cause: diagnostics.Wrap(cause, cause)}
 	}
 	defer resp.Body.Close()
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxBody+1))
 	if err != nil {
-		return nil, resp.StatusCode, &Error{Code: "response_read", HTTPStatus: resp.StatusCode}
+		cause := transportDiagnostic(err, input)
+		return nil, resp.StatusCode, resp.Header, &Error{Code: "response_read", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 	}
 	if len(b) > maxBody {
-		return nil, resp.StatusCode, &Error{Code: "response_too_large", HTTPStatus: resp.StatusCode}
+		cause := responseDiagnostic("response exceeded size limit", resp.StatusCode, resp.Header, input)
+		return nil, resp.StatusCode, resp.Header, &Error{Code: "response_too_large", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 	}
 	v, err := decodeJSON(b)
 	if err != nil {
-		return nil, resp.StatusCode, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode}
+		cause := responseDiagnostic("response is not valid JSON", resp.StatusCode, resp.Header, input)
+		return nil, resp.StatusCode, resp.Header, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 	}
 	m, ok := v.(map[string]any)
 	if !ok {
-		return nil, resp.StatusCode, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode}
+		cause := responseDiagnostic("JSON response must be an object", resp.StatusCode, resp.Header, input)
+		return nil, resp.StatusCode, resp.Header, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 	}
-	return m, resp.StatusCode, nil
+	return m, resp.StatusCode, resp.Header, nil
 }
 func (c *Client) Reconcile(ctx context.Context, r ReconcileRequest) (Reconciliation, error) {
 	out := Reconciliation{Cost: unknownCost("missing_reported_cost")}
 	if !validGeneration(r.GenerationID) || !validKey(r.Key) {
 		return out, &Error{Code: "invalid_request"}
 	}
-	m, status, err := c.call(ctx, http.MethodGet, "https://openrouter.ai/api/v1/generation?id="+url.QueryEscape(r.GenerationID), nil, "openrouter", r.Key, "")
+	request := Request{Provider: "openrouter", Key: r.Key}
+	m, status, headers, err := c.call(ctx, http.MethodGet, "https://openrouter.ai/api/v1/generation?id="+url.QueryEscape(r.GenerationID), nil, "openrouter", r.Key, "", request)
 	if err != nil {
 		return out, err
 	}
 	if status < 200 || status >= 300 {
-		return out, &Error{Code: "provider_http", HTTPStatus: status}
+		cause := failureDiagnostic("provider_http", status, m, headers, request)
+		return out, &Error{Code: "provider_http", HTTPStatus: status, cause: diagnostics.Wrap(cause, cause)}
 	}
 	data := obj(m["data"])
 	if str(data["id"]) != r.GenerationID {
-		return out, &Error{Code: "generation_mismatch", HTTPStatus: status}
+		cause := failureDiagnostic("generation_mismatch", status, m, headers, request)
+		return out, &Error{Code: "generation_mismatch", HTTPStatus: status, cause: diagnostics.Wrap(cause, cause)}
 	}
-	request := Request{Key: r.Key}
 	out.GenerationID = safeMetadata(r.GenerationID, request)
 	out.ActualModelID = safeMetadata(str(data["model"]), request)
 	out.ActualProvider = safeMetadata(str(data["provider_name"]), request)
