@@ -247,9 +247,31 @@ func createAutomaticSync(ctx context.Context, tx pgx.Tx, owner, account, id stri
 	return auditSync(ctx, tx, owner, account, run, "sync_requested")
 }
 
-// A legacy size failure may be recovered only if every historical attempt was
-// free of external calls. The newest result must still be the bounded attempt.
-const automaticSizeRecovery = `EXISTS(SELECT 1 FROM mail_processing_items latest JOIN mail_processing_runs old ON old.id=latest.run_id WHERE latest.id=(SELECT i.id FROM mail_processing_items i WHERE i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) AND latest.state='failed' AND latest.error_code='input_too_large' AND NOT coalesce((old.request_doc->'input'->>'full_email')::boolean,false) AND NOT EXISTS(SELECT 1 FROM mail_processing_items any_attempt JOIN ai_calls c ON c.operation_id=any_attempt.id WHERE any_attempt.message_id=m.id))`
+// Exclude completed history before fetching message rows. Keeping the two
+// disjoint sets materialized prevents recovery-only correlated lookups and
+// wide message reads from running for every previously processed message.
+// A legacy size failure is eligible only while it is the newest non-cancelled
+// result of a bounded request and no historical attempt made an external call.
+const automaticProcessingCandidatesSQL = `WITH candidates AS MATERIALIZED (
+ SELECT member.owner_id,member.account_id,member.message_id,member.lane,member.discovered_at,NULL::text AS latest_id
+ FROM mail_automation_messages member
+ WHERE member.automation_id=$1 AND member.generation=$2
+ AND NOT EXISTS(SELECT 1 FROM mail_processing_items i WHERE i.message_id=member.message_id AND i.state<>'cancelled')
+ UNION ALL
+ SELECT member.owner_id,member.account_id,member.message_id,member.lane,member.discovered_at,latest.id::text AS latest_id
+ FROM mail_processing_items latest
+ JOIN mail_processing_runs old ON old.id=latest.run_id
+ JOIN mail_automation_messages member ON member.message_id=latest.message_id
+ WHERE member.automation_id=$1 AND member.generation=$2
+ AND latest.state='failed' AND latest.error_code='input_too_large'
+ AND NOT coalesce((old.request_doc->'input'->>'full_email')::boolean,false)
+ AND latest.id=(SELECT i.id FROM mail_processing_items i WHERE i.message_id=member.message_id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1)
+ AND NOT EXISTS(SELECT 1 FROM mail_processing_items any_attempt JOIN ai_calls c ON c.operation_id=any_attempt.id WHERE any_attempt.message_id=member.message_id)
+)
+SELECT m.id,member.lane,member.latest_id FROM candidates member
+JOIN mail_discovered_messages m ON m.owner_id=member.owner_id AND m.account_id=member.account_id AND m.id=member.message_id
+LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id
+WHERE ` + processingSourceSelected + ` ORDER BY (member.lane=$3) DESC,member.discovered_at,m.id LIMIT 100`
 
 func createAutomaticProcessing(ctx context.Context, tx pgx.Tx, owner, account, id string, generation, version int64, basis mailautomation.Basis, lastLane string) error {
 	var active bool
@@ -273,7 +295,7 @@ func createAutomaticProcessing(ctx context.Context, tx pgx.Tx, owner, account, i
 	if lastLane == preferred {
 		preferred = "historical"
 	}
-	rows, e := tx.Query(ctx, `SELECT m.id,member.lane,(SELECT i.id::text FROM mail_processing_items i WHERE i.message_id=m.id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) FROM mail_automation_messages member JOIN mail_discovered_messages m ON m.owner_id=member.owner_id AND m.account_id=member.account_id AND m.id=member.message_id LEFT JOIN mail_account_folders f ON f.id=m.folder_id AND f.account_id=m.account_id WHERE member.automation_id=$1 AND member.generation=$2 AND `+processingSourceSelected+` AND (`+processingPending+` OR `+automaticSizeRecovery+`) ORDER BY (member.lane=$3) DESC,member.discovered_at,m.id LIMIT 100`, id, generation, preferred)
+	rows, e := tx.Query(ctx, automaticProcessingCandidatesSQL, id, generation, preferred)
 	if e != nil {
 		return processingError(e)
 	}
