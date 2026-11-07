@@ -1,6 +1,6 @@
-# PostHogエラートラッキング
+# PostHog監視と利用状況
 
-ブラウザーは公式 `posthog-js`、Go API・Hatchet Workerは公式 `posthog-go` を使用します。静的配信のSvelteKitにはNodeサーバーSDKを追加しません。初期状態ではエラートラッキングだけを有効にし、Product Analyticsは共通の送信境界へ将来追加できます。
+ブラウザーは公式 `posthog-js`、Go API・Hatchet Workerは公式 `posthog-go` を使用します。静的配信のSvelteKitにはNodeサーバーSDKを追加しません。例外収集に加え、Goの共通送信境界で運用・AI・認証済みAPI操作の数値を明示的に計測します。
 
 ## 設定
 
@@ -57,6 +57,37 @@ Workerの必須pollerでpanicが起きた場合は、例外を記録するだけ
 
 処理プロセスの強制停止、DB内部で期限切れとして更新されるジョブ、通知生成内で保存後継続する個別失敗、Clerk削除の永続再試行結果は、現在のタスク境界だけではすべて収集できません。停止の検知にはHealthchecks.ioも併用します。
 
+## 運用・AI・利用状況のダッシュボード
+
+既存のProject Token・Hostと本番限定の設定を共用します。追加の環境変数・migration・DB接続の外部公開は不要です。Session Replay、自動収集、人物プロファイルは引き続き無効です。
+
+| イベント | 単位 | 記録する情報 |
+| --- | --- | --- |
+| `cycrio_api_operation` | 許可リストにある認証済みAPIリクエスト | 固定操作名、成功・拒否・障害、HTTP状態、処理時間、内部ユーザーUUID |
+| `cycrio_job_completed` | Workerタスクの実行 | 固定工程名、保存済み結果を反映した状態、経過時間、取得可能な所有者UUID |
+| `cycrio_queue_snapshot` | 1分ごと・取り込み/解析それぞれ1件 | 待機run数、実行中run数、最古の未完了runの作成からの経過秒数 |
+| `$ai_generation` | AI台帳の初回完了確定 | プロバイダー、モデルID、用途、利用区分、状態、判明している入出力トークン数とUSD原価、経過時間 |
+
+API操作はログイン確認・概要・契約一覧・候補・解析結果の取得と、メール設定保存・接続テスト要求・取り込み要求・解析要求・契約登録/更新/ソース紐付け・候補却下が対象です。定期的な進捗照会、公開API、ヘルスチェックは除きます。操作名は登録済みrouteパターンから固定値へ変換し、実URL・query・実ID・本文を送りません。取得APIのリクエスト数は画面のクリック数ではなく、登録APIの成功回数は新規契約の純増数ではありません。
+
+Workerはメールごとの件数やバッチ全体の完了件数ではなく、タスク実行単位です。結果を確認できない場合は `unknown`、新しい保存結果がない正常returnは `returned` とし、成功へ補完しません。解析では今回終了した項目を読み、失敗・不明を成功項目より優先します。
+
+キューの数値は取り込み/解析のrun単位です。最古の経過時間には待機・lease取得済み・実行中を含みます。時間帯別のチャートはスナップショットの最大値であり、合計や現在値ではありません。読み取り失敗時には0を送信せず、その回のスナップショットを省略します。Workerが複数台の場合も、この最大値表示では重複したスナップショットを足し合わせません。
+
+AI計測は初回完了のcommit後にだけ行います。料金調査のグループ、接続テスト、lease失効も対象とし、call単位の決定的なイベントUUIDで重複を抑えます。rollback・再完了・遅着原価・後日の原価訂正で呼び出し数を増やしません。trace IDには処理IDをそのまま載せず、名前空間付きUUIDへ変換します。モデルの表示名、メール識別子、プロンプト、応答本文、解析結果は送りません。
+
+原価は**初回完了時点のスナップショット**です。`cost_known=true` の `cost_usd` だけを集計し、不明とUSD以外は別件数にします。使用量不明をトークン0へ補完しません。PostHogのAI Observability標準画面では独自の価格推定が表示される場合がありますが、Cycrioのダッシュボードの金額には使いません。正式な金額と月額予算判定には、訂正・遅着を反映するCycrioのDB台帳を使ってください。失効時の経過時間は外部APIの純粋な応答時間ではなく、呼び出し開始から失効確定までです。
+
+チャートの再作成用クエリは `deploy/posthog/dashboard-queries.json` に保存します。運用・AI・利用状況の3つに分け、利用ファネルは同一ユーザーの「接続テスト成功→取り込み完了→契約登録API成功」を順序付き・7日以内で確認します。既存ユーザーや自動登録を含む全体の新規利用開始率を表すものではありません。管理者の操作も集計に含みます。集計日はPostHogプロジェクトのタイムゾーンに従います。
+
+計測開始以前の成功履歴は遡って送信しません。キュー満杯・通信障害・設定無効化・停止時には計測が欠けるbest effortです。分析用キューは例外用と分離し、例外を優先します。PostHogの原価表示や分析値を監査台帳にしないでください。
+
+### 無料枠内での運用
+
+PostHogの組織のBilling画面で、Product Analytics・AI Observability・Error Trackingそれぞれの課金上限を `$0` にしてください。有料プランに登録済みの場合、無料枠があっても超過分には課金されます。上限に達した後のデータは欠落します。設定変更後は各製品の上限を再表示して確認してください。MCPの課金取得ツールは読み取り専用で、上限の変更には対応していません。
+
+キュースナップショットはWorker1台あたり月約8.6万件（30日）です。API操作・Workerタスク・AI呼び出し・例外は実行量に応じて増えます。PostHogの月間無料枠は変更されるため、運用時に[料金表](https://posthog.com/pricing)と[課金上限の説明](https://posthog.com/docs/billing/limits-alerts)を確認してください。
+
 ## 公式資料
 
 - [Error Tracking導入](https://posthog.com/docs/error-tracking/start-here)
@@ -64,3 +95,4 @@ Workerの必須pollerでpanicが起きた場合は、例外を記録するだけ
 - [Goへの導入](https://posthog.com/docs/error-tracking/installation/go)
 - [JavaScript SDK](https://posthog.com/docs/libraries/js)
 - [CLIによるソースマップアップロード](https://posthog.com/docs/error-tracking/upload-source-maps/cli)
+- [AIイベントの明示的な送信](https://posthog.com/docs/ai-observability/installation/manual-capture)

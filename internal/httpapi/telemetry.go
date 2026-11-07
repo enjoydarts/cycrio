@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/telemetry"
@@ -71,10 +72,32 @@ func (w *telemetryResponse) Unwrap() http.ResponseWriter { return w.ResponseWrit
 // headers never cross this boundary.
 func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		started := time.Now()
 		scope := &telemetryScope{}
 		ctx, causes := diagnostics.WithScope(r.Context())
 		r = r.WithContext(context.WithValue(ctx, telemetryContextKey{}, scope))
+		if analytics, ok := service.(telemetry.Analytics); ok {
+			r = r.WithContext(telemetry.WithAnalytics(r.Context(), analytics))
+		}
 		response := &telemetryResponse{ResponseWriter: w, context: r.Context()}
+		analyticsStatus := 0
+		defer func() {
+			defer func() { _ = recover() }()
+			if analytics, ok := service.(interface {
+				TrackAPI(string, string, int, time.Duration)
+			}); ok && scope.owner != "" {
+				if action := analyticsAction(r.Pattern); action != "" {
+					status := response.status
+					if analyticsStatus != 0 {
+						status = analyticsStatus
+					}
+					if status == 0 {
+						status = http.StatusOK
+					}
+					analytics.TrackAPI(scope.owner, action, status, time.Since(started))
+				}
+			}
+		}()
 		report := func(kind string, value any) {
 			if service == nil {
 				return
@@ -90,6 +113,7 @@ func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 		}
 		defer func() {
 			if value := recover(); value != nil {
+				analyticsStatus = http.StatusInternalServerError
 				if value == http.ErrAbortHandler {
 					panic(value)
 				}
@@ -119,6 +143,40 @@ func telemetryBoundary(next http.Handler, service Telemetry) http.Handler {
 		}()
 		next.ServeHTTP(response, r)
 	})
+}
+
+// Match only registered patterns. Never derive dimensions from URLs, query
+// values, request bodies or external identifiers. Polling routes are excluded.
+func analyticsAction(pattern string) string {
+	switch pattern {
+	case "GET /v1/me":
+		return "session_check"
+	case "GET /v1/overview":
+		return "overview_read"
+	case "GET /v1/subscriptions":
+		return "subscriptions_read"
+	case "GET /v1/subscriptions/candidates":
+		return "candidates_read"
+	case "GET /v1/analysis/results":
+		return "analysis_read"
+	case "PUT /v1/mail/accounts/{id}":
+		return "mail_account_save"
+	case "POST /v1/mail/accounts/{id}/probes":
+		return "mail_probe_request"
+	case "POST /v1/mail/accounts/{id}/sync-runs":
+		return "mail_import_request"
+	case "POST /v1/mail/accounts/{id}/processing-runs":
+		return "mail_processing_request"
+	case "POST /v1/subscriptions":
+		return "subscription_create"
+	case "PUT /v1/subscriptions/{id}", "PUT /v1/subscriptions/{id}/name":
+		return "subscription_update"
+	case "POST /v1/subscriptions/{id}/sources":
+		return "subscription_source_attach"
+	case "POST /v1/subscriptions/candidates/dismiss":
+		return "candidate_dismiss"
+	}
+	return ""
 }
 
 func publicTelemetry(service Telemetry) http.HandlerFunc {

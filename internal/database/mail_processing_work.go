@@ -43,6 +43,7 @@ func (r *MailProcessingRepository) lockWork(ctx context.Context, id string, atte
 	if e != nil {
 		return nil, w, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 	}
+	tx = wrapAnalyticsTx(tx, r.pool)
 	fail := func(e error) (pgx.Tx, lockedProcessing, error) { tx.Rollback(ctx); return nil, w, processingError(e) }
 	// NO KEY UPDATE excludes user state changes but permits KEY SHARE from
 	// provider/model audit foreign keys, avoiding an actor/provider lock cycle.

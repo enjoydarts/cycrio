@@ -132,5 +132,9 @@ func (r *PriceResearchRepository) FinishCall(ctx context.Context, lease priceres
 	if err = finishResearchItem(ctx, tx, lease, id, result, code); err != nil {
 		return err
 	}
-	return researchCommit(ctx, tx)
+	err = researchCommit(ctx, tx)
+	if err == nil && call.FinishedAt == nil {
+		r.recordAIAnalytics(ctx, id)
+	}
+	return err
 }

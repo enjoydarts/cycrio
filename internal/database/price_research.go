@@ -187,6 +187,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 	if err != nil {
 		return nil, researchError(err)
 	}
+	tx = wrapAnalyticsTx(tx, r.pool)
 	defer tx.Rollback(ctx)
 	s, err := researchState(ctx, tx, true)
 	if err != nil {
@@ -196,7 +197,7 @@ func (r *PriceResearchRepository) ClaimDue(ctx context.Context) ([]priceresearch
 		return nil, err
 	}
 	// An uncertain external call is never resent automatically.
-	if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id IN(SELECT id FROM price_research_runs WHERE state='running' AND lease_until<=clock_timestamp()) AND stage='price_research' AND status='calling'`); err != nil {
+	if err = closeCallsWithAnalytics(ctx, tx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE operation_id IN(SELECT id FROM price_research_runs WHERE state='running' AND lease_until<=clock_timestamp()) AND stage='price_research' AND status='calling' RETURNING id`); err != nil {
 		return nil, researchError(err)
 	}
 	if err = expireResearchBatches(ctx, tx); err != nil {
@@ -418,6 +419,7 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 	if err != nil {
 		return researchError(err)
 	}
+	tx = wrapAnalyticsTx(tx, r.pool)
 	defer tx.Rollback(ctx)
 	s, err := researchState(ctx, tx, true)
 	if err != nil {
@@ -466,9 +468,12 @@ func (r *PriceResearchRepository) Complete(ctx context.Context, l priceresearch.
 		if _, err = tx.Exec(ctx, `UPDATE ai_calls SET status=$2,outcome=$3,generation_id=NULLIF($4,''),finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE id=$1`, c.ID, status, outcome, generation); err != nil {
 			return researchError(err)
 		}
+		if c.FinishedAt == nil {
+			queueAIAnalytics(tx, c.ID)
+		}
 	}
 	if result.CallsRecorded {
-		if _, err = tx.Exec(ctx, `UPDATE ai_calls c SET status='unknown',outcome='provider_unavailable',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE c.operation_id=$1 AND c.stage='price_research' AND c.status='calling' AND EXISTS(SELECT 1 FROM price_research_items i WHERE i.call_id=c.id AND i.lease_id=$2)`, l.RunID, l.LeaseID); err != nil {
+		if err = closeCallsWithAnalytics(ctx, tx, `UPDATE ai_calls c SET status='unknown',outcome='provider_unavailable',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE c.operation_id=$1 AND c.stage='price_research' AND c.status='calling' AND EXISTS(SELECT 1 FROM price_research_items i WHERE i.call_id=c.id AND i.lease_id=$2) RETURNING c.id`, l.RunID, l.LeaseID); err != nil {
 			return researchError(err)
 		}
 	}

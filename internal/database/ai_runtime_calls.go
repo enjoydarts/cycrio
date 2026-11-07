@@ -252,6 +252,7 @@ func (r *AIRuntimeRepository) FinishCall(ctx context.Context, id string, in airu
 	if err != nil {
 		return c, err
 	}
+	firstCompletion := c.FinishedAt == nil
 	_, adopted, err := runtimeRevision(ctx, tx, c, u, cost)
 	if err != nil {
 		return c, err
@@ -282,7 +283,11 @@ func (r *AIRuntimeRepository) FinishCall(ctx context.Context, id string, in airu
 	if err != nil {
 		return c, err
 	}
-	return c, runtimeCommit(ctx, tx)
+	err = runtimeCommit(ctx, tx)
+	if err == nil && firstCompletion {
+		recordAIAnalytics(ctx, c)
+	}
+	return c, err
 }
 func (r *AIRuntimeRepository) GetCall(ctx context.Context, id string) (airuntime.Call, error) {
 	if !runtimeID(id) {

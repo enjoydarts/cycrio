@@ -8,12 +8,14 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
+	"github.com/enjoydarts/cycrio/internal/telemetry"
 )
 
 func TestMailProcessingExpiredCallBecomesUnknownAndKeepsLateCost(t *testing.T) {
 	f := processingSetup(t)
 	f.add(t, 1)
-	ctx := context.Background()
+	analytics := &analyticsRecorder{}
+	ctx := telemetry.WithAnalytics(context.Background(), analytics)
 	in := f.in
 	in.MaxMessages = 1
 	run, err := f.repo.Request(ctx, f.owner, f.account, in)
@@ -41,6 +43,9 @@ func TestMailProcessingExpiredCallBecomesUnknownAndKeepsLateCost(t *testing.T) {
 	if status != "unknown" || outcome != "lease_expired" || !finished || kind != "unknown" || amount != nil {
 		t.Fatal("expired mail call remains active or invents cost", status, outcome, finished, kind)
 	}
+	if len(analytics.calls) != 1 || analytics.calls[0].State != "unknown" {
+		t.Fatal("expired AI call was not captured", analytics.calls)
+	}
 	usd, value := "USD", "0.12"
 	late, err := f.repo.FinishCall(ctx, call.ID, airuntime.CallUpdate{Outcome: "success", Cost: ai.Cost{Status: "provider_reported", Amount: &value, Currency: &usd}})
 	if err != nil || late.Cost.Amount == nil || *late.Cost.Amount != value {
@@ -48,5 +53,8 @@ func TestMailProcessingExpiredCallBecomesUnknownAndKeepsLateCost(t *testing.T) {
 	}
 	if late.Status != "unknown" {
 		t.Fatal("late response revived expired call")
+	}
+	if len(analytics.calls) != 1 {
+		t.Fatal("late cost double counted the call", analytics.calls)
 	}
 }

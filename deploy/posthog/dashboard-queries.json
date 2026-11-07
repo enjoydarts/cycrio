@@ -1,0 +1,819 @@
+{
+  "version": 1,
+  "dashboards": [
+    {
+      "key": "operations",
+      "name": "Cycrio 運用状況"
+    },
+    {
+      "key": "ai",
+      "name": "Cycrio AI実行状況"
+    },
+    {
+      "key": "usage",
+      "name": "Cycrio 利用状況"
+    }
+  ],
+  "charts": [
+    {
+      "dashboard": "operations",
+      "name": "Workerタスクの結果",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "name": "cycrio_job_completed",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "state"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "工程別のタスク実行数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "name": "cycrio_job_completed",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "operation"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "工程別の処理時間 p95",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "name": "cycrio_job_completed",
+            "math": "p95",
+            "math_property": "duration_ms"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true,
+          "aggregationAxisFormat": "duration_ms"
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "operation"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "API操作の応答時間 p95",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "name": "cycrio_api_operation",
+            "math": "p95",
+            "math_property": "duration_ms"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true,
+          "aggregationAxisFormat": "duration_ms"
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "action"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "API操作の結果",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "name": "cycrio_api_operation",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "state"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "収集された例外",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$exception",
+            "name": "$exception",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "runtime"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "待機中run数（時間帯の最大）",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-48h"
+        },
+        "interval": "hour",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_queue_snapshot",
+            "name": "cycrio_queue_snapshot",
+            "math": "max",
+            "math_property": "queued_runs"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "queue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "実行中run数（時間帯の最大）",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-48h"
+        },
+        "interval": "hour",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_queue_snapshot",
+            "name": "cycrio_queue_snapshot",
+            "math": "max",
+            "math_property": "active_runs"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "queue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "最古の未完了run経過時間（時間帯の最大）",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-48h"
+        },
+        "interval": "hour",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_queue_snapshot",
+            "name": "cycrio_queue_snapshot",
+            "math": "max",
+            "math_property": "oldest_age_seconds"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true,
+          "aggregationAxisFormat": "duration"
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "queue"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "モデル別のAI呼び出し数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$ai_model"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "AI呼び出しの結果",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "state"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "モデル別の入力・出力トークン",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "sum",
+            "custom_name": "入力",
+            "math_property": "$ai_input_tokens",
+            "properties": [
+              {
+                "key": "usage_known",
+                "type": "event",
+                "operator": "exact",
+                "value": "true"
+              }
+            ]
+          },
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "sum",
+            "custom_name": "出力",
+            "math_property": "$ai_output_tokens",
+            "properties": [
+              {
+                "key": "usage_known",
+                "type": "event",
+                "operator": "exact",
+                "value": "true"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$ai_model"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "モデル別の初回完了時USD原価",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "sum",
+            "math_property": "cost_usd",
+            "properties": [
+              {
+                "key": "cost_known",
+                "type": "event",
+                "operator": "exact",
+                "value": "true"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true,
+          "aggregationAxisFormat": "currency",
+          "decimalPlaces": 4
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$ai_model"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "AI応答の経過時間 p95",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "p95",
+            "math_property": "$ai_latency"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true,
+          "aggregationAxisFormat": "duration"
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$ai_model"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "初回完了時の原価が不明・USD以外の呼び出し",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "total",
+            "properties": [
+              {
+                "key": "cost_known",
+                "type": "event",
+                "operator": "exact",
+                "value": "false"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "scope"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "ai",
+      "name": "用途別の初回完了時USD原価",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$ai_generation",
+            "name": "$ai_generation",
+            "math": "sum",
+            "math_property": "cost_usd",
+            "properties": [
+              {
+                "key": "cost_known",
+                "type": "event",
+                "operator": "exact",
+                "value": "true"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true,
+          "aggregationAxisFormat": "currency",
+          "decimalPlaces": 4
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "stage"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "日別の操作利用者数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "name": "cycrio_api_operation",
+            "math": "dau",
+            "properties": [
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph",
+          "showLegend": true
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "機能別の操作利用者数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "name": "cycrio_api_operation",
+            "math": "dau",
+            "properties": [
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "action"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "成功したAPI操作数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "name": "cycrio_api_operation",
+            "math": "total",
+            "properties": [
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "showLegend": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "action"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "接続テスト→取り込み→契約登録（7日以内）",
+      "query": {
+        "kind": "FunnelsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "custom_name": "接続テスト成功",
+            "properties": [
+              {
+                "key": "operation",
+                "type": "event",
+                "operator": "exact",
+                "value": "worker_mail_probe"
+              },
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          },
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "custom_name": "取り込み完了",
+            "properties": [
+              {
+                "key": "operation",
+                "type": "event",
+                "operator": "exact",
+                "value": "worker_mail_discovery"
+              },
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          },
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_api_operation",
+            "custom_name": "契約登録API成功",
+            "properties": [
+              {
+                "key": "action",
+                "type": "event",
+                "operator": "exact",
+                "value": "subscription_create"
+              },
+              {
+                "key": "state",
+                "type": "event",
+                "operator": "exact",
+                "value": "succeeded"
+              }
+            ]
+          }
+        ],
+        "funnelsFilter": {
+          "funnelOrderType": "ordered",
+          "funnelWindowInterval": 7,
+          "funnelWindowIntervalUnit": "day",
+          "funnelVizType": "steps",
+          "layout": "vertical"
+        }
+      }
+    },
+    {
+      "dashboard": "operations",
+      "name": "Workerタスク結果の割合（不明・中断を含む）",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "cycrio_job_completed",
+            "name": "cycrio_job_completed",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBar",
+          "showLegend": true,
+          "showPercentStackView": true
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "state"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

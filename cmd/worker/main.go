@@ -76,6 +76,7 @@ func run() (result error) {
 	var readOutcome jobOutcomeReader
 	if os.Getenv("CYCRIO_ENV") == "production" {
 		readOutcome = database.NewJobTelemetryRepository(pool).Outcome
+		go queueAnalyticsLoop(ctx, database.NewJobTelemetryRepository(pool), reporter)
 	}
 	client, err := hatchet.NewClient(hatchet.WithClientLogLevel("warn"))
 	if err != nil {

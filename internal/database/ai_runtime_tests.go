@@ -158,6 +158,7 @@ func (r *AIRuntimeRepository) Claim(ctx context.Context) ([]airuntime.Lease, err
 	if err != nil {
 		return nil, runtimeError(err)
 	}
+	tx = wrapAnalyticsTx(tx, r.pool)
 	defer tx.Rollback(ctx)
 	// Lock expired runs before their call rows. A started run is never inferred again.
 	rows, err := tx.Query(ctx, `SELECT id FROM ai_test_runs WHERE state='running' AND lease_until<=clock_timestamp() FOR UPDATE SKIP LOCKED`)
@@ -179,7 +180,7 @@ func (r *AIRuntimeRepository) Claim(ctx context.Context) ([]airuntime.Lease, err
 		return nil, runtimeError(err)
 	}
 	for _, id := range expired {
-		if _, err := tx.Exec(ctx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE run_id=$1 AND status='calling'`, id); err != nil {
+		if err := closeCallsWithAnalytics(ctx, tx, `UPDATE ai_calls SET status='unknown',outcome='lease_expired',finished_at=clock_timestamp(),updated_at=clock_timestamp() WHERE run_id=$1 AND status='calling' RETURNING id`, id); err != nil {
 			return nil, runtimeError(err)
 		}
 		if _, err := tx.Exec(ctx, `UPDATE ai_test_runs SET state='unknown',finished_at=clock_timestamp(),primary_outcome=COALESCE(primary_outcome,'lease_expired') WHERE id=$1`, id); err != nil {

@@ -9,6 +9,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/database"
 	"github.com/enjoydarts/cycrio/internal/diagnostics"
+	"github.com/enjoydarts/cycrio/internal/telemetry"
 )
 
 type workerFailureReporter interface{ Report(string, string, string) }
@@ -30,6 +31,9 @@ func hideWorkerCause(message string, cause error) error {
 }
 
 func withWorkerTelemetry(ctx context.Context, r workerFailureReporter) context.Context {
+	if analytics, ok := r.(telemetry.Analytics); ok {
+		ctx = telemetry.WithAnalytics(ctx, analytics)
+	}
 	return context.WithValue(ctx, workerTelemetryKey{}, r)
 }
 func withWorkerOperation(ctx context.Context, operation string) context.Context {
@@ -70,6 +74,15 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 	defer func() {
 		panicValue := recover()
 		panicked := panicValue != nil
+		analyticsState, analyticsOwner := "returned", ""
+		defer func() {
+			defer func() { _ = recover() }()
+			if r, ok := ctx.Value(workerTelemetryKey{}).(interface {
+				TrackJob(string, string, string, time.Duration)
+			}); ok {
+				r.TrackJob(analyticsOwner, operation, analyticsState, time.Since(started))
+			}
+		}()
 		var failure any = err
 		if original := scope.Error(); original != nil {
 			failure = original
@@ -81,6 +94,9 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 			failure = panicValue
 			err = errors.New("worker task unavailable")
 		}
+		if err != nil || diagnostics.IsUnexpected(scope.Error()) {
+			analyticsState = "failed"
+		}
 		outcome := database.JobTelemetryOutcome{}
 		if read != nil && jobKind != "" {
 			bounded, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
@@ -88,6 +104,9 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 			var readErr error
 			outcome, readErr = read(bounded, jobKind, id, started)
 			if readErr != nil {
+				if analyticsState != "failed" {
+					analyticsState = "unknown"
+				}
 				reportWorkerFailure(ctx, "", operation, "outcome_unavailable", readErr)
 				if panicked {
 					reportWorkerFailure(ctx, "", operation, "task_panic", failure)
@@ -95,6 +114,17 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 					reportWorkerFailure(ctx, "", operation, "task_failed", failure)
 				}
 				return
+			}
+			analyticsOwner = outcome.OwnerID
+			if analyticsState != "failed" {
+				switch outcome.State {
+				case "succeeded", "failed", "unknown", "cancelled", "stopped", "skipped":
+					analyticsState = outcome.State
+				case "completed", "sent", "ready", "not_related":
+					analyticsState = "succeeded"
+				case "limited":
+					analyticsState = "stopped"
+				}
 			}
 		}
 		kind := ""

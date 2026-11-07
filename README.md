@@ -59,7 +59,7 @@ Microsoft 365の職場・学校アカウントは、現在のOutlook OAuth接続
 - APIキーとメール接続資格情報はDBへ暗号化保存し、保存後の秘密値は画面へ再表示しません。
 - 暗号化鍵はDBとは別に保管します。復元にはDBと鍵の両方が必要です。
 - ロゴはローカル配信し、サービス名や個人のメールアドレスを外部ロゴ検索へ送りません。
-- 本番のPostHogエラートラッキングは、例外の種類・技術メッセージ・関数名・スタックと内部ユーザーIDを記録し、メール内容・個人情報・認証情報を除去します。非公開ソースマップで元のコード位置を復元します。Project TokenとHostのDB設定、`CYCRIO_ENV=production`、CI Secret `POSTHOG_CLI_API_KEY` の設定は[PostHogガイド](docs/posthog.md)を参照してください。
+- 本番のPostHogはエラートラッキングと運用・AI・利用状況の計測に対応し、メール内容・個人情報・認証情報を除去します。非公開ソースマップで元のコード位置を復元し、数値と固定操作名で処理時間・使用量・滞留を確認できます。Project TokenとHostのDB設定、`CYCRIO_ENV=production`、CI Secret `POSTHOG_CLI_API_KEY`、無料枠の課金上限は[PostHogガイド](docs/posthog.md)を参照してください。
 
 ## ローカルで起動する
 

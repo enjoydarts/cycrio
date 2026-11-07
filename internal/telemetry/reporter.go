@@ -31,25 +31,29 @@ type event struct {
 	version                uint64
 	frames                 []posthog.StackFrame
 	exceptions             []posthog.ExceptionItem
+	name, id               string
+	properties             posthog.Properties
+	at                     time.Time
 }
 
 // Reporter isolates telemetry failures and delivery from application operations.
 type Reporter struct {
-	mu          sync.RWMutex
-	config      Config
-	version     uint64
-	closed      bool
-	production  bool
-	runtime     string
-	source      Source
-	guard       Guard
-	transport   http.RoundTripper
-	queue       chan event
-	stop        chan struct{}
-	done        chan struct{}
-	refreshDone chan struct{}
-	cancel      context.CancelFunc
-	once        sync.Once
+	mu             sync.RWMutex
+	config         Config
+	version        uint64
+	closed         bool
+	production     bool
+	runtime        string
+	source         Source
+	guard          Guard
+	transport      http.RoundTripper
+	queue          chan event
+	analyticsQueue chan event
+	stop           chan struct{}
+	done           chan struct{}
+	refreshDone    chan struct{}
+	cancel         context.CancelFunc
+	once           sync.Once
 }
 
 func New(ctx context.Context, production bool, source func(context.Context) (Config, error), guard func(context.Context, string, func(context.Context) error) error, runtime string) *Reporter {
@@ -58,7 +62,7 @@ func New(ctx context.Context, production bool, source func(context.Context) (Con
 
 func newReporter(ctx context.Context, production bool, source Source, guard Guard, runtimeName string, transport http.RoundTripper, interval time.Duration) *Reporter {
 	ctx, cancel := context.WithCancel(ctx)
-	r := &Reporter{production: production && (runtimeName == "api" || runtimeName == "worker"), runtime: runtimeName, source: source, guard: guard, transport: transport, queue: make(chan event, queueSize), stop: make(chan struct{}), done: make(chan struct{}), refreshDone: make(chan struct{}), cancel: cancel}
+	r := &Reporter{production: production && (runtimeName == "api" || runtimeName == "worker"), runtime: runtimeName, source: source, guard: guard, transport: transport, queue: make(chan event, queueSize), analyticsQueue: make(chan event, queueSize), stop: make(chan struct{}), done: make(chan struct{}), refreshDone: make(chan struct{}), cancel: cancel}
 	go r.refreshLoop(ctx, interval)
 	go r.run()
 	return r
@@ -306,6 +310,15 @@ func (r *Reporter) run() {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
 	for {
+		// Analytics cannot fill the exception queue or delay queued exceptions.
+		select {
+		case e := <-r.queue:
+			if recent.admit(e, time.Now()) {
+				r.send(e)
+			}
+			continue
+		default:
+		}
 		select {
 		case <-r.stop:
 			return
@@ -315,6 +328,8 @@ func (r *Reporter) run() {
 			if !recent.admit(e, time.Now()) {
 				continue
 			}
+			r.send(e)
+		case e := <-r.analyticsQueue:
 			r.send(e)
 		}
 	}
@@ -333,6 +348,14 @@ func (r *Reporter) send(e event) {
 		ShutdownTimeout: sendTimeout, BatchUploadTimeout: sendTimeout, Compression: posthog.CompressionNone,
 		Transport: &privateTransport{reporter: r, event: e, base: r.transport}, Logger: posthog.StdLogger(log.New(io.Discard, "", 0), false),
 		BeforeSend: func(message posthog.Message) posthog.Message {
+			if e.name != "" {
+				capture, ok := message.(posthog.Capture)
+				if !ok {
+					return nil
+				}
+				capture.Properties = e.properties
+				return capture
+			}
 			exception, ok := message.(posthog.Exception)
 			if !ok {
 				return nil
@@ -346,6 +369,10 @@ func (r *Reporter) send(e event) {
 		return
 	}
 	defer func() { _ = client.Close() }()
+	if e.name != "" {
+		_ = client.Enqueue(posthog.Capture{DistinctId: e.owner, Event: e.name, Properties: e.properties, Uuid: e.id, Timestamp: e.at})
+		return
+	}
 	exception := posthog.NewDefaultException(time.Now().UTC(), e.owner, e.kind, e.kind)
 	exception.DebugImages = nil
 	items := e.exceptions
@@ -369,7 +396,9 @@ type privateTransport struct {
 
 func allowedWireProperty(key string) bool {
 	switch key {
-	case "distinct_id", "$exception_list", "$exception_fingerprint", "$process_person_profile", "$geoip_disable", "$is_server", "$lib", "$lib_version", "operation", "error_kind", "runtime":
+	case "queue", "queued_runs", "active_runs", "oldest_age_seconds":
+		return true
+	case "distinct_id", "$exception_list", "$exception_fingerprint", "$process_person_profile", "$geoip_disable", "$is_server", "$lib", "$lib_version", "operation", "error_kind", "runtime", "action", "state", "duration_ms", "status_code", "scope", "stage", "cost_status", "cost_known", "usage_known", "$ai_model", "$ai_provider", "$ai_trace_id", "$ai_session_id", "$ai_input_tokens", "$ai_output_tokens", "$ai_latency", "$ai_is_error", "$ai_total_cost_usd", "cost_usd":
 		return true
 	}
 	return false
