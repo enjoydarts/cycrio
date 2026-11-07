@@ -286,3 +286,39 @@ func TestWorkerTelemetryRetainsOriginalFailureWhenOutcomeReadFails(t *testing.T)
 		t.Fatalf("original failure was replaced by outcome read: %+v %v", r.events, r.values)
 	}
 }
+
+func TestWorkerTelemetryReportsPersistedAIHTTPFailureDetails(t *testing.T) {
+	r := &detailedFailureRecorder{}
+	read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
+		var out database.JobTelemetryOutcome
+		if err := json.Unmarshal([]byte(`{"OwnerID":"owner","State":"failed","Code":"provider_http","HTTPStatus":422,"Stage":"classification","Provider":"liquid"}`), &out); err != nil {
+			t.Fatal(err)
+		}
+		return out, nil
+	}
+	_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, nil })
+	if err != nil || len(r.values) != 1 || fmt.Sprint(r.values[0]) != "provider_http (provider=liquid, stage=classification, http_status=422)" {
+		t.Fatalf("persisted AI failure details lost: %v %v", r.values, err)
+	}
+}
+
+func TestWorkerTelemetryRejectsUntrustedAIDiagnosticMetadata(t *testing.T) {
+	for _, raw := range []string{
+		`{"State":"failed","Code":"provider_http","HTTPStatus":422,"Stage":"classification","Provider":"private@example.test"}`,
+		`{"State":"failed","Code":"provider_http","HTTPStatus":422,"Stage":"private mail body","Provider":"liquid"}`,
+		`{"State":"failed","Code":"provider_http","HTTPStatus":999,"Stage":"classification","Provider":"liquid"}`,
+	} {
+		r := &detailedFailureRecorder{}
+		read := func(context.Context, string, string, time.Time) (database.JobTelemetryOutcome, error) {
+			var out database.JobTelemetryOutcome
+			if err := json.Unmarshal([]byte(raw), &out); err != nil {
+				t.Fatal(err)
+			}
+			return out, nil
+		}
+		_, err := captureWorkerTask(withWorkerTelemetry(context.Background(), r), read, "worker_mail_processing", "processing", "run", func() (int, error) { return 0, nil })
+		if err != nil || len(r.values) != 1 || fmt.Sprint(r.values[0]) != "provider_http" {
+			t.Fatalf("untrusted metadata reached reporter: %v %v", r.values, err)
+		}
+	}
+}

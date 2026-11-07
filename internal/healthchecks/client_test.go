@@ -2,11 +2,49 @@ package healthchecks
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestHTTPFailuresRetainOnlySafeStageAndCategory(t *testing.T) {
+	for _, stage := range []string{"api_probe", "healthchecks_post"} {
+		for _, tc := range []struct {
+			name, category string
+			err            error
+			status         int
+			body           string
+		}{
+			{"timeout", "timeout", &url.Error{Op: "Post", URL: testURL, Err: context.DeadlineExceeded}, 0, ""},
+			{"cancelled", "cancelled", context.Canceled, 0, ""},
+			{"network", "network", errors.New("credential secret private-token"), 0, ""},
+			{"status", "http_status", nil, 503, "credential secret private-token"},
+			{"invalid", "invalid_response", nil, 200, "private-token"},
+		} {
+			t.Run(stage+"/"+tc.name, func(t *testing.T) {
+				client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					if tc.err != nil {
+						return nil, tc.err
+					}
+					return &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body)), Header: http.Header{}, Request: r}, nil
+				})}
+				var err error
+				if stage == "api_probe" {
+					err = NewAPIProbe(client)(context.Background())
+				} else {
+					err = NewClient(client).Ping(context.Background(), testURL)
+				}
+				assertSafeFailure(t, err, stage, tc.category)
+				if tc.status == 503 && !strings.Contains(errors.Unwrap(err).Error(), "status=503") {
+					t.Fatalf("HTTP status missing: %v", errors.Unwrap(err))
+				}
+			})
+		}
+	}
+}
 
 const testURL = "https://hc-ping.com/11111111-1111-4111-8111-111111111111"
 

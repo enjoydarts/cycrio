@@ -4,14 +4,51 @@ package database
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/healthchecks"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 )
+
+func TestHealthchecksRepositoryFailureChainExposesOnlySafeDatabaseDiagnostics(t *testing.T) {
+	_, pool := testStore(t)
+	ctx := context.Background()
+	if _, err := pool.Exec(ctx, `ALTER TABLE healthchecks_ping_schedule RENAME TO healthchecks_test_unavailable`); err != nil {
+		t.Fatal(err)
+	}
+	r := NewHealthchecksRepository(pool)
+	for _, stage := range []string{"database_due", "database_claim"} {
+		var err error
+		if stage == "database_due" {
+			_, err = r.Due(ctx)
+		} else {
+			_, err = r.Claim(ctx)
+		}
+		if err == nil || err.Error() != "monitoring unavailable" || !errors.Is(err, healthchecks.ErrUnavailable) {
+			t.Fatalf("lost public error contract: %v", err)
+		}
+		var details string
+		for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+			details += cause.Error() + "\n"
+		}
+		for _, want := range []string{"stage=" + stage, "category=database_error", "sqlstate=42P01"} {
+			if !strings.Contains(details, want) {
+				t.Fatalf("missing %s: %s", want, details)
+			}
+		}
+		for _, secret := range []string{"SELECT", "UPDATE", "healthchecks_ping_schedule", "provider_credentials", "relation"} {
+			if strings.Contains(details, secret) {
+				t.Fatalf("database detail leaked: %s", details)
+			}
+		}
+	}
+}
 
 func TestHealthchecksClaimsAreDisabledByDefaultAndLimitedAcrossWorkers(t *testing.T) {
 	identity, pool := testStore(t)

@@ -42,28 +42,38 @@ func NewClient(client *http.Client) *Client {
 	return &Client{http: boundedClient(client, 3*time.Second)}
 }
 
-func responseOK(response *http.Response, expected string) bool {
+func checkResponse(response *http.Response, expected string, stage Stage) error {
 	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		err := failure(stage, "http_status")
+		if response.StatusCode >= 100 && response.StatusCode <= 599 {
+			err.cause.status = response.StatusCode
+		}
+		return err
+	}
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1025))
-	return err == nil && len(body) <= 1024 && response.StatusCode == http.StatusOK && strings.TrimSpace(string(body)) == expected
+	if err != nil {
+		return NewFailure(stage, err)
+	}
+	if len(body) > 1024 || strings.TrimSpace(string(body)) != expected {
+		return failure(stage, "invalid_response")
+	}
+	return nil
 }
 
 func (c *Client) Ping(ctx context.Context, pingURL string) error {
 	if !ValidPingURL(pingURL) {
-		return ErrUnavailable
+		return failure(StageHealthchecksPost, "invalid_url")
 	}
 	r, err := http.NewRequestWithContext(ctx, http.MethodPost, pingURL, nil)
 	if err != nil {
-		return ErrUnavailable
+		return NewFailure(StageHealthchecksPost, err)
 	}
 	response, err := c.http.Do(r)
 	if err != nil {
-		return ErrUnavailable
+		return transportFailure(StageHealthchecksPost, err)
 	}
-	if !responseOK(response, "OK") {
-		return ErrUnavailable
-	}
-	return nil
+	return checkResponse(response, "OK", StageHealthchecksPost)
 }
 
 // The api service alias is shared by local and production Compose deployments.
@@ -72,15 +82,12 @@ func NewAPIProbe(client *http.Client) func(context.Context) error {
 	return func(ctx context.Context) error {
 		r, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://api:8080/readyz", nil)
 		if err != nil {
-			return ErrUnavailable
+			return NewFailure(StageAPIProbe, err)
 		}
 		response, err := probe.Do(r)
 		if err != nil {
-			return ErrUnavailable
+			return transportFailure(StageAPIProbe, err)
 		}
-		if !responseOK(response, "ok") {
-			return ErrUnavailable
-		}
-		return nil
+		return checkResponse(response, "ok", StageAPIProbe)
 	}
 }

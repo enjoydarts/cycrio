@@ -3,6 +3,7 @@ package healthchecks
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"testing/synctest"
 )
@@ -12,6 +13,7 @@ type fixture struct {
 	claimed                         bool
 	claims, resolves, pings, checks int
 	workerErr, apiErr, resolveErr   error
+	dueErr, claimErr, pingErr       error
 }
 
 func TestServiceDeadlineAndCancellationCannotProduceSuccessPing(t *testing.T) {
@@ -41,9 +43,12 @@ func TestServiceDeadlineAndCancellationCannotProduceSuccessPing(t *testing.T) {
 	})
 }
 
-func (f *fixture) Due(context.Context) (bool, error) { return f.enabled, nil }
+func (f *fixture) Due(context.Context) (bool, error) { return f.enabled, f.dueErr }
 func (f *fixture) Claim(context.Context) (string, error) {
 	f.claims++
+	if f.claimErr != nil {
+		return "", f.claimErr
+	}
 	if !f.claimed {
 		return "", nil
 	}
@@ -53,7 +58,51 @@ func (f *fixture) Resolve(context.Context, string) ([]byte, error) {
 	f.resolves++
 	return []byte(testURL), f.resolveErr
 }
-func (f *fixture) Ping(context.Context, string) error { f.pings++; return nil }
+func (f *fixture) Ping(context.Context, string) error { f.pings++; return f.pingErr }
+
+func TestServiceFailureChainIdentifiesStageWithoutSecrets(t *testing.T) {
+	for _, stage := range []string{"database_due", "worker_probe", "api_probe", "database_claim", "credential_resolve", "healthchecks_post"} {
+		t.Run(stage, func(t *testing.T) {
+			secretErr := errors.New("credential secret https://hc-ping.com/private-token")
+			f := &fixture{enabled: true, claimed: true}
+			switch stage {
+			case "database_due":
+				f.dueErr = secretErr
+			case "worker_probe":
+				f.workerErr = secretErr
+			case "api_probe":
+				f.apiErr = secretErr
+			case "database_claim":
+				f.claimErr = secretErr
+			case "credential_resolve":
+				f.resolveErr = secretErr
+			case "healthchecks_post":
+				f.pingErr = secretErr
+			}
+			err := NewService(f, f.Resolve, f, func(context.Context) error { return f.workerErr }, func(context.Context) error { return f.apiErr }).Tick(context.Background())
+			assertSafeFailure(t, err, stage, "unavailable")
+		})
+	}
+}
+
+func assertSafeFailure(t *testing.T, err error, stage, category string) {
+	t.Helper()
+	if err == nil || err.Error() != "monitoring unavailable" || !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("lost public error contract: %v", err)
+	}
+	var details string
+	for cause := err; cause != nil; cause = errors.Unwrap(cause) {
+		details += cause.Error() + "\n"
+	}
+	if !strings.Contains(details, "stage="+stage) || !strings.Contains(details, "category="+category) {
+		t.Fatalf("missing safe failure details: %s", details)
+	}
+	for _, secret := range []string{"credential secret", "private-token", "hc-ping.com", "11111111", "private SQL"} {
+		if strings.Contains(details, secret) {
+			t.Fatalf("secret leaked: %s", details)
+		}
+	}
+}
 func TestServiceOnlyPingsForConfirmedHealthyConfiguredClaim(t *testing.T) {
 	for _, mode := range []string{"healthy", "disabled", "worker_failure", "api_failure", "no_claim", "disabled_after_claim"} {
 		t.Run(mode, func(t *testing.T) {

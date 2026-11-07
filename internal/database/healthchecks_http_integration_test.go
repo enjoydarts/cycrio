@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 
@@ -91,6 +92,9 @@ func TestHealthchecksRealHTTPPostRequiresHealthyAPIAndWorker(t *testing.T) {
 	apiFailed.Store(true)
 	if e = service.Tick(ctx); e == nil || posts.Load() != 1 {
 		t.Fatal("unhealthy API sent success", e, posts.Load())
+	}
+	if cause := errors.Unwrap(e); cause == nil || !strings.Contains(cause.Error(), "stage=api_probe category=http_status status=503") {
+		t.Fatalf("service lost API failure classification: %v", cause)
 	}
 	apiFailed.Store(false)
 	workerFailed = true

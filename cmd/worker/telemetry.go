@@ -103,11 +103,35 @@ func captureWorkerTask[T any](ctx context.Context, read jobOutcomeReader, operat
 		if kind != "" {
 			if failure == nil {
 				failure = outcome.Code
+				if detail := storedAIFailure(outcome); detail != nil {
+					failure = detail
+				}
 			}
 			reportWorkerFailure(ctx, outcome.OwnerID, operation, kind, failure)
 		}
 	}()
 	return execute()
+}
+
+// Reconstruct diagnostics exclusively from fixed provider/stage names and an
+// HTTP status. No response message, requested model, or mail identity is used.
+func storedAIFailure(out database.JobTelemetryOutcome) error {
+	if out.HTTPStatus < 100 || out.HTTPStatus > 599 {
+		return nil
+	}
+	switch out.Provider {
+	case "liquid", "openrouter", "openai", "anthropic":
+	default:
+		return nil
+	}
+	if out.Stage != "classification" && out.Stage != "extraction" {
+		return nil
+	}
+	switch out.Code {
+	case "provider_http", "provider_error", "response_read", "response_too_large", "invalid_json", "model_mismatch", "invalid_output", "refusal", "incomplete", "generation_mismatch":
+		return fmt.Errorf("%s (provider=%s, stage=%s, http_status=%d)", out.Code, out.Provider, out.Stage, out.HTTPStatus)
+	}
+	return nil
 }
 
 func unexpectedJobFailure(out database.JobTelemetryOutcome) bool {

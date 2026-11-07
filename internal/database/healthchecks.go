@@ -19,7 +19,7 @@ func (r *HealthchecksRepository) Due(ctx context.Context) (bool, error) {
 	var enabled bool
 	err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider AND v.state='active' WHERE p.provider='healthchecks' AND p.state='configured') AND EXISTS(SELECT 1 FROM healthchecks_ping_schedule WHERE singleton AND next_attempt_at<=clock_timestamp())`).Scan(&enabled)
 	if err != nil {
-		return false, healthchecks.ErrUnavailable
+		return false, healthchecks.NewFailure(healthchecks.StageDatabaseDue, err)
 	}
 	return enabled, nil
 }
@@ -34,7 +34,7 @@ func (r *HealthchecksRepository) Claim(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	if err != nil {
-		return "", healthchecks.ErrUnavailable
+		return "", healthchecks.NewFailure(healthchecks.StageDatabaseClaim, err)
 	}
 	return id, nil
 }

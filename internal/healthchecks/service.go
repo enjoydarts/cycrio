@@ -28,34 +28,43 @@ func (s *Service) Tick(parent context.Context) error {
 	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	if ctx.Err() != nil {
-		return ErrUnavailable
+		return NewFailure(StageTick, ctx.Err())
 	}
 	enabled, err := s.repository.Due(ctx)
 	if err != nil {
-		return ErrUnavailable
+		return NewFailure(StageDatabaseDue, err)
 	}
 	if !enabled {
 		return nil
 	}
-	if s.workerReady(ctx) != nil || ctx.Err() != nil {
-		return ErrUnavailable
+	if err := s.workerReady(ctx); err != nil || ctx.Err() != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return NewFailure(StageWorkerProbe, err)
 	}
-	if s.apiReady(ctx) != nil || ctx.Err() != nil {
-		return ErrUnavailable
+	if err := s.apiReady(ctx); err != nil || ctx.Err() != nil {
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return NewFailure(StageAPIProbe, err)
 	}
 	id, err := s.repository.Claim(ctx)
 	if err != nil {
-		return ErrUnavailable
+		return NewFailure(StageDatabaseClaim, err)
 	}
 	if id == "" {
 		return nil
 	}
 	secret, err := s.resolve(ctx, id)
 	if err != nil || ctx.Err() != nil {
-		return ErrUnavailable
+		if ctx.Err() != nil {
+			err = ctx.Err()
+		}
+		return NewFailure(StageCredentialResolve, err)
 	}
-	if s.sender.Ping(ctx, string(secret)) != nil {
-		return ErrUnavailable
+	if err := s.sender.Ping(ctx, string(secret)); err != nil {
+		return NewFailure(StageHealthchecksPost, err)
 	}
 	return nil
 }
