@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { afterNavigate } from '$app/navigation';
   import { PUBLIC_API_BASE_URL } from '$app/env/public';
   import '#lib/brand.css';
   import '#lib/app.css';
@@ -23,6 +24,7 @@
 
   let { children } = $props();
   let controller: ReturnType<typeof createAuthController> | undefined;
+  let browserTelemetry: ReturnType<typeof startBrowserTelemetry> | undefined;
   let themeController: ReturnType<typeof createThemeController> | undefined;
   const boundary = createSessionBoundary(
     async () => (await controller?.getToken()) ?? null,
@@ -67,9 +69,14 @@
     mailSyncAPI: createMailSyncAPI(PUBLIC_API_BASE_URL),
     mailProcessingAPI: createMailProcessingAPI(PUBLIC_API_BASE_URL),
   });
+  afterNavigate(({ to }) => {
+    if (to) browserTelemetry?.navigate(to.url.pathname);
+  });
   onMount(() => {
     // Keep all browser access here so the layout also remains SSR safe.
     const telemetry = startBrowserTelemetry(PUBLIC_API_BASE_URL);
+    browserTelemetry = telemetry;
+    telemetry.navigate(page.url.pathname);
     let storage: Pick<Storage, 'getItem' | 'setItem'>;
     try {
       storage = window.localStorage;
@@ -95,6 +102,7 @@
     return () => {
       controller?.dispose();
       telemetry.dispose();
+      if (browserTelemetry === telemetry) browserTelemetry = undefined;
       themeController?.dispose();
     };
   });

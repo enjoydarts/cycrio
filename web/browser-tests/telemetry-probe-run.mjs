@@ -1,8 +1,12 @@
-import { runTelemetryProbe } from './telemetry-probe.mjs';
+import {
+  runTelemetryProbe,
+  runPageTelemetryProbe,
+} from './telemetry-probe.mjs';
 import { readFile } from 'node:fs/promises';
 
-const config = process.argv[2]
-  ? JSON.parse(await readFile(process.argv[2], 'utf8'))
+const configPath = process.argv.slice(2).find((value) => value !== '--pages');
+const config = configPath
+  ? JSON.parse(await readFile(configPath, 'utf8'))
   : null;
 const options = config
   ? { projectToken: config.project_token, host: config.host, live: true }
@@ -33,6 +37,7 @@ try {
                 '--headless=new',
                 '--no-sandbox',
                 '--disable-dev-shm-usage',
+                '--unsafely-treat-insecure-origin-as-secure=http://fixture:5199',
               ],
             },
           },
@@ -52,7 +57,10 @@ try {
       break;
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
-  console.log(JSON.stringify(await runTelemetryProbe(api, session, options)));
+  const probe = process.argv.includes('--pages')
+    ? runPageTelemetryProbe
+    : runTelemetryProbe;
+  console.log(JSON.stringify(await probe(api, session, options)));
 } finally {
   if (session) await api('DELETE', session);
 }

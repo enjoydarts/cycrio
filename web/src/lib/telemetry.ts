@@ -2,9 +2,14 @@ import type { PostHogConfig } from 'posthog-js';
 import type { ErrorTracking } from '@posthog/core';
 import { createDefaultStackParser } from '@posthog/core/error-tracking';
 import { scrubText } from './telemetry-redaction.ts';
+import {
+  pageForPath,
+  pageEventProperties,
+  type TelemetryPage,
+} from './telemetry-pages.ts';
 export { scrubText } from './telemetry-redaction.ts';
 
-// This boundary exposes errors only. Analytics needs a separately reviewed policy.
+// Exception diagnostics and explicit page events use separate allowlists.
 export type TelemetryConfiguration =
   { enabled: false } | { enabled: true; project_token: string; host: string };
 type Properties = Record<string, unknown>;
@@ -28,6 +33,11 @@ type SafeException = {
 };
 export type TelemetrySDK = {
   captureException: (error: Error, properties: Properties) => unknown;
+  capturePage?: (
+    event: '$pageview' | '$pageleave',
+    properties: Properties,
+  ) => unknown;
+  getSessionId?: () => string;
   reset: () => unknown;
   disable: () => unknown;
 };
@@ -324,6 +334,8 @@ export function createTelemetryController(options: {
   getConfiguration: () => Promise<TelemetryConfiguration>;
   loadSDK: () => Promise<SDKModule>;
   refreshMilliseconds?: number;
+  now?: () => number;
+  newID?: () => string;
 }) {
   let sdk: TelemetrySDK | undefined;
   let configurationKey = '';
@@ -333,6 +345,22 @@ export function createTelemetryController(options: {
   let started = false;
   let timer: ReturnType<typeof setInterval> | undefined;
   const seen = new WeakSet<Error>();
+  type PageView = {
+    page: TelemetryPage;
+    sessionID: string;
+    id: string;
+    owner: string;
+    startedAt: number;
+  };
+  let requestedPath: string | null = null;
+  let requestedPage: TelemetryPage | null = null;
+  let pageVisible = true;
+  let currentPage: PageView | undefined;
+  let anonymousPageIdentity: string | undefined;
+  let pendingPageEvent:
+    { event: '$pageview' | '$pageleave'; properties: Properties } | undefined;
+  const now = options.now ?? Date.now;
+  const newID = options.newID ?? (() => crypto.randomUUID());
   const safely = (operation: () => unknown) => {
     try {
       operation();
@@ -341,6 +369,8 @@ export function createTelemetryController(options: {
     }
   };
   function stop() {
+    currentPage = undefined;
+    pendingPageEvent = undefined;
     if (sdk) {
       const old = sdk;
       sdk = undefined;
@@ -349,6 +379,101 @@ export function createTelemetryController(options: {
     }
     configurationKey = '';
   }
+  function sendPage(view: PageView, duration?: number) {
+    if (!sdk?.capturePage || disposed || !options.origin) return false;
+    const properties = pageEventProperties(
+      view.page,
+      options.origin,
+      view.sessionID,
+      view.id,
+      duration,
+    );
+    if (!properties) return false;
+    properties.distinct_id = view.owner;
+    const event = duration === undefined ? '$pageview' : '$pageleave';
+    // The SDK adds URL/title/referrer/device metadata. For page events, the
+    // final hook uses only this synchronous, application-owned snapshot.
+    // Unsolicited SDK page events remain blocked.
+    pendingPageEvent = { event, properties };
+    try {
+      sdk.capturePage(event, { ...properties });
+      return true;
+    } catch {
+      /* Page measurement never affects navigation. */
+      return false;
+    } finally {
+      pendingPageEvent = undefined;
+    }
+  }
+  function closePage() {
+    const view = currentPage;
+    currentPage = undefined;
+    if (!view) return;
+    const duration = Math.min(
+      86400,
+      Math.max(0, (now() - view.startedAt) / 1000),
+    );
+    sendPage(view, duration);
+  }
+  function openPage() {
+    if (
+      !started ||
+      disposed ||
+      !pageVisible ||
+      currentPage ||
+      !requestedPage ||
+      !sdk?.capturePage ||
+      !sdk.getSessionId ||
+      !options.origin ||
+      (!user && requestedPage.path !== '/')
+    )
+      return;
+    try {
+      const sessionID = sdk.getSessionId();
+      const id = newID();
+      if (!pageEventProperties(requestedPage, options.origin, sessionID, id))
+        return;
+      if (!user && !anonymousPageIdentity) {
+        const anonymousID = newID();
+        if (!uuidPattern.test(anonymousID)) return;
+        anonymousPageIdentity = `cycrio-visitor-${anonymousID}`;
+      }
+      const view = {
+        page: requestedPage,
+        sessionID,
+        id,
+        owner: user ?? anonymousPageIdentity!,
+        startedAt: now(),
+      };
+      if (sendPage(view)) currentPage = view;
+    } catch {
+      /* Invalid or unavailable SDK state disables page measurement only. */
+    }
+  }
+  function navigate(pathname: string) {
+    if (disposed) return;
+    const page = pageForPath(pathname);
+    if (page && requestedPath === pathname) {
+      openPage();
+      return;
+    }
+    closePage();
+    requestedPath = page ? pathname : null;
+    requestedPage = page;
+    openPage();
+  }
+  function leavePage() {
+    pageVisible = false;
+    closePage();
+  }
+  function resumePage() {
+    pageVisible = true;
+    openPage();
+  }
+  const pageHidden = () => leavePage();
+  const pageShown = (event: Event) => {
+    if ((event as PageTransitionEvent).persisted) resumePage();
+  };
   async function refresh() {
     if (!options.production || disposed || !started) return;
     const current = ++generation;
@@ -363,7 +488,10 @@ export function createTelemetryController(options: {
         return;
       }
       const key = `${config.host}:${config.project_token}`;
-      if (sdk && key === configurationKey) return;
+      if (sdk && key === configurationKey) {
+        openPage();
+        return;
+      }
       stop();
       const module = await options.loadSDK();
       if (disposed || generation !== current) return;
@@ -410,6 +538,23 @@ export function createTelemetryController(options: {
           timestamp?: Date;
         }) => {
           if (disposed || !sdk || configurationKey !== key) return null;
+          if (event.event === '$pageview' || event.event === '$pageleave') {
+            if (!pendingPageEvent || pendingPageEvent.event !== event.event)
+              return null;
+            return {
+              event: pendingPageEvent.event,
+              properties: {
+                ...pendingPageEvent.properties,
+                token: config.project_token,
+                $lib: 'web',
+                $lib_version: '1.447.2',
+              },
+              uuid: event.uuid,
+              ...(event.timestamp instanceof Date
+                ? { timestamp: event.timestamp }
+                : {}),
+            };
+          }
           const filtered = filterTelemetryEvent(
             event,
             options.getAssetPaths?.(),
@@ -428,6 +573,7 @@ export function createTelemetryController(options: {
         },
       } satisfies Partial<PostHogConfig>);
       configurationKey = key;
+      openPage();
     } catch {
       if (!disposed && generation === current) stop();
     }
@@ -461,26 +607,37 @@ export function createTelemetryController(options: {
       started = true;
       options.target.addEventListener('error', windowError);
       options.target.addEventListener('unhandledrejection', rejection);
+      options.target.addEventListener('pagehide', pageHidden);
+      options.target.addEventListener('pageshow', pageShown);
       timer = setInterval(() => {
         void refresh();
       }, options.refreshMilliseconds ?? 60_000);
       void refresh();
     },
     refresh,
+    navigate,
+    leavePage,
+    resumePage,
     setUser(id: string | null) {
       const next = typeof id === 'string' && uuidPattern.test(id) ? id : null;
       if (next === user) return;
+      closePage();
       if (sdk) safely(() => sdk?.reset());
       user = next;
+      anonymousPageIdentity = undefined;
+      openPage();
     },
     capture,
     dispose() {
+      closePage();
       disposed = true;
       generation++;
       user = null;
       clearInterval(timer);
       options.target.removeEventListener('error', windowError);
       options.target.removeEventListener('unhandledrejection', rejection);
+      options.target.removeEventListener('pagehide', pageHidden);
+      options.target.removeEventListener('pageshow', pageShown);
       stop();
     },
   };

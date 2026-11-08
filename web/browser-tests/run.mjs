@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { runTelemetryProbe } from './telemetry-probe.mjs';
+import {
+  runTelemetryProbe,
+  runPageTelemetryProbe,
+} from './telemetry-probe.mjs';
 
 const out = '/artifacts';
 await mkdir(out, { recursive: true });
@@ -258,7 +261,13 @@ try {
     await layout();
     results.push({ scenario: `${width}-mail-frankly`, status: 'pass' });
     await visit('healthchecks', width);
-    if (width === 1280) results.push(await runTelemetryProbe(api, session));
+    if (width === 1280) {
+      results.push(await runTelemetryProbe(api, session));
+      // The SDK caches window.fetch at module evaluation. Reload to give the
+      // next transport probe its own module realm and interception boundary.
+      await visit('healthchecks', width);
+      results.push(await runPageTelemetryProbe(api, session));
+    }
     const healthchecksService =
       "Array.from(document.querySelectorAll('button.service-row')).find(e=>e.textContent.includes('Healthchecks.io'))";
     await wait(`${healthchecksService}!==undefined`);

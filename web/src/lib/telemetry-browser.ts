@@ -70,6 +70,15 @@ export function startBrowserTelemetry(apiBase: string) {
           return {
             captureException: (error, properties) =>
               instance.captureException(error, properties),
+            capturePage: (event, properties) =>
+              instance.capture(
+                event,
+                properties,
+                event === '$pageleave'
+                  ? { transport: 'sendBeacon', send_instantly: true }
+                  : undefined,
+              ),
+            getSessionId: () => instance.get_session_id(),
             reset: () => instance.reset(),
             // opt_out_capturing persists consent independently of persistence:'memory'.
             disable: () => instance.set_config({ before_send: () => null }),
@@ -82,6 +91,7 @@ export function startBrowserTelemetry(apiBase: string) {
   controller.start();
   return {
     setUser: controller.setUser,
+    navigate: controller.navigate,
     dispose() {
       controller.dispose();
       if (active === controller) active = undefined;
