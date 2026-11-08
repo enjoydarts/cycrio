@@ -814,6 +814,193 @@
           ]
         }
       }
+    },
+    {
+      "dashboard": "usage",
+      "name": "ページ閲覧数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageview",
+            "name": "$pageview",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "BoldNumber"
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "閲覧ユーザー数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageview",
+            "name": "$pageview",
+            "math": "dau"
+          }
+        ],
+        "trendsFilter": {
+          "display": "BoldNumber"
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "閲覧セッション数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageview",
+            "name": "$pageview",
+            "math": "unique_session"
+          }
+        ],
+        "trendsFilter": {
+          "display": "BoldNumber"
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "平均画面滞在時間",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageleave",
+            "name": "$pageleave",
+            "math": "avg",
+            "math_property": "$prev_pageview_duration",
+            "math_property_type": "event"
+          }
+        ],
+        "trendsFilter": {
+          "display": "BoldNumber",
+          "aggregationAxisFormat": "duration",
+          "decimalPlaces": 2
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "日別のページ閲覧数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageview",
+            "name": "$pageview",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsLineGraph"
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "画面別の閲覧数",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageview",
+            "name": "$pageview",
+            "math": "total"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue"
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$pathname"
+            }
+          ],
+          "breakdown_path_cleaning": true
+        }
+      }
+    },
+    {
+      "dashboard": "usage",
+      "name": "画面別の平均滞在時間",
+      "query": {
+        "kind": "TrendsQuery",
+        "dateRange": {
+          "date_from": "-14d"
+        },
+        "interval": "day",
+        "filterTestAccounts": false,
+        "series": [
+          {
+            "kind": "EventsNode",
+            "event": "$pageleave",
+            "name": "$pageleave",
+            "math": "avg",
+            "math_property": "$prev_pageview_duration",
+            "math_property_type": "event"
+          }
+        ],
+        "trendsFilter": {
+          "display": "ActionsBarValue",
+          "aggregationAxisFormat": "duration",
+          "decimalPlaces": 2
+        },
+        "breakdownFilter": {
+          "breakdowns": [
+            {
+              "type": "event",
+              "property": "$prev_pageview_pathname"
+            }
+          ],
+          "breakdown_path_cleaning": true
+        }
+      }
     }
   ]
 }
