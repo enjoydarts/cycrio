@@ -7,6 +7,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/ai"
 	"github.com/enjoydarts/cycrio/internal/airuntime"
 	"github.com/enjoydarts/cycrio/internal/diagnostics"
+	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
@@ -323,6 +324,17 @@ func (r *MailProcessingRepository) Start(ctx context.Context, l mailprocessing.L
 	return w.work, nil
 }
 func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessing.Lease, stage string) (airuntime.Call, error) {
+	return r.beginCall(ctx, l, stage, 0)
+}
+
+func (r *MailProcessingRepository) BeginOversizedExtraction(ctx context.Context, l mailprocessing.Lease, inputBytes int) (airuntime.Call, error) {
+	if inputBytes <= mailprocessing.LiquidD11StateByteLimit || inputBytes > mailcontent.MaxWireBytes {
+		return airuntime.Call{}, mailprocessing.ErrInvalid
+	}
+	return r.beginCall(ctx, l, "extraction", inputBytes)
+}
+
+func (r *MailProcessingRepository) beginCall(ctx context.Context, l mailprocessing.Lease, stage string, oversizedInputBytes int) (airuntime.Call, error) {
 	if !mailprocessing.ValidID(l.LeaseID) || (stage != "classification" && stage != "extraction") {
 		return airuntime.Call{}, mailprocessing.ErrInvalid
 	}
@@ -345,7 +357,16 @@ func (r *MailProcessingRepository) BeginCall(ctx context.Context, l mailprocessi
 	}
 	if stage == "extraction" {
 		var primaryDone bool
-		if e = tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_calls WHERE operation_id=$1 AND stage='classification' AND attempt_no=1 AND status='succeeded' AND outcome='success')`, w.work.AttemptID).Scan(&primaryDone); e != nil {
+		query := `SELECT EXISTS(SELECT 1 FROM ai_calls WHERE operation_id=$1 AND stage='classification' AND attempt_no=1 AND status='succeeded' AND outcome='success')`
+		if oversizedInputBytes != 0 {
+			if !mailprocessing.OversizedPrimaryInput(w.work, oversizedInputBytes) {
+				return airuntime.Call{}, mailprocessing.ErrConflict
+			}
+			// A started primary request may have unknown billing or an ambiguous
+			// outcome. This path is only for inputs rejected before any such call.
+			query = `SELECT NOT EXISTS(SELECT 1 FROM ai_calls WHERE operation_id=$1 AND stage='classification')`
+		}
+		if e = tx.QueryRow(ctx, query, w.work.AttemptID).Scan(&primaryDone); e != nil {
 			return airuntime.Call{}, diagnostics.Wrap(mailprocessing.ErrUnavailable, e)
 		}
 		if !primaryDone {

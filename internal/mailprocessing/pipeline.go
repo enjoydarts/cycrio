@@ -163,27 +163,42 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		completion.ErrorCode = "invalid_response"
 		return nil
 	}
-	first, outcome, e := s.call(ctx, l, w, "classification", w.Profile.Primary, classifierInstructions, text)
-	if e != nil {
-		diagnostics.RecordUnexpected(ctx, e)
-		completion.State = "unknown"
-		completion.ErrorCode = "recording_failed"
-		return ErrUnavailable
-	}
-	if outcome != "success" {
-		completion.ErrorCode = outcome
-		if ambiguous(outcome) {
+	oversized := OversizedPrimaryInput(w, len(text))
+	label := "uncertain" // The primary cannot decide on this whole input.
+	if !oversized {
+		first, outcome, e := s.call(ctx, l, w, "classification", w.Profile.Primary, classifierInstructions, text)
+		if e != nil {
+			diagnostics.RecordUnexpected(ctx, e)
 			completion.State = "unknown"
+			completion.ErrorCode = "recording_failed"
+			return ErrUnavailable
 		}
-		return nil
+		if outcome != "success" {
+			completion.ErrorCode = outcome
+			if ambiguous(outcome) {
+				completion.State = "unknown"
+			}
+			return nil
+		}
+		label = first.Classification.Label
 	}
-	label := first.Classification.Label
 	completion.Classification = &label
 	if label == "not_related" {
 		completion.State = "not_related"
 		return nil
 	}
-	second, outcome, e := s.call(ctx, l, w, "extraction", w.Profile.Secondary, extractorInstructions, text)
+	begin := func(ctx context.Context) (airuntime.Call, error) { return s.repo.BeginCall(ctx, l, "extraction") }
+	if oversized {
+		repo, ok := s.repo.(OversizedExtractionRepository)
+		if !ok {
+			completion.ErrorCode = "configuration_unavailable"
+			return nil
+		}
+		begin = func(ctx context.Context) (airuntime.Call, error) {
+			return repo.BeginOversizedExtraction(ctx, l, len(text))
+		}
+	}
+	second, outcome, e := s.callWithBegin(ctx, w, "extraction", w.Profile.Secondary, extractorInstructions, text, begin)
 	if e != nil {
 		diagnostics.RecordUnexpected(ctx, e)
 		completion.State = "unknown"
@@ -328,6 +343,10 @@ func safeDo(ctx context.Context, client InferenceClient, in ai.Request) (result 
 	return client.Do(ctx, in)
 }
 func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model airuntime.ModelRef, instructions string, text []byte) (ai.Response, string, error) {
+	return s.callWithBegin(ctx, w, stage, model, instructions, text, func(ctx context.Context) (airuntime.Call, error) { return s.repo.BeginCall(ctx, l, stage) })
+}
+
+func (s *Service) callWithBegin(ctx context.Context, w Work, stage string, model airuntime.ModelRef, instructions string, text []byte, begin func(context.Context) (airuntime.Call, error)) (ai.Response, string, error) {
 	empty := ai.Response{}
 	if ctx.Err() != nil {
 		return empty, "request_cancelled", nil
@@ -345,7 +364,7 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 		}
 		return empty, "credentials_unavailable", nil
 	}
-	call, e := s.beginBudgetCall(ctx, l, stage, w.Profile.TimeoutSeconds)
+	call, e := s.beginBudgetCall(ctx, w.Profile.TimeoutSeconds, begin)
 	if e != nil {
 		switch {
 		case errors.Is(e, aibudget.ErrExceeded):
@@ -403,8 +422,8 @@ func (s *Service) call(ctx context.Context, l Lease, w Work, stage string, model
 
 // Recheck only the database authorization while another budgeted call is in
 // flight. A provider request is sent once, after a calling marker is committed.
-func (s *Service) beginBudgetCall(ctx context.Context, l Lease, stage string, timeoutSeconds int) (airuntime.Call, error) {
-	call, err := s.repo.BeginCall(ctx, l, stage)
+func (s *Service) beginBudgetCall(ctx context.Context, timeoutSeconds int, begin func(context.Context) (airuntime.Call, error)) (airuntime.Call, error) {
+	call, err := begin(ctx)
 	if !errors.Is(err, aibudget.ErrPending) {
 		return call, err
 	}
@@ -424,7 +443,7 @@ func (s *Service) beginBudgetCall(ctx context.Context, l Lease, stage string, ti
 			return airuntime.Call{}, aibudget.ErrPending
 		case <-timer.C:
 		}
-		call, err = s.repo.BeginCall(wait, l, stage)
+		call, err = begin(wait)
 		if !errors.Is(err, aibudget.ErrPending) {
 			if wait.Err() != nil && ctx.Err() == nil && err != nil {
 				return airuntime.Call{}, aibudget.ErrPending

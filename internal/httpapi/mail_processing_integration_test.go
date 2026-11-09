@@ -84,8 +84,8 @@ func processingHTTPProfile(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 		}
 	}
 	catalog := database.NewModelCatalogRepository(pool)
-	primary, err := catalog.List(ctx, modelcatalog.Filter{Provider: "liquid"})
-	if err != nil || len(primary.Models) == 0 {
+	primary, err := catalog.AddModel(ctx, admin, modelcatalog.ManualModelInput{Provider: "liquid", ModelID: "d1.1", DisplayName: "D1.1"})
+	if err != nil {
 		t.Fatal(primary, err)
 	}
 	supported := true
@@ -93,7 +93,7 @@ func processingHTTPProfile(t *testing.T, ctx context.Context, pool *pgxpool.Pool
 	if err != nil {
 		t.Fatal(err)
 	}
-	selection, err := catalog.SaveSettings(ctx, admin, modelcatalog.SettingsInput{PrimaryModelID: primary.Models[0].ID, SecondaryModelID: secondary.ID})
+	selection, err := catalog.SaveSettings(ctx, admin, modelcatalog.SettingsInput{PrimaryModelID: primary.ID, SecondaryModelID: secondary.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,24 @@ func (c *processingHTTPAI) Do(_ context.Context, in ai.Request) (ai.Response, er
 	return out, nil
 }
 
+type processingHTTPWholeCase struct {
+	name                              string
+	repetitions, stages, primaryCalls int
+	classification, cost              string
+}
+
 func TestMailProcessingHTTPDatabaseExplicitWorkerResultsAndOwnerCosts(t *testing.T) {
+	for _, tc := range []processingHTTPWholeCase{
+		{"whole_within_primary_limit", 20000, 2, 1, "subscription_related", "0.02"},
+		{"whole_exceeds_primary_limit", 60000, 1, 0, "uncertain", "0.01"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			testProcessingHTTPWholeInput(t, tc)
+		})
+	}
+}
+
+func testProcessingHTTPWholeInput(t *testing.T, tc processingHTTPWholeCase) {
 	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Second)
 	defer cancel()
 	pool := processingHTTPPool(t, ctx)
@@ -390,7 +407,7 @@ func TestMailProcessingHTTPDatabaseExplicitWorkerResultsAndOwnerCosts(t *testing
 		t.Fatal("preview omitted scope")
 	}
 	input.PolicyVersion = state.Policy.Version
-	reader.text = strings.Repeat("日本語", 60000) + "synthetic-private-whole-end"
+	reader.text = strings.Repeat("日本語", tc.repetitions) + "synthetic-private-whole-end"
 	client.mode = "related"
 	client.want = reader.text
 	request("POST", base+"/processing-runs", input, "processing_owner", 202, &run)
@@ -398,12 +415,17 @@ func TestMailProcessingHTTPDatabaseExplicitWorkerResultsAndOwnerCosts(t *testing
 	changed.FullEmail = false
 	request("POST", base+"/processing-runs", changed, "processing_owner", 409, nil)
 	execute()
-	if !reader.fullEmail || client.seen != 2 {
-		t.Fatal("whole body lost between persisted request and both stages", reader.fullEmail, client.seen)
+	if !reader.fullEmail || client.seen != tc.stages {
+		t.Fatal("whole body lost between persisted request and applicable stages", reader.fullEmail, client.seen)
 	}
 	request("GET", base+"/processing-results", nil, "processing_owner", 200, &results)
-	if results.Results[0].State != "succeeded" {
+	if results.Results[0].State != "succeeded" || results.Results[0].Classification == nil || *results.Results[0].Classification != tc.classification {
 		t.Fatal(results)
+	}
+	var primaryCalls, secondaryCalls, ownedCalls int
+	var cost string
+	if err = pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE c.stage='classification'),count(*) FILTER (WHERE c.stage='extraction'),count(*) FILTER (WHERE c.scope='user' AND c.consuming_user_id=$2 AND c.initiated_by_user_id=$2 AND c.run_id IS NULL),coalesce(sum(c.adopted_amount),0)::text FROM ai_calls c JOIN mail_processing_items i ON i.id=c.operation_id WHERE i.run_id=$1`, run.ID, owner.ID).Scan(&primaryCalls, &secondaryCalls, &ownedCalls, &cost); err != nil || primaryCalls != tc.primaryCalls || secondaryCalls != 1 || ownedCalls != tc.stages || cost != tc.cost {
+		t.Fatal("whole input calls or user costs were fabricated", primaryCalls, secondaryCalls, ownedCalls, cost, err)
 	}
 	var afterRuns, afterAudits int
 	if err = pool.QueryRow(ctx, `SELECT (SELECT count(*) FROM mail_processing_runs),(SELECT count(*) FROM mail_processing_audit)`).Scan(&afterRuns, &afterAudits); err != nil || afterRuns != beforeRuns+1 || afterAudits != beforeAudits+1 {

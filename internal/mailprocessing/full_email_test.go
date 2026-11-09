@@ -15,7 +15,7 @@ func TestFullEmailPipelineSendsSameWholeBodyToBothStages(t *testing.T) {
 			r, k, l := pipelineFixture(t)
 			r.w.FullEmail = full
 			r.w.Profile.MaxInputBytes = 8192
-			want := strings.Repeat("日本語", 60000) + "末尾確認"
+			want := strings.Repeat("日本語", 20000) + "末尾確認"
 			calls := 0
 			reader := textReader(func(_ context.Context, _ string, _ []byte, source mailcontent.Source) ([]byte, error) {
 				if source.FullEmail != full {

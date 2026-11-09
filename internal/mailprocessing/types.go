@@ -189,6 +189,13 @@ type Lease struct {
 type BatchRepository interface {
 	StartBatch(context.Context, Lease, int) ([]Work, error)
 }
+
+// OversizedExtractionRepository authorizes a real secondary call when the
+// confirmed whole input cannot fit the configured primary decision model.
+// No classification call or estimated primary usage is created.
+type OversizedExtractionRepository interface {
+	BeginOversizedExtraction(context.Context, Lease, int) (airuntime.Call, error)
+}
 type Work struct {
 	ReaderFolders []string                       `json:"-"`
 	Automatic     bool                           `json:"-"`
