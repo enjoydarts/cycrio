@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"errors"
+	"net"
 	"time"
 
 	"github.com/emersion/go-imap/v2"
@@ -26,6 +27,48 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
+	page, err := c.discover(ctx, login, password, input, automatic, dates, since, before)
+	var interrupted *interruptedDiscoveryGreeting
+	if errors.As(err, &interrupted) && ctx.Err() == nil {
+		// No authentication or mailbox command has been sent. Reconnect once
+		// after an interrupted greeting, sharing the original operation deadline.
+		page, err = c.discover(ctx, login, password, input, automatic, dates, since, before)
+	}
+	if errors.As(err, &interrupted) {
+		err = interrupted.error
+	}
+	return page, err
+}
+
+type interruptedDiscoveryGreeting struct{ error }
+
+func (e *interruptedDiscoveryGreeting) Unwrap() error { return e.error }
+
+// Deliver response bytes before their accompanying transport error. Otherwise
+// a parser rejection of a complete response can be misclassified as a socket
+// failure: the SDK formats decoder errors as text, losing their original type.
+type deferredReadErrorConn struct {
+	net.Conn
+	pending error
+}
+
+func (c *deferredReadErrorConn) Read(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	if c.pending != nil {
+		return 0, c.pending
+	}
+	n, err := c.Conn.Read(p)
+	if n > 0 && err != nil {
+		c.pending = err
+		return n, nil
+	}
+	return n, err
+}
+
+func (c *Client) discover(ctx context.Context, login string, password []byte, input mailsync.PageRequest, automatic, dates bool, since, before time.Time) (mailsync.Page, error) {
+	invalid := mailaccounts.AdapterError{Code: "invalid_response"}
 	conn, err := c.connect(ctx)
 	if err != nil {
 		code := "connection_failed"
@@ -46,7 +89,7 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 		}
 	}()
 	deadline, _ := ctx.Deadline()
-	wire := &boundedConn{Conn: conn, deadline: deadline}
+	wire := &boundedConn{Conn: &deferredReadErrorConn{Conn: conn}, deadline: deadline}
 	var guard *automaticDiscoveryGuard
 	if automatic {
 		guard = &automaticDiscoveryGuard{}
@@ -58,7 +101,12 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 		return mailsync.Page{}, checkError(ctx, wire, err, "invalid_response")
 	}
 	if err := client.WaitGreeting(); err != nil {
-		return fail(err)
+		classified := checkError(ctx, wire, err, "invalid_response")
+		var adapter mailaccounts.AdapterError
+		if errors.As(classified, &adapter) && adapter.Code == "connection_failed" && wire.disconnected.Load() {
+			return mailsync.Page{}, &interruptedDiscoveryGreeting{classified}
+		}
+		return mailsync.Page{}, classified
 	}
 	if client.State() != imap.ConnStateNotAuthenticated {
 		return mailsync.Page{}, invalid
