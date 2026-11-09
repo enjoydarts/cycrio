@@ -8,8 +8,44 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"time"
 )
+
+var errAutomationBusy = errors.New("mail automation account is busy")
+
+// Polling must not spend the shared tick deadline waiting behind an account's
+// ordinary work. Keep the same owner/account/automation lock order and strength
+// as interactive changes, but defer busy accounts until the next tick.
+func (r *MailAutomationRepository) beginTick(ctx context.Context, owner, account string) (pgx.Tx, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return nil, processingError(err)
+	}
+	var state, id string
+	err = tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE NOWAIT`, owner).Scan(&state)
+	if err == nil && state != "active" {
+		err = pgx.ErrNoRows
+	}
+	if err == nil {
+		err = tx.QueryRow(ctx, `SELECT id FROM mail_accounts WHERE id=$1 AND owner_id=$2 FOR NO KEY UPDATE NOWAIT`, account, owner).Scan(&id)
+	}
+	if err == nil {
+		err = tx.QueryRow(ctx, `SELECT id FROM mail_automations WHERE owner_id=$1 AND account_id=$2 FOR UPDATE NOWAIT`, owner, account).Scan(&id)
+	}
+	if err == nil {
+		return tx, nil
+	}
+	tx.Rollback(ctx)
+	var pg *pgconn.PgError
+	if errors.As(err, &pg) && pg.Code == "55P03" {
+		return nil, errAutomationBusy
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mailautomation.ErrNotFound
+	}
+	return nil, processingError(err)
+}
 
 // Tick only performs bounded database work. Mail and provider I/O run through
 // existing leased jobs outside transactions, with one account per transaction.
@@ -42,7 +78,7 @@ func (r *MailAutomationRepository) Tick(ctx context.Context, limit int) (int, er
 			return count, ctx.Err()
 		}
 		if e = r.tickAccount(ctx, v.owner, v.account); e != nil {
-			if errors.Is(e, mailautomation.ErrNotFound) {
+			if errors.Is(e, mailautomation.ErrNotFound) || errors.Is(e, errAutomationBusy) {
 				continue
 			}
 			return count, e
@@ -52,7 +88,7 @@ func (r *MailAutomationRepository) Tick(ctx context.Context, limit int) (int, er
 	return count, nil
 }
 func (r *MailAutomationRepository) tickAccount(ctx context.Context, owner, account string) error {
-	tx, e := r.begin(ctx, owner, account)
+	tx, e := r.beginTick(ctx, owner, account)
 	if e != nil {
 		return e
 	}
