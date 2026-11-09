@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,10 +15,21 @@ import (
 )
 
 type recordedFailure struct{ owner, operation, kind string }
-type failureRecorder struct{ events []recordedFailure }
+type failureRecorder struct {
+	mu     sync.Mutex
+	events []recordedFailure
+}
 
 func (r *failureRecorder) Report(owner, operation, kind string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.events = append(r.events, recordedFailure{owner, operation, kind})
+}
+
+func (r *failureRecorder) snapshot() []recordedFailure {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]recordedFailure(nil), r.events...)
 }
 
 func TestCapturedTaskReportsPersistedFailureOnce(t *testing.T) {
