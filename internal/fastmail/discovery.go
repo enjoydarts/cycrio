@@ -28,10 +28,10 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
 	page, err := c.discover(ctx, login, password, input, automatic, dates, since, before)
-	var interrupted *interruptedDiscoveryGreeting
+	var interrupted *interruptedDiscovery
 	if errors.As(err, &interrupted) && ctx.Err() == nil {
-		// No authentication or mailbox command has been sent. Reconnect once
-		// after an interrupted greeting, sharing the original operation deadline.
+		// This entire operation is read-only. Discard incomplete results and
+		// reconnect once, sharing the original operation deadline and input.
 		page, err = c.discover(ctx, login, password, input, automatic, dates, since, before)
 	}
 	if errors.As(err, &interrupted) {
@@ -40,9 +40,9 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	return page, err
 }
 
-type interruptedDiscoveryGreeting struct{ error }
+type interruptedDiscovery struct{ error }
 
-func (e *interruptedDiscoveryGreeting) Unwrap() error { return e.error }
+func (e *interruptedDiscovery) Unwrap() error { return e.error }
 
 // Deliver response bytes before their accompanying transport error. Otherwise
 // a parser rejection of a complete response can be misclassified as a socket
@@ -97,16 +97,26 @@ func (c *Client) discover(ctx context.Context, login string, password []byte, in
 	}
 	client := imapclient.New(wire, &imapclient.Options{DebugWriter: nil})
 	defer client.Close()
-	fail := func(err error) (mailsync.Page, error) {
-		return mailsync.Page{}, checkError(ctx, wire, err, "invalid_response")
-	}
-	if err := client.WaitGreeting(); err != nil {
-		classified := checkError(ctx, wire, err, "invalid_response")
+	classifyFailure := func(err error, fallback string) error {
+		var status *imap.Error
+		if errors.As(err, &status) {
+			// A tagged rejection is authoritative even if the server closes the
+			// connection immediately afterwards. Never retry rejected credentials
+			// or commands based on that later EOF.
+			return checkError(ctx, nil, err, fallback)
+		}
+		classified := checkError(ctx, wire, err, fallback)
 		var adapter mailaccounts.AdapterError
 		if errors.As(classified, &adapter) && adapter.Code == "connection_failed" && wire.disconnected.Load() {
-			return mailsync.Page{}, &interruptedDiscoveryGreeting{classified}
+			return &interruptedDiscovery{classified}
 		}
-		return mailsync.Page{}, classified
+		return classified
+	}
+	fail := func(err error) (mailsync.Page, error) {
+		return mailsync.Page{}, classifyFailure(err, "invalid_response")
+	}
+	if err := client.WaitGreeting(); err != nil {
+		return fail(err)
 	}
 	if client.State() != imap.ConnStateNotAuthenticated {
 		return mailsync.Page{}, invalid
@@ -117,7 +127,7 @@ func (c *Client) discover(ctx context.Context, login string, password []byte, in
 		if errors.As(err, &status) && status.Type == imap.StatusResponseTypeNo {
 			code = "authentication_failed"
 		}
-		return mailsync.Page{}, checkError(ctx, wire, err, code)
+		return mailsync.Page{}, classifyFailure(err, code)
 	}
 	selected, err := client.Select(input.Folder, &imap.SelectOptions{ReadOnly: true}).Wait()
 	if err != nil {

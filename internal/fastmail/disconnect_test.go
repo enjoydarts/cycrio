@@ -1,7 +1,6 @@
 package fastmail
 
 import (
-	"bufio"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -52,29 +51,33 @@ func (c resetOnEOFConn) Read(p []byte) (int, error) {
 }
 
 func TestDiscoveryClassifiesServerDisconnect(t *testing.T) {
-	for _, command := range []string{"EXAMINE", "UID"} {
+	for _, command := range []string{"LOGIN", "EXAMINE", "UID"} {
 		for _, reset := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/reset=%t", command, reset), func(t *testing.T) {
-				c, done := scriptedClient(t, func(server net.Conn) {
-					if tag := untilCommand(t, server, "EXAMINE"); tag != "" && command == "UID" {
-						fmt.Fprintf(server, "* 1 EXISTS\r\n* OK [UIDVALIDITY 77] validity\r\n* OK [UIDNEXT 10] next\r\n%s OK [READ-ONLY] selected\r\n", tag)
-						line, err := bufio.NewReader(server).ReadString('\n')
-						if err != nil || !strings.Contains(line, " UID SEARCH ") {
-							t.Error("UID SEARCH not reached")
-						}
+				c := NewClient()
+				attempts := 0
+				var closed []<-chan struct{}
+				c.dial = func(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
+					attempts++
+					if attempts > 2 {
+						t.Fatal("persistent disconnect exceeded reconnect bound")
 					}
-				})
-				if reset {
-					dial := c.dial
-					c.dial = func(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
-						conn, err := dial(ctx, address, config)
+					script, done := discoveryTCPClient(t, func(server net.Conn) {
+						interruptDiscoveryCommand(t, server, command, "")
+					})
+					closed = append(closed, done)
+					conn, err := script.dial(ctx, address, config)
+					if reset {
 						return resetOnEOFConn{conn}, err
 					}
+					return conn, err
 				}
-				_, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"), discoveryInput())
-				waitClosed(t, done)
-				if adapterCode(err) != "connection_failed" {
-					t.Fatalf("disconnect classified as %q, want connection_failed", adapterCode(err))
+				page, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"), discoveryInput())
+				for _, done := range closed {
+					waitClosed(t, done)
+				}
+				if adapterCode(err) != "connection_failed" || attempts != 2 || len(page.UIDs) != 0 {
+					t.Fatalf("persistent disconnect: code=%s attempts=%d results=%d", adapterCode(err), attempts, len(page.UIDs))
 				}
 			})
 		}
