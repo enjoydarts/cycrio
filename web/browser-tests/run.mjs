@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { runSubscriptionsLayoutProbe } from './subscriptions-layout-probe.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import {
   runTelemetryProbe,
@@ -172,6 +173,18 @@ try {
         },
       })
     ).sessionId;
+  results.push(
+    await runSubscriptionsLayoutProbe(
+      api,
+      session,
+      visit,
+      js,
+      wait,
+      layout,
+      click,
+      screenshot,
+    ),
+  );
   for (const width of [1280, 390, 320]) {
     await api('POST', session + '/goog/cdp/execute', {
       cmd: 'Emulation.setDeviceMetricsOverride',

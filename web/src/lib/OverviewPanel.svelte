@@ -108,6 +108,7 @@
                 .subscriptions.undated} 件
             </p>{/if}
           {#if report.upcoming.length}<DataTable
+              responsive="cards"
               class={[
                 'upcoming-table',
                 'table-OverviewPanel',
@@ -278,9 +279,6 @@
   :global(.part-OverviewPanel-upcoming-table) a:hover {
     text-decoration: underline;
   }
-  :global(.part-OverviewPanel-upcoming-table) td:first-child {
-    width: 42%;
-  }
   .amount {
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
@@ -335,17 +333,6 @@
     font-size: 20px;
   }
   @media (max-width: 700px) {
-    :global(.part-OverviewPanel-upcoming-table) tr {
-      padding: 18px 16px;
-      gap: 14px;
-    }
-    :global(.part-OverviewPanel-upcoming-table) tr td {
-      padding: 0;
-      border: 0;
-    }
-    :global(.part-OverviewPanel-upcoming-table) tr td:first-child {
-      width: 100%;
-    }
     .overview-status {
       gap: 12px;
       flex-direction: column;

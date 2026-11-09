@@ -69,6 +69,12 @@
   .list-density :global(td) {
     padding: 12px 16px;
   }
+  @media (max-width: 1100px) {
+    .compact.list-density :global(td) {
+      padding: 0;
+      border: 0;
+    }
+  }
   @media (max-width: 700px) {
     .ui-table :global(th),
     .ui-table :global(td) {
@@ -124,7 +130,7 @@
       gap: 8px 12px;
     }
   }
-  @media (max-width: 650px) {
+  @media (max-width: 700px) {
     .compact :global(td) {
       padding: 0;
       border: 0;

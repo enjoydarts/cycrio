@@ -118,6 +118,36 @@ export function installAPI(mode: string, initial: Subscription) {
       )
         fail('Unexpected API origin or path');
       if (notifications) return notifications(url, method, body);
+      if (
+        mode === 'mobile-subscriptions' &&
+        method === 'GET' &&
+        url.pathname === '/synthetic/v1/subscriptions'
+      ) {
+        const subscriptions = [
+          'ADDress',
+          'Adobe Creative Cloud コンプリートプラン',
+          'Google Workspace Business Standard',
+          'とても長いサービス名を含むサブスクリプション',
+        ].map((service, i) => ({
+          ...initial,
+          id: `${i + 1}1111111-1111-4111-8111-111111111111`,
+          service,
+          plan: '個人向け スタンダードプラン',
+          amount: i === 1 ? '123456.78' : '12980',
+          currency: i === 1 ? 'USD' : 'JPY',
+          interval_unit: 'month',
+          interval_count: 1,
+          status: 'active',
+          next_billing_date: '2026-11-30',
+          next_billing_mode: 'automatic',
+        }));
+        return response({
+          subscriptions,
+          total: subscriptions.length,
+          limit: 20,
+          offset: 0,
+        });
+      }
       if (mode.startsWith('change')) {
         const path = `/synthetic/v1/subscriptions/${initial.id}`;
         const before = {

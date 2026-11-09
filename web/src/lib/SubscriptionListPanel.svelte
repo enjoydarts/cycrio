@@ -201,12 +201,6 @@
     .source {
       display: none;
     }
-  }
-  @media (max-width: 650px) {
-    .cards {
-      grid-template-columns: 1fr;
-      padding: 13px;
-    }
     thead,
     .state,
     .source {
@@ -214,19 +208,21 @@
     }
     tr {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto 44px;
+      grid-template-columns: minmax(0, 1fr) 44px;
       padding: 12px 16px;
       gap: 5px 8px;
       border-bottom: 1px solid var(--color-border);
     }
     .service {
-      grid-row: 1/3;
+      grid-column: 1;
+      grid-row: 1;
     }
     .price {
-      grid-column: 2;
-      text-align: right;
+      grid-column: 1;
+      grid-row: 2;
+      text-align: left;
       font-size: 12px;
-      max-width: 120px;
+      max-width: none;
     }
     .price small {
       display: inline;
@@ -234,14 +230,16 @@
       margin-inline-start: 6px;
     }
     .date {
-      grid-column: 2;
+      grid-column: 1;
+      grid-row: 3;
       font-size: 10px;
-      text-align: right;
+      text-align: left;
+      white-space: normal;
       color: var(--color-muted);
     }
     .arrow {
-      grid-column: 3;
-      grid-row: 1/3;
+      grid-column: 2;
+      grid-row: 1/4;
       align-self: center;
     }
     :global(.part-SubscriptionListPanel-brand) {
@@ -249,6 +247,12 @@
     }
     .brand-text strong {
       font-size: 12px;
+    }
+  }
+  @media (max-width: 700px) {
+    .cards {
+      grid-template-columns: 1fr;
+      padding: 13px;
     }
   }
   @media (max-width: 360px) {

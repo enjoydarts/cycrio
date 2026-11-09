@@ -28,6 +28,8 @@
   import Modal from '../src/lib/Modal.svelte';
   import Button from '../src/lib/Button.svelte';
   import AppShell from '../src/lib/AppShell.svelte';
+  import OverviewPanel from '../src/lib/OverviewPanel.svelte';
+  import Subscriptions from '../src/lib/Subscriptions.svelte';
   import AnalysisInbox from '../src/lib/AnalysisInbox.svelte';
   import SubscriptionChangeReview from '../src/lib/SubscriptionChangeReview.svelte';
   import ScheduledChanges from '../src/lib/ScheduledChanges.svelte';
@@ -205,7 +207,11 @@
 
 <svelte:window
   onclick={(event) => {
-    if (!mode.startsWith('notifications') || event.defaultPrevented) return;
+    if (
+      (!mode.startsWith('notifications') && !mode.startsWith('mobile-')) ||
+      event.defaultPrevented
+    )
+      return;
     const anchor = (event.target as HTMLElement)?.closest?.('a');
     if (!anchor) return;
     const target = new URL(anchor.href, location.href);
@@ -219,7 +225,21 @@
   }}
 />
 
-{#if mode === 'mail-frankly'}
+{#if mode === 'mobile-overview' || mode === 'mobile-subscriptions'}
+  <AppShell
+    user={{ id: initial.id, role: 'user' }}
+    pathname={mode === 'mobile-overview' ? '/' : fixturePage.url.pathname}
+    search={fixturePage.url.search}
+    signOut={() => {}}
+    token={async () => 'synthetic'}
+    mailAPI={{ list: async () => accounts } as never}
+    overviewAPI={{ read: async () => overview } as never}
+  >
+    {#if mode === 'mobile-overview'}<OverviewPanel
+        view={{ page: overview, status: 'ready', error: null }}
+      />{:else}<Subscriptions />{/if}
+  </AppShell>
+{:else if mode === 'mail-frankly'}
   <main>
     <MailAccounts
       api={createMailAPI('/synthetic')}
