@@ -10,10 +10,26 @@ import {
   notificationSettings,
 } from './notifications-fixtures.ts';
 import { createNotificationsAPI } from './notifications-api.ts';
-import { deliveryState } from './notification-text.ts';
+import { deliveryState, deliveryReason } from './notification-text.ts';
 const List = (await import('./NotificationList.svelte')).default;
 const Fields = (await import('./NotificationPreferenceFields.svelte')).default;
 const Shell = (await import('./AppShell.svelte')).default;
+test('サーバーの端末なし理由を表示する', () => {
+  assert.equal(
+    deliveryReason('no_active_devices'),
+    '有効な通知端末がありません。',
+  );
+});
+test('通知作成時点の確認待ち件数を表示する', () => {
+  const item = notification();
+  item.facts.kind = 'pending_review';
+  item.facts.review_count = 3;
+  item.facts.review_run_id = item.id;
+  const html = render(List, {
+    props: { notifications: [item], onRead: () => {}, onDelivery: () => {} },
+  }).body;
+  assert.match(html, /通知作成時点で 3 件の新しい確認待ちがありました/);
+});
 test('確認待ちの即時通知を時刻設定から区別しモバイルは共通カード表示にする', () => {
   const p = notificationSettings();
   const html = render(Fields, {

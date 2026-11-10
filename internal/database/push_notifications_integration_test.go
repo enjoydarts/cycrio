@@ -19,6 +19,51 @@ import (
 
 type pushSenderFunc func(context.Context, []byte, pushnotifications.Message) (pushnotifications.SendResult, error)
 
+func TestPushChallengeDeadlineAndExpiredList(t *testing.T) {
+	f := processingSetup(t)
+	ctx := context.Background()
+	now := time.Date(2026, 11, 10, 0, 0, 0, 123456000, time.UTC)
+	if _, err := credentials.NewService(NewCredentialRepository(f.runtime.pool), f.keys).Put(ctx, f.admin, "onesignal", 0, `{"app_id":"`+uuid.NewString()+`","api_key":"synthetic-push-key"}`); err != nil {
+		t.Fatal(err)
+	}
+	r := NewPushNotificationRepository(f.runtime.pool, f.keys, true, func() time.Time { return now })
+	input := pushnotifications.RegistrationInput{SubscriptionID: uuid.NewString(), RequestID: uuid.NewString()}
+	sends := 0
+	sender := pushSenderFunc(func(_ context.Context, _ []byte, _ pushnotifications.Message) (pushnotifications.SendResult, error) {
+		sends++
+		return pushnotifications.SendResult{State: "unknown"}, nil
+	})
+	reg, err := r.RegisterPushDevice(ctx, f.owner, input, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, _ := json.Marshal(reg)
+	var dto map[string]any
+	json.Unmarshal(raw, &dto)
+	if dto["expires_at"] != now.Add(5*time.Minute).Format(time.RFC3339Nano) {
+		t.Errorf("サーバー期限を返す: %s", raw)
+	}
+	now = now.Add(3 * time.Minute)
+	page, err := r.PushSettings(ctx, f.owner)
+	if err != nil || page.Devices[0].State != "pending" {
+		t.Fatal(page, err)
+	}
+	now = now.Add(2 * time.Minute)
+	page, err = r.PushSettings(ctx, f.owner)
+	if err != nil || page.Devices[0].State != "expired" {
+		t.Errorf("期限境界で失効を表示: %v %v", page, err)
+	}
+	replay, err := r.RegisterPushDevice(ctx, f.owner, input, sender)
+	if err != nil || replay != reg || sends != 1 {
+		t.Fatal("期限後も同じ依頼を再送しない", replay, err, sends)
+	}
+	input.RequestID = uuid.NewString()
+	next, err := r.RegisterPushDevice(ctx, f.owner, input, sender)
+	if err != nil || next.ChallengeID == reg.ChallengeID || sends != 2 {
+		t.Fatal("明示再開始", next, err, sends)
+	}
+}
+
 func (f pushSenderFunc) Send(ctx context.Context, key []byte, m pushnotifications.Message) (pushnotifications.SendResult, error) {
 	return f(ctx, key, m)
 }

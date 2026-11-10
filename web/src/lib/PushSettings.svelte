@@ -21,7 +21,10 @@
     permission_ready:
       '準備ができました。次のボタンでこの端末の通知を許可してください。',
     registering: '端末を登録しています…',
-    waiting: '受信確認中です。確認通知を受け取るまでお待ちください。',
+    waiting:
+      '受信確認中です。確認通知の有効期限は5分です。届かない場合は端末一覧を再取得してください。',
+    expired:
+      '受信確認の期限が切れました。この端末でPush通知を有効にする操作からやり直してください。',
     confirming: '受信した通知を確認しています…',
     active: 'この端末のPush通知は有効です。',
     disabled: '端末の通知を停止しました。',
@@ -36,7 +39,7 @@
     uncertain:
       '受付結果を確認できません。端末一覧を再取得して状態を確認してください。',
     reload:
-      'Pushサービスの設定が変わりました。ページを再読み込みしてから操作してください。',
+      'Pushサービスの設定変更、またはSDKの初期化状態を確認できないため、ページを再読み込みしてから操作してください。',
   };
   onMount(() => {
     const unsubscribe = controller.subscribe((next) => (view = next));
@@ -99,7 +102,9 @@
                   ? '有効'
                   : device.state === 'pending'
                     ? '受信確認中'
-                    : '停止'}</td
+                    : device.state === 'expired'
+                      ? '受信確認の期限切れ'
+                      : '停止'}</td
               ><td data-actions
                 >{#if device.state !== 'disabled'}<Button
                     type="button"

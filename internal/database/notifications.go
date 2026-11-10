@@ -137,7 +137,13 @@ func (r *NotificationRepository) SaveNotificationSettings(ctx context.Context, o
 	if e = updateNotificationReviewChannels(ctx, tx, owner, prior, p, r.now()); e != nil {
 		return notifications.SettingsPage{}, e
 	}
-	if p.EmailOptIn {
+	emailExpanded := p.EmailOptIn && !prior.EmailOptIn
+	pushExpanded := p.PushOptIn && !prior.PushOptIn
+	for kind, channels := range p.Kinds {
+		emailExpanded = emailExpanded || p.EmailOptIn && channels.Email && !prior.Kinds[kind].Email
+		pushExpanded = pushExpanded || p.PushOptIn && channels.Push && !prior.Kinds[kind].Push
+	}
+	if emailExpanded {
 		view, err := r.settingsView(ctx, tx, owner, p)
 		if err != nil {
 			return view, err
@@ -146,7 +152,7 @@ func (r *NotificationRepository) SaveNotificationSettings(ctx context.Context, o
 			return notifications.SettingsPage{}, notifications.ErrNotReady
 		}
 	}
-	if p.PushOptIn {
+	if pushExpanded {
 		view, err := r.settingsView(ctx, tx, owner, p)
 		if err != nil {
 			return view, err

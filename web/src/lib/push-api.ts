@@ -11,7 +11,7 @@ import {
 } from './daily-api.ts';
 export type PushDevice = {
   id: string;
-  state: 'pending' | 'active' | 'disabled';
+  state: 'pending' | 'active' | 'disabled' | 'expired';
   created_at: string;
   updated_at: string;
 };
@@ -22,6 +22,7 @@ export type PushPage = {
   devices: PushDevice[];
 };
 export type PushRegistration = {
+  expires_at: string;
   device_id: string;
   challenge_id: string;
   state: 'pending' | 'unknown' | 'failed';
@@ -57,7 +58,7 @@ export function parsePushDevice(value: unknown): PushDevice {
   exact(v, ['id', 'state', 'created_at', 'updated_at']);
   return {
     id: uuid(v.id),
-    state: choice(v.state, ['pending', 'active', 'disabled']),
+    state: choice(v.state, ['pending', 'active', 'disabled', 'expired']),
     created_at: timestamp(v.created_at),
     updated_at: timestamp(v.updated_at),
   };
@@ -131,8 +132,9 @@ export function createPushAPI(base: string, fetcher: typeof fetch = fetch) {
       const v = record(
         await request('/v1/push-devices', token, undefined, 'POST', body),
       );
-      exact(v, ['device_id', 'challenge_id', 'state']);
+      exact(v, ['device_id', 'challenge_id', 'state', 'expires_at']);
       return {
+        expires_at: timestamp(v.expires_at),
         device_id: uuid(v.device_id),
         challenge_id: uuid(v.challenge_id),
         state: choice(v.state, ['pending', 'unknown', 'failed']),

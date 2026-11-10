@@ -148,10 +148,20 @@ export function createNotificationSettings(
         return;
       try {
         pending = parseNotificationPreferences(view.values);
-        if (!view.page.email.available && pending.email_opt_in)
-          throw new ApiError('invalid_request');
-        if (!view.page.push.available && pending.push_opt_in)
-          throw new ApiError('invalid_request');
+        for (const channel of ['email', 'push'] as const) {
+          const consent = `${channel}_opt_in` as const;
+          const prior = view.page.preferences;
+          if (
+            !view.page[channel].available &&
+            pending[consent] &&
+            (!prior[consent] ||
+              notificationKinds.some(
+                (kind) =>
+                  pending!.kinds[kind][channel] && !prior.kinds[kind][channel],
+              ))
+          )
+            throw new ApiError('invalid_request');
+        }
       } catch {
         pending = null;
         publish({ error: 'invalid_request' });

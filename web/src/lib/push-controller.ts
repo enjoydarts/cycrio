@@ -26,6 +26,7 @@ export type PushView = {
     | 'permission_ready'
     | 'registering'
     | 'waiting'
+    | 'expired'
     | 'confirming'
     | 'active'
     | 'disabled'
@@ -85,7 +86,6 @@ export function createPushController({
     generation: number;
     operation: string;
     token: TokenProvider;
-    started: number;
     registration?: PushRegistration;
     confirming: boolean;
     sent: boolean;
@@ -93,7 +93,6 @@ export function createPushController({
   let attempt: Attempt | undefined;
   const buffer: {
     data: Record<string, unknown>;
-    at: number;
     attempt: Attempt;
   }[] = [];
   const publish = (patch: Partial<PushView>) => {
@@ -163,11 +162,12 @@ export function createPushController({
   }
   async function load() {
     if (!owner) return;
-    const expected = owner,
-      g = generation;
+    const expected = owner;
+    let g = generation;
+    let permissionRevoked = false;
+    const stoppedIDs = new Set<string>();
     try {
       await cleanup();
-      const page = await api.list(token);
       if (
         owner !== expected ||
         g !== generation ||
@@ -175,6 +175,71 @@ export function createPushController({
         sharedOwner()?.epoch !== epoch
       )
         return;
+      const permission = sdk.currentPermission();
+      const localReceipts = receipts().filter(
+        (r) => r.owner === expected && !r.stop,
+      );
+      if (
+        permission === 'denied' ||
+        (permission === 'default' &&
+          (localReceipts.length > 0 || (attempt && current(attempt))))
+      ) {
+        permissionRevoked = true;
+        if (attempt && current(attempt)) {
+          g = ++generation;
+          attempt = undefined;
+          buffer.length = 0;
+        }
+        // 現在の本人の保存済みcapabilityだけで停止し、他の端末へ触れない。
+        for (const receipt of localReceipts) {
+          if (
+            owner !== expected ||
+            g !== generation ||
+            sharedOwner()?.epoch !== epoch
+          )
+            return;
+          if (await revoke(receipt)) stoppedIDs.add(receipt.device_id);
+        }
+        if (
+          owner !== expected ||
+          g !== generation ||
+          sharedOwner()?.epoch !== epoch
+        )
+          return;
+        publish({ currentDevice: null, status: 'denied', busy: false });
+      }
+      const page = await api.list(token);
+      if (
+        owner !== expected ||
+        g !== generation ||
+        sharedOwner()?.owner !== expected ||
+        sharedOwner()?.epoch !== epoch
+      )
+        return;
+      if (permissionRevoked) {
+        page.devices = page.devices.map((d) =>
+          stoppedIDs.has(d.id) ? { ...d, state: 'disabled' } : d,
+        );
+        publish({ page });
+        return;
+      }
+      const expired =
+        attempt &&
+        current(attempt) &&
+        !attempt.sent &&
+        attempt.registration &&
+        (now() >= Date.parse(attempt.registration.expires_at) ||
+          page.devices.some(
+            (d) =>
+              d.id === attempt!.registration!.device_id &&
+              d.state === 'expired',
+          ));
+      if (expired) {
+        generation++;
+        attempt = undefined;
+        buffer.length = 0;
+        publish({ status: 'expired', busy: false, currentDevice: null });
+      }
       const local = receipts()
         .filter((r) => r.owner === owner && !r.stop)
         .find((r) =>
@@ -194,7 +259,10 @@ export function createPushController({
     } catch (error) {
       if (owner === expected && g === generation) await rejectAccess(error);
       if (owner === expected && g === generation)
-        publish({ status: 'error', busy: false });
+        publish({
+          status: permissionRevoked ? 'denied' : 'error',
+          busy: false,
+        });
     }
   }
   async function receive(value: unknown) {
@@ -202,7 +270,7 @@ export function createPushController({
     if (
       !a ||
       !current(a) ||
-      now() - a.started > 120000 ||
+      (a.registration && now() >= Date.parse(a.registration.expires_at)) ||
       typeof value !== 'object' ||
       value === null
     )
@@ -216,7 +284,7 @@ export function createPushController({
     }
     if (!a.registration) {
       if (buffer.length >= 8) buffer.shift();
-      buffer.push({ data, at: now(), attempt: a });
+      buffer.push({ data, attempt: a });
       return;
     }
     if (
@@ -343,6 +411,7 @@ export function createPushController({
       } else epoch = shared?.epoch ?? crypto.randomUUID();
       publish({ status: 'idle', busy: false, page: null, currentDevice: null });
       await cleanup();
+      if (shared?.owner === owner && shared?.epoch === epoch) await load();
     },
     async synchronize() {
       const shared = sharedOwner();
@@ -357,6 +426,7 @@ export function createPushController({
         });
       }
       await cleanup();
+      if (shared?.owner === owner && shared?.epoch === epoch) await load();
     },
     load,
     async prepare() {
@@ -413,7 +483,6 @@ export function createPushController({
         generation,
         operation: crypto.randomUUID(),
         token,
-        started: now(),
         confirming: false,
         sent: false,
       };
@@ -450,8 +519,7 @@ export function createPushController({
           currentDevice: reg.device_id,
         });
         for (const buffered of buffer.splice(0))
-          if (buffered.attempt === a && now() - buffered.at < 120000)
-            void receive(buffered.data);
+          if (buffered.attempt === a) void receive(buffered.data);
       } catch (error) {
         if (current(a)) await rejectAccess(error);
         if (current(a))
@@ -484,7 +552,7 @@ export function createPushController({
         if (g === generation) publish({ status: 'error', busy: false });
       }
     },
-    retryCleanup: cleanup,
+    retryCleanup: () => (owner ? load() : cleanup()),
   };
   endScope = () => controller.bind(null);
   return controller;

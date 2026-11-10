@@ -28,6 +28,66 @@ test('Push同意OFFはPushだけを止めメール同意OFFはメールだけを
   assert.equal(c.state().values!.kinds.renewal.email, false);
 });
 import { notificationSettings } from './notifications-fixtures.ts';
+for (const channel of ['email', 'push'] as const) {
+  for (const change of [
+    'other_off',
+    'shrink',
+    'in_app',
+    'expand',
+    'new_consent',
+  ] as const) {
+    test(`未準備の${channel}で${change}だけを判定する`, async () => {
+      const page = notificationSettings();
+      page.preferences.email_opt_in = true;
+      page.preferences.push_opt_in = true;
+      page.preferences.kinds.renewal = {
+        in_app: true,
+        email: true,
+        push: true,
+      };
+      if (change === 'new_consent') {
+        page.preferences[`${channel}_opt_in`] = false;
+        page.preferences.kinds.renewal[channel] = false;
+      }
+      let writes = 0;
+      const c = createNotificationSettings(
+        {
+          settings: async () => page,
+          updateSettings: async (input) => {
+            writes++;
+            return { ...page, preferences: { ...input, version: 2 } };
+          },
+        },
+        async () => 't',
+        () => {},
+        () => {},
+      );
+      await c.load();
+      const kinds = structuredClone(page.preferences.kinds);
+      if (change === 'other_off')
+        c.edit({
+          [channel === 'email' ? 'push_opt_in' : 'email_opt_in']: false,
+        });
+      if (change === 'shrink') {
+        kinds.renewal[channel] = false;
+        c.edit({ kinds });
+      }
+      if (change === 'in_app') {
+        kinds.renewal.in_app = false;
+        c.edit({ kinds });
+      }
+      if (change === 'expand') {
+        kinds.pending_review[channel] = true;
+        c.edit({ kinds });
+      }
+      if (change === 'new_consent') c.edit({ [`${channel}_opt_in`]: true });
+      c.confirm(true);
+      await c.save();
+      assert.equal(writes, ['expand', 'new_consent'].includes(change) ? 0 : 1);
+      if (writes) assert.equal(c.state().values![`${channel}_opt_in`], true);
+    });
+  }
+}
 test('email consent can be withdrawn with all email kinds after sender readiness is lost', async () => {
   const page = notificationSettings();
   page.email.reason = 'sender_unavailable';

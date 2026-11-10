@@ -76,6 +76,90 @@ export async function runPushProbe({
     );
     await js('window.browserTest.pushLogout()');
     await wait('window.browserTest.pushActive===false');
+    for (const permission of ['denied', 'default']) {
+      await visit('push', width);
+      await click(
+        'document.querySelector(\'a[href="/settings/notifications"]\')',
+      );
+      await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+      await click(button('この端末でPush通知を有効にする'));
+      await wait(button('この端末の通知を許可する') + '!==undefined');
+      await click(button('この端末の通知を許可する'));
+      await wait('window.browserTest.pushActive===true');
+      await js(
+        'window.browserTest.pushSetPermission(' +
+          JSON.stringify(permission) +
+          ')',
+      );
+      await wait(
+        'document.body.textContent.includes("通知が拒否されています")',
+      );
+      assert.equal(await js('return window.browserTest.pushActive'), false);
+      assert.equal(
+        await js(
+          'return window.browserTest.pushCalls.filter(x=>x==="permission").length',
+        ),
+        1,
+      );
+      await layout();
+    }
+    await visit('push-expired', width);
+    await click(
+      'document.querySelector(\'a[href="/settings/notifications"]\')',
+    );
+    await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait('document.body.textContent.includes("受信確認中です")');
+    await js('window.browserTest.pushExpire()');
+    await click(button('端末一覧を再取得'));
+    await wait(
+      'document.body.textContent.includes("受信確認の期限が切れました")',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.pushCalls.filter(x=>x==="register").length',
+      ),
+      1,
+    );
+    await screenshot('push-expired-' + width);
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait(
+      'window.browserTest.pushCalls.filter(x=>x==="register").length===2',
+    );
+    await layout();
+    for (const mode of ['push-sdk-retry', 'push-sdk-reload']) {
+      await visit(mode, width);
+      await click(
+        'document.querySelector(\'a[href="/settings/notifications"]\')',
+      );
+      await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+      await click(button('この端末でPush通知を有効にする'));
+      if (mode === 'push-sdk-retry') {
+        await wait(
+          'document.body.textContent.includes("端末設定を確認できませんでした")',
+        );
+        await click(button('端末一覧を再取得'));
+        await click(button('この端末でPush通知を有効にする'));
+        await wait(button('この端末の通知を許可する') + '!==undefined');
+      } else {
+        await wait(
+          'document.body.textContent.includes("ページを再読み込みしてから操作してください")',
+        );
+        assert.equal(
+          await js(
+            'return ' +
+              button('この端末でPush通知を有効にする') +
+              '===undefined',
+          ),
+          true,
+        );
+      }
+      await layout();
+    }
     await visit('push-late', width);
     await click(
       'document.querySelector(\'a[href="/settings/notifications"]\')',

@@ -20,7 +20,10 @@
   trace.pushCalls = [];
   trace.pushActive = false;
   let receive: (data: unknown) => void = () => {};
-  let deviceState: 'pending' | 'active' | 'disabled' | null = null;
+  let deviceState: 'pending' | 'active' | 'disabled' | 'expired' | null = null;
+  let nativePermission: NotificationPermission = 'granted';
+  let clock = Date.now(),
+    preparations = 0;
   let finish: () => void = () => {};
   let subscriptions = 0;
   const device = () => ({
@@ -35,8 +38,10 @@
       cycrio_challenge_secret: secret,
     });
   const controller = createPushController({
+    now: () => clock,
     storage: localStorage,
     sdk: {
+      currentPermission: () => nativePermission,
       availability: () =>
         mode === 'push-home'
           ? 'home_screen'
@@ -45,6 +50,9 @@
             : 'supported',
       prepare: async () => {
         trace.pushCalls!.push('prepare');
+        if (mode === 'push-sdk-retry' && ++preparations === 1)
+          throw Error('sdk unavailable');
+        if (mode === 'push-sdk-reload') throw Error('reload');
       },
       permission: async () => {
         trace.pushCalls!.push('permission');
@@ -78,11 +86,12 @@
       ) {
         trace.pushCalls!.push('register');
         deviceState = 'pending';
-        if (mode !== 'push-late') emit();
+        if (!['push-late', 'push-expired'].includes(mode)) emit();
         return Response.json({
           device_id: deviceID,
           challenge_id: challenge,
           state: 'pending',
+          expires_at: new Date(clock + 300000).toISOString(),
         });
       }
       if (path === '/synthetic-push/v1/push-devices/confirm') {
@@ -144,6 +153,14 @@
   trace.pushFinishConfirm = () => finish();
   trace.pushLogout = () => controller.bind(null);
   trace.pushRefreshToken = () => controller.bind(app, async () => 'new-token');
+  trace.pushSetPermission = async (permission) => {
+    nativePermission = permission;
+    await controller.synchronize();
+  };
+  trace.pushExpire = () => {
+    clock += 300000;
+    deviceState = 'expired';
+  };
   trace.pushToggleSettings = () => {
     shown = !shown;
   };

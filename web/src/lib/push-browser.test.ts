@@ -1,6 +1,39 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPushBrowser } from './push-browser.ts';
+import { createPushBrowser, PushSDKLoadError } from './push-browser.ts';
+test('native permission読取はSDKも許可要求も実行しない', () => {
+  const b = createPushBrowser({
+    window: { Notification: { permission: 'denied' } } as any,
+    document: {} as Document,
+    load: async () => {
+      throw Error('読込禁止');
+    },
+  });
+  assert.equal(b.currentPermission(), 'denied');
+});
+test('SDK未読込の確定失敗は再試行し初期化失敗はreloadを要求する', async () => {
+  let loads = 0,
+    inits = 0;
+  const b = createPushBrowser({
+    window: {} as Window,
+    document: {} as Document,
+    load: async () => {
+      loads++;
+      if (loads === 1) throw new PushSDKLoadError('sdk unavailable');
+      return {
+        init: async () => {
+          inits++;
+          throw Error('init uncertain');
+        },
+      } as any;
+    },
+  });
+  await assert.rejects(b.prepare('a'), /sdk unavailable/);
+  await assert.rejects(b.prepare('a'), /reload/);
+  await assert.rejects(b.prepare('a'), /reload/);
+  assert.equal(loads, 2);
+  assert.equal(inits, 1);
+});
 test('SDK準備は本人操作まで0回でApp IDごとに一度・自動promptを無効化する', async () => {
   let loads = 0,
     permissions = 0;
@@ -56,6 +89,59 @@ test('SDK準備は本人操作まで0回でApp IDごとに一度・自動prompt�
   assert.deepEqual(received, { cycrio_challenge_id: 'challenge' });
   await browser.permission();
   assert.equal(permissions, 1);
+});
+test('script読込タイムアウト後の遅着は初期化せず再読込を要求する', async () => {
+  let timeout!: () => void;
+  const scripts: any[] = [];
+  const window: any = {
+    setTimeout: (fn: () => void) => {
+      timeout = fn;
+      return 1;
+    },
+    clearTimeout: () => {},
+  };
+  const document: any = {
+    createElement: () => ({ remove() {} }),
+    head: { append: (script: any) => scripts.push(script) },
+  };
+  const b = createPushBrowser({ window, document });
+  const first = b.prepare('a');
+  timeout();
+  await assert.rejects(first, /reload/);
+  let inits = 0;
+  window.OneSignalDeferred[0]({
+    init: async () => {
+      inits++;
+    },
+  });
+  await assert.rejects(b.prepare('a'), /reload/);
+  assert.equal(inits, 0);
+  assert.equal(scripts.length, 1);
+});
+test('scriptの確定した通信エラー後だけ新しいscriptを挿入する', async () => {
+  const scripts: any[] = [];
+  const window: any = { setTimeout: () => 1, clearTimeout: () => {} };
+  const document: any = {
+    createElement: () => ({ remove() {} }),
+    head: { append: (script: any) => scripts.push(script) },
+  };
+  const b = createPushBrowser({ window, document });
+  const first = b.prepare('a');
+  scripts[0].onerror();
+  await assert.rejects(first, /sdk unavailable/);
+  const second = b.prepare('a');
+  let inits = 0;
+  const sdk: any = {
+    init: async () => {
+      inits++;
+    },
+    Notifications: { addEventListener: () => {} },
+  };
+  window.OneSignalDeferred[0](sdk);
+  window.OneSignalDeferred[1](sdk);
+  await second;
+  assert.equal(inits, 1);
+  assert.equal(scripts.length, 2);
 });
 test('iPhoneのホーム画面追加と非対応をSDKなしで案内する', () => {
   let loads = 0;

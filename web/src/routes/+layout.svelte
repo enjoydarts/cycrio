@@ -118,10 +118,16 @@
         void pushController?.synchronize();
     };
     const retryPushCleanup = () => {
-      void pushController?.retryCleanup();
+      void pushController?.synchronize();
+    };
+    const resumePush = () => {
+      if (document.visibilityState === 'visible')
+        void pushController?.synchronize();
     };
     window.addEventListener('storage', storageChanged);
     window.addEventListener('online', retryPushCleanup);
+    window.addEventListener('focus', resumePush);
+    document.addEventListener('visibilitychange', resumePush);
     controller = createAuthController(
       api,
       page.url.pathname === '/sso-callback' ? 'callback' : 'home',
@@ -149,6 +155,8 @@
       themeController?.dispose();
       window.removeEventListener('storage', storageChanged);
       window.removeEventListener('online', retryPushCleanup);
+      window.removeEventListener('focus', resumePush);
+      document.removeEventListener('visibilitychange', resumePush);
     };
   });
 </script>

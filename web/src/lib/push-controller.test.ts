@@ -75,6 +75,7 @@ function fixture(shared?: PushStorage) {
     },
   };
   const sdk = {
+    currentPermission: (): NotificationPermission => 'granted',
     availability: () => 'supported' as const,
     prepare: async () => {
       calls.push('prepare');
@@ -122,6 +123,191 @@ function fixture(shared?: PushStorage) {
   };
 }
 const flush = () => new Promise((r) => setTimeout(r, 15));
+test('初回defaultは解除やSDK起動を行わない', async () => {
+  const f = fixture();
+  f.sdk.currentPermission = () => 'default';
+  await f.c.load();
+  await f.c.synchronize();
+  assert.equal(f.c.state().status, 'idle');
+  assert.deepEqual(f.calls, []);
+});
+test('一覧取得に失敗しても許可取消の解除証明を停止待ちとして保持する', async () => {
+  const f = fixture();
+  f.storage.setItem(
+    'cycrio.push.receipt.v1.' + challenge,
+    JSON.stringify({
+      owner: a,
+      operation: challenge,
+      device_id: b,
+      revocation_token: secret,
+      stop: false,
+    }),
+  );
+  f.sdk.currentPermission = () => 'denied';
+  f.api.list = async () => {
+    throw Error('offline');
+  };
+  f.failRevoke = true;
+  await f.c.load();
+  assert.equal(f.c.state().cleanupPending, true);
+  assert.ok(
+    f.storage
+      .getItem('cycrio.push.receipt.v1.' + challenge)
+      ?.includes('"stop":true'),
+  );
+  assert.equal(f.c.state().status, 'denied');
+});
+test('許可取消をSDKなしで本人の現在端末だけへ反映し解除失敗を再試行する', async () => {
+  const f = fixture();
+  f.storage.setItem(
+    'cycrio.push.receipt.v1.' + challenge,
+    JSON.stringify({
+      owner: a,
+      operation: challenge,
+      device_id: b,
+      revocation_token: secret,
+      stop: false,
+    }),
+  );
+  const other = {
+    id: challenge,
+    state: 'active' as const,
+    created_at: '2026-11-10T00:00:00Z',
+    updated_at: '2026-11-10T00:00:00Z',
+  };
+  f.api.list = async () => ({
+    app_id: a,
+    available: true,
+    reason: '',
+    devices: [{ ...other, id: b }, other],
+  });
+  f.sdk.currentPermission = () => 'denied';
+  f.failRevoke = true;
+  await f.c.load();
+  assert.equal(f.c.state().status, 'denied');
+  assert.equal(f.c.state().cleanupPending, true);
+  assert.deepEqual(f.calls, ['revoke']);
+  assert.ok(
+    f.storage
+      .getItem('cycrio.push.receipt.v1.' + challenge)
+      ?.includes('"stop":true'),
+  );
+  f.failRevoke = false;
+  await f.c.load();
+  assert.equal(f.c.state().cleanupPending, false);
+  assert.equal(
+    f.c.state().page?.devices.find((d) => d.id === challenge)?.state,
+    'active',
+  );
+  assert.deepEqual(f.calls, ['revoke', 'revoke']);
+});
+test('3分後の受信証明を5分期限内に確認する', async () => {
+  const f = fixture();
+  await f.c.load();
+  await f.c.prepare();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+  });
+  await f.c.allow();
+  f.clock = 180000;
+  f.emit();
+  await flush();
+  assert.ok(f.calls.includes('confirm'));
+});
+for (const permission of ['denied', 'default'] as const)
+  test(`復帰時の${permission}は現在端末を停止して一覧へ反映する`, async () => {
+    const f = fixture();
+    await f.c.load();
+    await f.c.prepare();
+    f.registration.resolve({
+      device_id: b,
+      challenge_id: challenge,
+      state: 'pending',
+      expires_at: new Date(300000).toISOString(),
+    });
+    await f.c.allow();
+    f.emit();
+    await flush();
+    f.confirmation.resolve({
+      device: { id: b, state: 'active' },
+      revocation_token: await deriveRevocationToken(secret),
+    });
+    await flush();
+    f.sdk.currentPermission = () => permission;
+    await f.c.synchronize();
+    assert.equal(f.active, false);
+    assert.equal(f.c.state().status, 'denied');
+    assert.ok(f.c.state().page?.devices.every((d) => d.state !== 'active'));
+  });
+test('古い一覧読取は所有者切替後の新しい端末を許可取消で停止しない', async () => {
+  const f = fixture();
+  const pending = deferred<Awaited<ReturnType<typeof f.api.list>>>();
+  f.api.list = () => pending.promise;
+  f.sdk.currentPermission = () => 'denied';
+  const old = f.c.load();
+  await flush();
+  await f.c.bind(b, f.token);
+  f.storage.setItem(
+    'cycrio.push.receipt.v1.' + challenge,
+    JSON.stringify({
+      owner: b,
+      operation: challenge,
+      device_id: b,
+      revocation_token: secret,
+      stop: false,
+    }),
+  );
+  pending.resolve({ app_id: a, available: true, reason: '', devices: [] });
+  await old;
+  assert.equal(f.calls.includes('revoke'), false);
+});
+test('確認中の許可取消は遅い確認応答で復活しない', async () => {
+  const f = fixture();
+  await f.c.load();
+  await f.c.prepare();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+  });
+  await f.c.allow();
+  f.emit();
+  await flush();
+  f.sdk.currentPermission = () => 'denied';
+  await f.c.load();
+  f.confirmation.resolve({
+    device: { id: b, state: 'active' },
+    revocation_token: await deriveRevocationToken(secret),
+  });
+  await flush();
+  assert.equal(f.active, false);
+  assert.equal(f.c.state().status, 'denied');
+});
+test('受信期限後の再取得は期限切れを表示し明示準備だけを再開する', async () => {
+  const f = fixture();
+  await f.c.load();
+  await f.c.prepare();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+  });
+  await f.c.allow();
+  f.clock = 300000;
+  await f.c.load();
+  assert.equal(f.c.state().status, 'expired');
+  f.emit();
+  await flush();
+  assert.equal(f.calls.filter((c) => c === 'register').length, 1);
+  assert.equal(f.calls.includes('confirm'), false);
+  await f.c.prepare();
+  assert.equal(f.c.state().status, 'permission_ready');
+});
 test('表示と通常token更新ではSDKに触れず本人の準備・許可を分ける', async () => {
   const f = fixture();
   await f.c.load();
@@ -151,6 +337,7 @@ for (const early of [true, false])
       device_id: b,
       challenge_id: challenge,
       state: 'pending',
+      expires_at: new Date(300000).toISOString(),
     });
     await run;
     if (!early) f.emit();
@@ -180,6 +367,7 @@ test('確認中logoutの先行解除と遅着確認の再解除で幽霊端末�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();
@@ -207,6 +395,7 @@ test('別タブの所有者変更と古い通知は新所有者の記録を上�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   await flush();
@@ -234,6 +423,7 @@ test('旧タブtokenが有効でも遅着登録応答から同ownerの新世代a
     device_id: b,
     challenge_id: a,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await nextRun;
   next.emit({ cycrio_challenge_id: a, cycrio_challenge_secret: secret });
@@ -249,6 +439,7 @@ test('旧タブtokenが有効でも遅着登録応答から同ownerの新世代a
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await oldRun;
   assert.equal(next.active, true);
@@ -274,6 +465,7 @@ test('購読IDの一時失敗は未送信なので一覧再取得後に本人が
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();
@@ -293,7 +485,12 @@ for (const responseLost of [true, false])
     f.api.register = async () => {
       f.calls.push('register');
       if (responseLost) throw Error('registration response lost');
-      return { device_id: b, challenge_id: challenge, state: 'unknown' };
+      return {
+        device_id: b,
+        challenge_id: challenge,
+        state: 'unknown',
+        expires_at: new Date(300000).toISOString(),
+      };
     };
     await f.c.load();
     await f.c.prepare();
@@ -315,6 +512,7 @@ test('解除失敗は残し新しい有効化より前に再試行する', async
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();
@@ -337,12 +535,13 @@ test('他challenge・期限切れ通知は確認せず設定部品unmountでも�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit({ cycrio_challenge_id: a, cycrio_challenge_secret: secret });
   await flush();
   assert.equal(f.calls.includes('confirm'), false);
-  f.clock = 120001;
+  f.clock = 300000;
   f.emit();
   await flush();
   assert.equal(f.calls.includes('confirm'), false);
@@ -375,6 +574,7 @@ test('確認応答喪失はGETで有効状態を照合し登録や確認POSTを�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();
@@ -410,6 +610,7 @@ test('Push APIで確定した利用拒否も解除capabilityで現在端末を�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();
@@ -436,6 +637,7 @@ test('確認成功後の重複SDKイベントは再確認せずサーバー停�
     device_id: b,
     challenge_id: challenge,
     state: 'pending',
+    expires_at: new Date(300000).toISOString(),
   });
   await run;
   f.emit();

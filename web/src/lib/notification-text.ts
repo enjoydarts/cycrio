@@ -55,7 +55,7 @@ export function deliveryReason(reason: string) {
     unknown_result: '受付結果を確認できません。自動で再送しません。',
     environment_disabled: 'この環境ではPush通知を利用できません。',
     not_configured: 'Push送信サービスの準備ができていません。',
-    no_active_device: '有効な通知端末がありません。',
+    no_active_devices: '有効な通知端末がありません。',
   };
   return reasons[reason] ?? '通知の状態を確認してください。';
 }

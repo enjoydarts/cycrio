@@ -1,10 +1,13 @@
 export type PushBrowser = {
+  currentPermission: () => NotificationPermission | 'unsupported';
   availability: () => 'supported' | 'unsupported' | 'home_screen';
   prepare: (appId: string) => Promise<void>;
   permission: () => Promise<NotificationPermission>;
   subscription: () => Promise<string>;
   listen: (fn: (data: unknown) => void) => () => void;
 };
+// 読込が実行前に確定失敗した場合だけ再試行できる。
+export class PushSDKLoadError extends Error {}
 export type OneSignalSDK = {
   init: (options: Record<string, unknown>) => Promise<void>;
   Notifications: {
@@ -40,15 +43,37 @@ export function createPushBrowser(env: {
     (() =>
       new Promise<OneSignalSDK>((resolve, reject) => {
         const w = env.window as PushWindow;
+        let settled = false;
+        const timer = env.window.setTimeout(() => {
+          settled = true;
+          reject(Error('reload'));
+        }, 20000);
         w.OneSignalDeferred ??= [] as ((sdk: OneSignalSDK) => void)[];
-        w.OneSignalDeferred.push(resolve);
+        w.OneSignalDeferred.push((loaded) => {
+          if (settled) return;
+          settled = true;
+          env.window.clearTimeout(timer);
+          resolve(loaded);
+        });
         const script = env.document.createElement('script');
         script.src = '/vendor/onesignal/160800/OneSignalSDK.page.es6.js';
         script.defer = true;
-        script.onerror = () => reject(Error('sdk unavailable'));
+        script.onerror = () => {
+          if (settled) return;
+          settled = true;
+          env.window.clearTimeout(timer);
+          script.remove();
+          reject(new PushSDKLoadError('sdk unavailable'));
+        };
         env.document.head.append(script);
       }));
   return {
+    currentPermission() {
+      return (
+        (env.window as Window & { Notification?: typeof Notification })
+          .Notification?.permission ?? 'unsupported'
+      );
+    },
     availability() {
       const w = env.window;
       const ios =
@@ -93,7 +118,14 @@ export function createPushBrowser(env: {
               listeners.forEach((fn) => fn(data));
             }
           });
-      })();
+      })().catch((error) => {
+        if (!sdk && error instanceof PushSDKLoadError) {
+          prepared = undefined;
+          app = undefined;
+          throw error;
+        }
+        throw Error('reload');
+      });
       return prepared;
     },
     async permission() {

@@ -124,7 +124,7 @@ func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner str
 		page.Available = true
 		page.AppID = c.AppID
 	}
-	rows, e := tx.Query(ctx, `SELECT d.id,d.state,d.created_at,d.updated_at,d.app_id::text,EXISTS(SELECT 1 FROM credential_versions v WHERE v.id=d.credential_id AND v.state IN ('active','superseded')) FROM push_devices d WHERE d.owner_id=$1 ORDER BY d.created_at,d.id`, owner)
+	rows, e := tx.Query(ctx, `SELECT d.id,CASE WHEN d.state='pending' AND NOT EXISTS(SELECT 1 FROM push_device_challenges c WHERE c.device_id=d.id AND c.generation=d.generation AND c.state='pending' AND c.expires_at>$2 AND c.attempts<5) THEN 'expired' ELSE d.state END,d.created_at,d.updated_at,d.app_id::text,EXISTS(SELECT 1 FROM credential_versions v WHERE v.id=d.credential_id AND v.state IN ('active','superseded')) FROM push_devices d WHERE d.owner_id=$1 ORDER BY d.created_at,d.id`, owner, r.now())
 	if e != nil {
 		return page, pushError(e)
 	}
@@ -163,8 +163,10 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	// 一度通信へ進めた依頼は結果不明でも再送しない。
 	var previousApp string
 	var previousHash []byte
-	e = tx.QueryRow(ctx, `SELECT q.device_id,q.challenge_id,q.state,d.app_id,d.subscription_hash FROM push_device_requests q JOIN push_devices d ON d.id=q.device_id WHERE q.owner_id=$1 AND q.request_id=$2`, owner, in.RequestID).Scan(&reg.DeviceID, &reg.ChallengeID, &reg.State, &previousApp, &previousHash)
+	var expires time.Time
+	e = tx.QueryRow(ctx, `SELECT q.device_id,q.challenge_id,q.state,d.app_id,d.subscription_hash,c.expires_at FROM push_device_requests q JOIN push_devices d ON d.id=q.device_id JOIN push_device_challenges c ON c.id=q.challenge_id WHERE q.owner_id=$1 AND q.request_id=$2`, owner, in.RequestID).Scan(&reg.DeviceID, &reg.ChallengeID, &reg.State, &previousApp, &previousHash, &expires)
 	if e == nil {
+		reg.ExpiresAt = expires.UTC().Format(time.RFC3339Nano)
 		expected := sha256.Sum256([]byte(previousApp + ":" + in.SubscriptionID))
 		if subtle.ConstantTimeCompare(previousHash, expected[:]) != 1 {
 			return pushnotifications.Registration{}, pushnotifications.ErrConflict
@@ -246,10 +248,11 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	if e != nil {
 		return reg, pushError(e)
 	}
-	_, e = tx.Exec(ctx, `INSERT INTO push_device_challenges(id,owner_id,device_id,generation,credential_id,secret_hash,state,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8)`, reg.ChallengeID, owner, reg.DeviceID, generation, credential.ID, pushSecretHash("push-proof/v1", owner, reg.DeviceID, c.AppID, generation, secret), now.Add(5*time.Minute), now)
+	e = tx.QueryRow(ctx, `INSERT INTO push_device_challenges(id,owner_id,device_id,generation,credential_id,secret_hash,state,expires_at,created_at) VALUES($1,$2,$3,$4,$5,$6,'pending',$7,$8) RETURNING expires_at`, reg.ChallengeID, owner, reg.DeviceID, generation, credential.ID, pushSecretHash("push-proof/v1", owner, reg.DeviceID, c.AppID, generation, secret), now.Add(5*time.Minute), now).Scan(&expires)
 	if e != nil {
 		return reg, pushError(e)
 	}
+	reg.ExpiresAt = expires.UTC().Format(time.RFC3339Nano)
 	idempotency := uuid.NewString()
 	_, e = tx.Exec(ctx, `INSERT INTO push_device_requests(id,owner_id,request_id,device_id,challenge_id,state,created_at) VALUES($1,$2,$3,$4,$5,'unknown',$6)`, idempotency, owner, in.RequestID, reg.DeviceID, reg.ChallengeID, now)
 	if e != nil {

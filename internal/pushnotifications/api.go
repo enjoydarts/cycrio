@@ -32,6 +32,7 @@ type Registration struct {
 	DeviceID    string `json:"device_id"`
 	ChallengeID string `json:"challenge_id"`
 	State       string `json:"state"`
+	ExpiresAt   string `json:"expires_at"`
 }
 type ConfirmationInput struct {
 	ChallengeID string `json:"challenge_id"`

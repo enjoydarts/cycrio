@@ -41,7 +41,7 @@ func (f *pushFixture) PushSettings(_ context.Context, owner string) (pushnotific
 func (f *pushFixture) RegisterPushDevice(_ context.Context, owner string, _ pushnotifications.RegistrationInput, _ pushnotifications.Sender) (pushnotifications.Registration, error) {
 	f.calls++
 	f.owner = owner
-	return pushnotifications.Registration{State: "pending"}, nil
+	return pushnotifications.Registration{DeviceID: subscriptionUUID, ChallengeID: subscriptionUUID, State: "pending", ExpiresAt: "2026-11-10T00:05:00.123456Z"}, nil
 }
 func (f *pushFixture) ConfirmPushDevice(_ context.Context, owner string, _ pushnotifications.ConfirmationInput) (pushnotifications.Confirmed, error) {
 	f.calls++
@@ -81,6 +81,12 @@ func TestPushHTTPAuthorizationAndStrictBodies(t *testing.T) {
 			w := credentialRequest(h, tc.method, tc.path, tc.body, "Bearer valid", "http://localhost:3100", "application/json")
 			if w.Code != tc.status || f.owner != subscriptionUUID {
 				t.Fatal(tc, w.Code, w.Body.String())
+			}
+			if tc.method == "POST" && tc.path == "/v1/push-devices" {
+				var dto map[string]any
+				if err := json.Unmarshal(w.Body.Bytes(), &dto); err != nil || len(dto) != 4 || dto["expires_at"] != "2026-11-10T00:05:00.123456Z" {
+					t.Fatal("登録期限の公開契約", dto, err)
+				}
 			}
 			w = credentialRequest(h, tc.method, tc.path, tc.body, "", "http://localhost:3100", "application/json")
 			if w.Code != 401 {

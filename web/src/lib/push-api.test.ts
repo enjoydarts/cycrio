@@ -6,6 +6,52 @@ import {
   deriveRevocationToken,
 } from './push-api.ts';
 const id = '11111111-1111-4111-8111-111111111111';
+test('登録期限と期限切れ端末を厳密な公開契約として受け取る', async () => {
+  const expires_at = '2026-11-10T00:05:00.123456Z';
+  const data = {
+    device_id: id,
+    challenge_id: id,
+    state: 'pending',
+    expires_at,
+  };
+  const api = createPushAPI('', async () => Response.json(data));
+  assert.equal(
+    (
+      await api.register(
+        { subscription_id: id, request_id: id },
+        async () => 't',
+      )
+    ).expires_at,
+    expires_at,
+  );
+  assert.equal(
+    parsePushPage({
+      app_id: id,
+      available: true,
+      reason: '',
+      devices: [
+        {
+          id,
+          state: 'expired',
+          created_at: expires_at,
+          updated_at: expires_at,
+        },
+      ],
+    }).devices[0].state,
+    'expired',
+  );
+  for (const bad of [undefined, null, '', 'tomorrow']) {
+    const invalid = createPushAPI('', async () =>
+      Response.json({ ...data, expires_at: bad }),
+    );
+    await assert.rejects(
+      invalid.register(
+        { subscription_id: id, request_id: id },
+        async () => 't',
+      ),
+    );
+  }
+});
 test('端末一覧は公開契約と準備理由を厳密に検証する', () => {
   assert.equal(
     parsePushPage({ app_id: id, available: true, reason: '', devices: [] })
