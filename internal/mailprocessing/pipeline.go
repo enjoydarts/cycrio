@@ -13,6 +13,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailaccounts"
 	"github.com/enjoydarts/cycrio/internal/mailcontent"
 	"github.com/enjoydarts/cycrio/internal/mailsync"
+	"github.com/enjoydarts/cycrio/internal/notifications"
 	"github.com/enjoydarts/cycrio/internal/subscriptionprompts"
 	"io"
 	"time"
@@ -161,6 +162,12 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 	}
 	if !utf8.Valid(text) {
 		completion.ErrorCode = "invalid_response"
+		return nil
+	}
+	if notifications.IsGeneratedEmailText(text) {
+		label := "not_related"
+		completion.Classification = &label
+		completion.State = "not_related"
 		return nil
 	}
 	oversized := OversizedPrimaryInput(w, len(text))

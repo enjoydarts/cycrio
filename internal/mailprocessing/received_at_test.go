@@ -23,11 +23,14 @@ func (r receivedMessageReader) ReadMessage(context.Context, string, []byte, mail
 }
 
 func TestExecutePreservesOnlyServerReceivedDateAcrossOutcomes(t *testing.T) {
-	for _, kind := range []string{"related", "unrelated", "source_error", "ai_panic", "missing"} {
+	for _, kind := range []string{"related", "unrelated", "own_notification", "source_error", "ai_panic", "missing"} {
 		t.Run(kind, func(t *testing.T) {
 			repo, keys, lease := pipelineFixture(t)
 			received := time.Date(2025, 1, 1, 0, 30, 0, 0, time.FixedZone("JST", 9*3600))
 			text := []byte("synthetic transient mail body")
+			if kind == "own_notification" {
+				text = []byte("新しい確認待ちがあります\n\n解析後の通知作成時点で2件の新しい確認待ちがありました。Cycrioで現在の確認待ちを確認してください。")
+			}
 			reader := receivedMessageReader{message: mailcontent.Message{Text: text, ReceivedAt: &received}}
 			if kind == "missing" {
 				reader.message.ReceivedAt = nil
@@ -36,6 +39,9 @@ func TestExecutePreservesOnlyServerReceivedDateAcrossOutcomes(t *testing.T) {
 				reader.err = mailaccounts.AdapterError{Code: "unsupported_content"}
 			}
 			client := inference(func(_ context.Context, request ai.Request) (ai.Response, error) {
+				if kind == "own_notification" {
+					t.Fatal("自動通知をLLMへ送信した")
+				}
 				if kind == "ai_panic" {
 					panic("synthetic failure")
 				}
@@ -49,7 +55,7 @@ func TestExecutePreservesOnlyServerReceivedDateAcrossOutcomes(t *testing.T) {
 			if err := service.Execute(context.Background(), lease); err != nil {
 				t.Fatal(err)
 			}
-			want := map[string]string{"related": "succeeded", "unrelated": "not_related", "source_error": "failed", "ai_panic": "unknown", "missing": "succeeded"}[kind]
+			want := map[string]string{"related": "succeeded", "unrelated": "not_related", "own_notification": "not_related", "source_error": "failed", "ai_panic": "unknown", "missing": "succeeded"}[kind]
 			if repo.completion.State != want {
 				t.Fatalf("state=%s want=%s", repo.completion.State, want)
 			}

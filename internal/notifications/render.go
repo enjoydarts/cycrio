@@ -99,7 +99,7 @@ func RenderEmail(c Candidate) (EmailContent, error) {
 	default:
 		return EmailContent{}, ErrInvalid
 	}
-	text := title + "\n\n" + message
-	body := "<p>" + html.EscapeString(title) + "</p><p>" + strings.ReplaceAll(html.EscapeString(message), "\n", "<br>") + "</p>"
+	text := EmailNotice + "\n\n" + title + "\n\n" + message
+	body := "<p>" + html.EscapeString(EmailNotice) + "</p><p>" + html.EscapeString(title) + "</p><p>" + strings.ReplaceAll(html.EscapeString(message), "\n", "<br>") + "</p>"
 	return EmailContent{Subject: "Cycrio: " + title, Text: text, HTML: body}, nil
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/enjoydarts/cycrio/internal/mailcontent"
 )
 
 func TestAllNotificationKindsRenderFixedTemplatesAndStableIdentities(t *testing.T) {
@@ -32,6 +34,17 @@ func TestAllNotificationKindsRenderFixedTemplatesAndStableIdentities(t *testing.
 		content, e := RenderEmail(row)
 		if e != nil || !strings.HasPrefix(content.Subject, "Cycrio: ") || content.Text == "" || content.HTML == "" {
 			t.Fatal(row, content, e)
+		}
+		if !strings.HasPrefix(content.Text, "このメールはCycrioの登録情報に基づく自動通知です。") {
+			t.Fatal("自動通知の識別文がない", row.Kind)
+		}
+		plain, err := mailcontent.Normalize([]byte(content.HTML), "text/html", "utf-8", "", mailcontent.MaxTextBytes)
+		if err != nil || !IsGeneratedEmailText([]byte(content.Text)) || !IsGeneratedEmailText(plain) {
+			t.Fatal("自動通知を再取り込みで識別できない", row.Kind, err)
+		}
+		legacy := strings.TrimSpace(strings.TrimPrefix(content.Text, EmailNotice))
+		if !IsGeneratedEmailText([]byte(legacy)) {
+			t.Fatal("識別文のない旧通知を識別できない", row.Kind)
 		}
 		if row.Kind == PriceIncrease && (!strings.Contains(content.Text, "10 USD") || !strings.Contains(content.Text, "20 USD")) {
 			t.Fatal(content)
