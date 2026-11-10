@@ -93,7 +93,8 @@ function fixture(shared?: PushStorage) {
     },
   };
   const c = createPushController({ api, sdk, storage, now: () => clock });
-  c.bind(a, async () => 'token');
+  const token = async () => 'token';
+  c.bind(a, token);
   return {
     c,
     api,
@@ -102,6 +103,7 @@ function fixture(shared?: PushStorage) {
     storage,
     registration,
     confirmation,
+    token,
     emit: (
       data: unknown = {
         cycrio_challenge_id: challenge,
@@ -210,6 +212,99 @@ test('別タブの所有者変更と古い通知は新所有者の記録を上�
   await flush();
   assert.ok(!old.calls.includes('confirm'));
 });
+test('旧タブtokenが有効でも遅着登録応答から同ownerの新世代activeを停止しない', async () => {
+  const old = fixture();
+  let next: ReturnType<typeof fixture>;
+  old.api.disable = async (...args: any[]) => {
+    assert.equal(await args[1](), 'token');
+    old.calls.push('disable');
+    await next.api.disable();
+  };
+  await old.c.load();
+  await old.c.prepare();
+  const oldRun = old.c.allow();
+  await flush();
+  await old.c.bind(null);
+  next = fixture(old.storage);
+  await next.c.load();
+  await next.c.prepare();
+  const nextRun = next.c.allow();
+  await flush();
+  next.registration.resolve({
+    device_id: b,
+    challenge_id: a,
+    state: 'pending',
+  });
+  await nextRun;
+  next.emit({ cycrio_challenge_id: a, cycrio_challenge_secret: secret });
+  await flush();
+  next.confirmation.resolve({
+    device: { id: b, state: 'active' },
+    revocation_token: await deriveRevocationToken(secret),
+  });
+  await flush();
+  assert.equal(next.c.state().status, 'active');
+  assert.equal(await old.token(), 'token');
+  old.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+  });
+  await oldRun;
+  assert.equal(next.active, true);
+  assert.equal(old.calls.includes('disable'), false);
+});
+test('購読IDの一時失敗は未送信なので一覧再取得後に本人が再試行できる', async () => {
+  const f = fixture();
+  let subscriptions = 0;
+  f.sdk.subscription = async () => {
+    if (++subscriptions === 1) throw Error('subscription timeout');
+    return b;
+  };
+  await f.c.load();
+  await f.c.prepare();
+  await f.c.allow();
+  assert.equal(f.calls.includes('register'), false);
+  await f.c.load();
+  await f.c.prepare();
+  assert.equal(f.c.state().status, 'permission_ready');
+  const run = f.c.allow();
+  await flush();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+  });
+  await run;
+  f.emit();
+  await flush();
+  f.confirmation.resolve({
+    device: { id: b, state: 'active' },
+    revocation_token: await deriveRevocationToken(secret),
+  });
+  await flush();
+  assert.equal(f.c.state().status, 'active');
+  assert.equal(subscriptions, 2);
+  assert.equal(f.calls.filter((v) => v === 'register').length, 1);
+});
+for (const responseLost of [true, false])
+  test(`登録送信後の${responseLost ? '応答喪失' : 'unknown応答'}は一覧再取得後も重複登録しない`, async () => {
+    const f = fixture();
+    f.api.register = async () => {
+      f.calls.push('register');
+      if (responseLost) throw Error('registration response lost');
+      return { device_id: b, challenge_id: challenge, state: 'unknown' };
+    };
+    await f.c.load();
+    await f.c.prepare();
+    await f.c.allow();
+    assert.equal(f.c.state().status, responseLost ? 'uncertain' : 'waiting');
+    await f.c.load();
+    await f.c.prepare();
+    await f.c.allow();
+    assert.equal(f.calls.filter((v) => v === 'register').length, 1);
+    assert.equal(f.c.state().status, responseLost ? 'uncertain' : 'waiting');
+  });
 test('解除失敗は残し新しい有効化より前に再試行する', async () => {
   const f = fixture();
   await f.c.load();

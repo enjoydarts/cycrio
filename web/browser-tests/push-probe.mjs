@@ -24,6 +24,9 @@ export async function runPushProbe({
     await wait(
       'document.querySelector(\'section[aria-label="Push通知の端末設定"]\')!==null',
     );
+    await wait(
+      'document.querySelector(\'input[aria-label="本人の検証済みメールへ通知を送る"]\')!==null',
+    );
     assert.deepEqual(await js('return window.browserTest.pushCalls'), []);
     await click(
       'document.querySelector(\'input[aria-label="本人の検証済みメールへ通知を送る"]\')',
@@ -107,6 +110,37 @@ export async function runPushProbe({
       );
       await layout();
     }
+    await visit('push-subscription-retry', width);
+    await click(
+      'document.querySelector(\'a[href="/settings/notifications"]\')',
+    );
+    await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait(
+      'document.body.textContent.includes("端末設定を確認できませんでした")',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.pushCalls.filter(x=>x==="register").length',
+      ),
+      0,
+    );
+    await click(button('端末一覧を再取得'));
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait(
+      'document.body.textContent.includes("この端末のPush通知は有効です")',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.pushCalls.filter(x=>x==="register").length',
+      ),
+      1,
+    );
+    await layout();
     cases.push({ width, status: 'pass' });
   }
   return { name: 'push', cases };

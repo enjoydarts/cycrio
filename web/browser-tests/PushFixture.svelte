@@ -22,6 +22,7 @@
   let receive: (data: unknown) => void = () => {};
   let deviceState: 'pending' | 'active' | 'disabled' | null = null;
   let finish: () => void = () => {};
+  let subscriptions = 0;
   const device = () => ({
     id: deviceID,
     state: deviceState,
@@ -49,7 +50,11 @@
         trace.pushCalls!.push('permission');
         return mode === 'push-denied' ? 'denied' : 'granted';
       },
-      subscription: async () => deviceID,
+      subscription: async () => {
+        if (mode === 'push-subscription-retry' && ++subscriptions === 1)
+          throw Error('合成の購読取得失敗');
+        return deviceID;
+      },
       listen: (cb) => {
         receive = cb;
         return () => {};

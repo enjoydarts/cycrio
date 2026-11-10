@@ -363,7 +363,7 @@ export function createPushController({
       if (
         !owner ||
         view.busy ||
-        view.status === 'uncertain' ||
+        ['uncertain', 'waiting'].includes(view.status) ||
         sharedOwner()?.owner !== owner ||
         sharedOwner()?.epoch !== epoch
       )
@@ -420,6 +420,7 @@ export function createPushController({
       if (!current(a)) return;
       attempt = a;
       publish({ status: 'registering', busy: true });
+      let registrationStarted = false;
       try {
         // この呼出しより前にawaitを置かず、明示クリックのuser activationを使う。
         const permission = await sdk.permission();
@@ -433,17 +434,14 @@ export function createPushController({
         }
         const subscription_id = await sdk.subscription();
         if (!current(a)) return;
+        registrationStarted = true;
         const reg = await api.register(
           { subscription_id, request_id: a.operation },
           a.token,
         );
         a.registration = reg;
         if (!current(a)) {
-          try {
-            await api.disable(reg.device_id, a.token);
-          } catch {
-            /* 未確認端末は通常通知対象外。 */
-          }
+          // 証明のない旧登録は未確認のまま失効させ、再利用された端末IDを停止しない。
           return;
         }
         publish({
@@ -456,7 +454,11 @@ export function createPushController({
             void receive(buffered.data);
       } catch (error) {
         if (current(a)) await rejectAccess(error);
-        if (current(a)) publish({ status: 'uncertain', busy: false });
+        if (current(a))
+          publish({
+            status: registrationStarted ? 'uncertain' : 'error',
+            busy: false,
+          });
       }
     },
     async disable(id: string) {
