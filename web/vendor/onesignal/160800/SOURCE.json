@@ -1,0 +1,19 @@
+{
+  "version": "160800",
+  "release": "https://github.com/OneSignal/OneSignal-Website-SDK/releases/tag/160800",
+  "published_at": "2026-11-10T00:29:20Z",
+  "license": "https://raw.githubusercontent.com/OneSignal/OneSignal-Website-SDK/160800/LICENSE",
+  "artifacts": [
+    {
+      "file": "OneSignalSDK.page.es6.js",
+      "source": "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.es6.js",
+      "sha256": "0292910a0838f663f308d769d79ee22b74457c8c5b89d26147a64712f06a3e82"
+    },
+    {
+      "file": "OneSignalSDK.sw.js",
+      "source": "https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.sw.js",
+      "sha256": "d49a931f9d170f5c2bdf477c2b3d431bcf4d551c82eca66921e2c506888d91bf"
+    }
+  ],
+  "distribution": "CDN URLは原本の取得元を示す。ビルド時は固定した原本のハッシュを検証してローカルの版固定パスへ生成し、CDNから取得しない。公開資産からは独立したsourceMappingURLコメント行だけを除去する。"
+}

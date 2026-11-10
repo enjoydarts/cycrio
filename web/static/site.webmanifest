@@ -2,8 +2,10 @@
   "name": "Cycrio",
   "short_name": "Cycrio",
   "lang": "ja",
+  "id": "/",
+  "scope": "/",
   "start_url": "/",
-  "display": "browser",
+  "display": "standalone",
   "background_color": "#FFFFFF",
   "theme_color": "#FFFFFF",
   "icons": [

@@ -24,6 +24,8 @@ bin/
 coverage/
 artifacts/browser/
 web/static/service-logos/
+/web/static/vendor/onesignal/
+/web/static/OneSignalSDKWorker.js
 web/src/lib/generated/service-logo-index.ts
 *.test
 *.out

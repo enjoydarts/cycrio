@@ -6,3 +6,6 @@ package-lock.json
 static/service-logos/
 src/lib/generated/service-logo-index.ts
 static/brand/services/*.svg
+vendor/onesignal/
+static/vendor/onesignal/
+static/OneSignalSDKWorker.js
