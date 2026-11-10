@@ -37,7 +37,7 @@ func (r *NotificationRepository) notificationPushInput(ctx context.Context, tx p
 		return in, "preferences_disabled", nil
 	}
 	in.version = p.Version
-	candidates, err := currentNotificationCandidates(ctx, tx, owner, p, r.now())
+	candidates, err := currentNotificationCandidates(ctx, tx, owner, p, r.now(), facts)
 	if err != nil {
 		return in, "", err
 	}

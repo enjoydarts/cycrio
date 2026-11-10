@@ -25,7 +25,31 @@ func updateNotificationReviewChannels(ctx context.Context, tx pgx.Tx, owner stri
 	return notificationError(err)
 }
 
-// 完了runと元情報の一意制約で、再解析や設定切替による過去分の再送を防ぐ。
+type notificationReviewSource struct{ message, fingerprint string }
+
+// 一度のバッチ評価を件数・元情報固定・送信前判定で共有する。
+func currentReviewSourceGroups(ctx context.Context, tx pgx.Tx, owner string, messages []string) (map[notificationReviewSource][]string, error) {
+	groups := map[notificationReviewSource][]string{}
+	if len(messages) == 0 {
+		return groups, nil
+	}
+	rows, err := tx.Query(ctx, candidateMessagesCTE()+`SELECT message_id,notification_review_fingerprint(event),group_key::text FROM candidates`, owner, "", messages)
+	if err != nil {
+		return nil, notificationError(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var s notificationReviewSource
+		var group string
+		if err = rows.Scan(&s.message, &s.fingerprint, &group); err != nil {
+			return nil, notificationError(err)
+		}
+		groups[s] = append(groups[s], group)
+	}
+	return groups, notificationError(rows.Err())
+}
+
+// 各意味を最初の未処理完了runで消費し、元情報の初回チャネルを維持する。
 func observeNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, p notifications.Preferences, now time.Time) error {
 	if err := ensureNotificationReviewState(ctx, tx, owner); err != nil {
 		return err
@@ -36,6 +60,7 @@ func observeNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, p 
 		channels    notifications.Channels
 	}
 	runs := []run{}
+	runIDs := []string{}
 	rows, err := tx.Query(ctx, `SELECT r.id,r.account_id,coalesce(r.finished_at,r.created_at),
  coalesce(coalesce(r.finished_at,r.created_at)>=s.in_app_since,false),
  coalesce(coalesce(r.finished_at,r.created_at)>=s.email_since,false),
@@ -53,6 +78,57 @@ func observeNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, p 
 			return notificationError(err)
 		}
 		runs = append(runs, r)
+		runIDs = append(runIDs, r.id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return notificationError(err)
+	}
+	if len(runs) == 0 {
+		return nil
+	}
+	sources := map[string][]notificationReviewSource{}
+	messageSet := map[string]bool{}
+	messages := []string{}
+	rows, err = tx.Query(ctx, `SELECT i.run_id,i.message_id,notification_review_fingerprint(e.event) FROM mail_processing_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) e(event) WHERE i.owner_id=$1 AND i.run_id=ANY($2::uuid[]) AND i.state='succeeded'`, owner, runIDs)
+	if err != nil {
+		return notificationError(err)
+	}
+	for rows.Next() {
+		var id string
+		var s notificationReviewSource
+		if err = rows.Scan(&id, &s.message, &s.fingerprint); err != nil {
+			rows.Close()
+			return notificationError(err)
+		}
+		sources[id] = append(sources[id], s)
+		if !messageSet[s.message] {
+			messageSet[s.message] = true
+			messages = append(messages, s.message)
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return notificationError(err)
+	}
+	groups, err := currentReviewSourceGroups(ctx, tx, owner, messages)
+	if err != nil {
+		return err
+	}
+	seen := map[notificationReviewSource]bool{}
+	rows, err = tx.Query(ctx, `SELECT message_id,fingerprint FROM notification_review_seen WHERE owner_id=$1 AND message_id=ANY($2::uuid[])`, owner, messages)
+	if err != nil {
+		return notificationError(err)
+	}
+	for rows.Next() {
+		var s notificationReviewSource
+		if err = rows.Scan(&s.message, &s.fingerprint); err != nil {
+			rows.Close()
+			return notificationError(err)
+		}
+		seen[s] = true
 	}
 	err = rows.Err()
 	rows.Close()
@@ -60,61 +136,113 @@ func observeNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, p 
 		return notificationError(err)
 	}
 	for _, r := range runs {
-		// RegisterDueは現在明示承認を要求する。旧enabled設定は未処理待ちを意味しない。
-		// 登録・除外・予約済みの除去は、画面と共通のcandidateCTEへ委ねる。
-		var count int
-		err = tx.QueryRow(ctx, candidateCTE+`SELECT count(DISTINCT c.group_key) FROM candidates c JOIN mail_processing_items i ON i.owner_id=$1 AND i.id=c.result_id WHERE i.run_id=$3 AND NOT EXISTS(SELECT 1 FROM notification_review_seen s WHERE s.owner_id=$1 AND s.message_id=c.message_id AND s.fingerprint=notification_review_fingerprint(c.event))`, owner, "", r.id).Scan(&count)
-		if err != nil {
-			return notificationError(err)
+		candidateMessages, candidateFingerprints, allMessages, allFingerprints := []string{}, []string{}, []string{}, []string{}
+		countGroups := map[string]bool{}
+		for _, s := range sources[r.id] {
+			allMessages = append(allMessages, s.message)
+			allFingerprints = append(allFingerprints, s.fingerprint)
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			if len(groups[s]) == 0 {
+				continue
+			}
+			candidateMessages = append(candidateMessages, s.message)
+			candidateFingerprints = append(candidateFingerprints, s.fingerprint)
+			for _, group := range groups[s] {
+				countGroups[group] = true
+			}
 		}
+		// 現行RegisterDueは明示承認を要求し、旧enabledだけでは自動登録待ちにしない。
 		channels := p.Kinds[notifications.PendingReview]
 		r.channels.InApp = r.channels.InApp && channels.InApp
 		r.channels.Email = r.channels.Email && channels.Email && p.EmailOptIn
 		r.channels.Push = r.channels.Push && channels.Push && p.PushOptIn
-		if _, err = tx.Exec(ctx, `INSERT INTO notification_review_runs(owner_id,account_id,run_id,review_count,in_app,email,push,completed_at,processed_at,resolved_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::timestamptz,CASE WHEN NOT ($5 OR $6 OR $7) THEN $9::timestamptz END)`, owner, r.account, r.id, count, r.channels.InApp, r.channels.Email, r.channels.Push, r.completed, now); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO notification_review_runs(owner_id,account_id,run_id,review_count,in_app,email,push,completed_at,processed_at,resolved_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9::timestamptz,CASE WHEN NOT ($5 OR $6 OR $7) THEN $9::timestamptz END)`, owner, r.account, r.id, len(countGroups), r.channels.InApp, r.channels.Email, r.channels.Push, r.completed, now); err != nil {
 			return notificationError(err)
 		}
-		// 新規候補を固定してから、解決済みを含む現在の元情報を既知にする。
-		// 最新外の結果で先に既知化すると、初回poll前の再解析で新着が消える。
-		if _, err = tx.Exec(ctx, candidateCTE+`INSERT INTO notification_review_sources(owner_id,run_id,account_id,message_id,fingerprint) SELECT DISTINCT $1::uuid,$3::uuid,c.account_id,c.message_id,notification_review_fingerprint(c.event) FROM candidates c JOIN mail_processing_items i ON i.owner_id=$1 AND i.id=c.result_id WHERE i.run_id=$3 AND NOT EXISTS(SELECT 1 FROM notification_review_seen s WHERE s.owner_id=$1 AND s.message_id=c.message_id AND s.fingerprint=notification_review_fingerprint(c.event)) ON CONFLICT DO NOTHING`, owner, "", r.id); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO notification_review_seen(owner_id,account_id,message_id,fingerprint) SELECT $1,$2,source.message_id,source.fingerprint FROM unnest($3::uuid[],$4::text[]) source(message_id,fingerprint) ON CONFLICT DO NOTHING`, owner, r.account, allMessages, allFingerprints); err != nil {
 			return notificationError(err)
 		}
-		if _, err = tx.Exec(ctx, candidateCTE+`INSERT INTO notification_review_seen(owner_id,account_id,message_id,fingerprint) SELECT DISTINCT owner_id,account_id,message_id,notification_review_fingerprint(e.event) FROM current_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) e(event) WHERE i.run_id=$3 AND i.state='succeeded' ON CONFLICT DO NOTHING`, owner, "", r.id); err != nil {
-			return notificationError(err)
-		}
-		if _, err = tx.Exec(ctx, `DELETE FROM notification_review_pending WHERE owner_id=$1 AND run_id=$2`, owner, r.id); err != nil {
+		if _, err = tx.Exec(ctx, `INSERT INTO notification_review_sources(owner_id,run_id,account_id,message_id,fingerprint) SELECT $1,$2,$3,source.message_id,source.fingerprint FROM unnest($4::uuid[],$5::text[]) source(message_id,fingerprint) ON CONFLICT DO NOTHING`, owner, r.id, r.account, candidateMessages, candidateFingerprints); err != nil {
 			return notificationError(err)
 		}
 	}
-	return nil
+	_, err = tx.Exec(ctx, `DELETE FROM notification_review_pending WHERE owner_id=$1 AND run_id=ANY($2::uuid[])`, owner, runIDs)
+	return notificationError(err)
 }
 
-const pendingReviewRunPredicate = `r.owner_id=$1 AND r.review_count>0 AND r.resolved_at IS NULL AND EXISTS(
- SELECT 1 FROM candidates c JOIN notification_review_sources s ON s.owner_id=$1 AND s.run_id=r.run_id AND s.message_id=c.message_id AND s.fingerprint=notification_review_fingerprint(c.event))`
-
-func notificationReviewRuns(ctx context.Context, tx pgx.Tx, owner string) ([]notifications.PendingReviewRun, error) {
-	rows, err := tx.Query(ctx, candidateCTE+`SELECT r.run_id,r.review_count,
+// 固定した元情報だけを最新の共通候補集合と照合する。送信時は1通知へ限定する。
+func notificationReviewRuns(ctx context.Context, tx pgx.Tx, owner string, onlyRun ...string) ([]notifications.PendingReviewRun, error) {
+	query := `SELECT r.run_id,r.review_count,
  r.in_app AND coalesce(r.completed_at>=s.in_app_since,false),
  r.email AND coalesce(r.completed_at>=s.email_since,false),
- r.push AND coalesce(r.completed_at>=s.push_since,false)
- FROM notification_review_runs r JOIN notification_review_state s ON s.owner_id=r.owner_id WHERE `+pendingReviewRunPredicate, owner, "")
+ r.push AND coalesce(r.completed_at>=s.push_since,false),source.message_id,source.fingerprint
+ FROM notification_review_runs r JOIN notification_review_state s ON s.owner_id=r.owner_id
+ JOIN notification_review_sources source ON source.owner_id=r.owner_id AND source.run_id=r.run_id
+ WHERE r.owner_id=$1 AND r.review_count>0 AND r.resolved_at IS NULL`
+	args := []any{owner}
+	if len(onlyRun) > 0 {
+		query += ` AND r.run_id=$2::uuid`
+		args = append(args, onlyRun[0])
+	}
+	rows, err := tx.Query(ctx, query, args...)
 	if err != nil {
 		return nil, notificationError(err)
 	}
-	defer rows.Close()
-	out := []notifications.PendingReviewRun{}
+	runs := map[string]*notifications.PendingReviewRun{}
+	sources := map[string][]notificationReviewSource{}
+	messages := []string{}
+	messageSet := map[string]bool{}
 	for rows.Next() {
 		var r notifications.PendingReviewRun
-		r.Pending = true
-		if err = rows.Scan(&r.RunID, &r.Count, &r.Channels.InApp, &r.Channels.Email, &r.Channels.Push); err != nil {
+		var s notificationReviewSource
+		if err = rows.Scan(&r.RunID, &r.Count, &r.Channels.InApp, &r.Channels.Email, &r.Channels.Push, &s.message, &s.fingerprint); err != nil {
+			rows.Close()
 			return nil, notificationError(err)
 		}
-		out = append(out, r)
+		if runs[r.RunID] == nil {
+			runs[r.RunID] = &r
+		}
+		sources[r.RunID] = append(sources[r.RunID], s)
+		if !messageSet[s.message] {
+			messageSet[s.message] = true
+			messages = append(messages, s.message)
+		}
 	}
-	return out, notificationError(rows.Err())
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, notificationError(err)
+	}
+	groups, err := currentReviewSourceGroups(ctx, tx, owner, messages)
+	if err != nil {
+		return nil, err
+	}
+	out := []notifications.PendingReviewRun{}
+	for id, r := range runs {
+		for _, s := range sources[id] {
+			if len(groups[s]) > 0 {
+				r.Pending = true
+				break
+			}
+		}
+		out = append(out, *r)
+	}
+	return out, nil
 }
 
-func resolveNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, now time.Time) error {
-	_, err := tx.Exec(ctx, candidateCTE+`UPDATE notification_review_runs r SET resolved_at=$3 WHERE r.owner_id=$1 AND r.review_count>0 AND r.resolved_at IS NULL AND NOT EXISTS(SELECT 1 FROM candidates c JOIN notification_review_sources s ON s.owner_id=$1 AND s.run_id=r.run_id AND s.message_id=c.message_id AND s.fingerprint=notification_review_fingerprint(c.event))`, owner, "", now)
+func resolveNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, now time.Time, reviews []notifications.PendingReviewRun) error {
+	ids := []string{}
+	for _, r := range reviews {
+		if !r.Pending {
+			ids = append(ids, r.RunID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	_, err := tx.Exec(ctx, `UPDATE notification_review_runs SET resolved_at=$3 WHERE owner_id=$1 AND run_id=ANY($2::uuid[]) AND resolved_at IS NULL`, owner, ids, now)
 	return notificationError(err)
 }

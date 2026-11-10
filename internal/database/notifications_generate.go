@@ -277,11 +277,11 @@ func (r *NotificationRepository) generateNotifications(ctx context.Context, owne
 	if e = observeNotificationReviews(ctx, tx, owner, p, now); e != nil {
 		return 0, e
 	}
-	if e = resolveNotificationReviews(ctx, tx, owner, now); e != nil {
-		return 0, e
-	}
 	reviews, e := notificationReviewRuns(ctx, tx, owner)
 	if e != nil {
+		return 0, e
+	}
+	if e = resolveNotificationReviews(ctx, tx, owner, now, reviews); e != nil {
 		return 0, e
 	}
 	candidates, e := notifications.Generate(notifications.GenerationInput{Now: now, Contracts: contracts, PriceChanges: prices, ImportEpisodes: episodes, ReviewRuns: reviews}, p)

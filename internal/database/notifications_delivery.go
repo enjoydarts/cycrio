@@ -55,7 +55,14 @@ func (r *NotificationRepository) ClaimNotifications(ctx context.Context) ([]noti
 	return tasks, nil
 }
 
-func currentNotificationCandidates(ctx context.Context, tx pgx.Tx, owner string, p notifications.Preferences, now time.Time) ([]notifications.Candidate, error) {
+func currentNotificationCandidates(ctx context.Context, tx pgx.Tx, owner string, p notifications.Preferences, now time.Time, only ...notifications.Candidate) ([]notifications.Candidate, error) {
+	if len(only) == 1 && only[0].Kind == notifications.PendingReview && only[0].ReviewRunID != nil {
+		reviews, err := notificationReviewRuns(ctx, tx, owner, *only[0].ReviewRunID)
+		if err != nil {
+			return nil, err
+		}
+		return notifications.Generate(notifications.GenerationInput{Now: now, ReviewRuns: reviews}, p)
+	}
 	today := now.In(time.FixedZone(notifications.Timezone, 9*3600)).Format("2006-01-02")
 	contracts, plans, err := notificationContracts(ctx, tx, owner, today)
 	if err != nil {
@@ -108,7 +115,7 @@ func (r *NotificationRepository) notificationSendInput(ctx context.Context, tx p
 		return in, "preferences_disabled", nil
 	}
 	in.settingsVersion = p.Version
-	candidates, err := currentNotificationCandidates(ctx, tx, owner, p, r.now())
+	candidates, err := currentNotificationCandidates(ctx, tx, owner, p, r.now(), facts)
 	if err != nil {
 		return in, "", err
 	}

@@ -313,13 +313,62 @@ func TestNotificationReviewReanalysisBeforeFirstPollKeepsLatestEvidence(t *testi
 	event := ai.Event{Service: "New evidence", EventType: "renewal"}
 	first := notificationReviewResult(t, f, *now, event)
 	*now = now.Add(time.Minute)
-	latest := cloneNotificationReviewRun(t, f, first, *now, true, 1, event)
+	cloneNotificationReviewRun(t, f, first, *now, true, 1, event)
 	if n, err := r.GenerateNotifications(ctx, f.owner); err != nil || n != 1 {
 		t.Fatal("同じメールを初回poll前に再解析しても最新の新着を捨てない", n, err)
 	}
 	page, err := r.Notifications(ctx, f.owner, notifications.Filter{Read: "all", Limit: 100})
-	if err != nil || page.Total != 1 || *page.Notifications[0].Facts.ReviewRunID != latest {
+	var firstRun string
+	if err := r.pool.QueryRow(ctx, `SELECT run_id FROM mail_processing_items WHERE id=$1`, first).Scan(&firstRun); err != nil {
+		t.Fatal(err)
+	}
+	if err != nil || page.Total != 1 || *page.Notifications[0].Facts.ReviewRunID != firstRun {
 		t.Fatal(page, err)
+	}
+}
+
+func TestNotificationReviewUnobservedReanalysisHonorsOriginalChannels(t *testing.T) {
+	for _, mode := range []string{"off_then_on", "push_added"} {
+		t.Run(mode, func(t *testing.T) {
+			f, r, now := notificationReviewFixture(t)
+			ctx := context.Background()
+			if mode == "off_then_on" {
+				p := notifications.DefaultPreferences()
+				p.Kinds[notifications.PendingReview] = notifications.Channels{}
+				if _, err := r.SaveNotificationSettings(ctx, f.owner, notifications.SettingsInput{Preferences: p, ExpectedVersion: 1, Confirmed: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			event := ai.Event{Service: "Same evidence", EventType: "renewal", Amount: autoPtr("10.00")}
+			first := notificationReviewResult(t, f, *now, event)
+			*now = now.Add(time.Minute)
+			if mode == "push_added" {
+				r = enableNotificationReviewPush(t, f, r, now)
+			} else {
+				s, err := r.NotificationSettings(ctx, f.owner)
+				if err != nil {
+					t.Fatal(err)
+				}
+				p := s.Preferences
+				p.Kinds[notifications.PendingReview] = notifications.Channels{InApp: true}
+				if _, err = r.SaveNotificationSettings(ctx, f.owner, notifications.SettingsInput{Preferences: p, ExpectedVersion: p.Version, Confirmed: true}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			*now = now.Add(time.Minute)
+			event.Amount = autoPtr("10")
+			cloneNotificationReviewRun(t, f, first, *now, true, 1, event)
+			want := 0
+			if mode == "push_added" {
+				want = 1
+			}
+			if n, err := r.GenerateNotifications(ctx, f.owner); err != nil || n != want {
+				t.Fatal("未観測の先行runのチャネルを維持する", n, want, err)
+			}
+			if tasks, err := r.ClaimNotifications(ctx); err != nil || len(tasks) != 0 {
+				t.Fatal("再解析で過去分へPushを追加しない", tasks, err)
+			}
+		})
 	}
 }
 

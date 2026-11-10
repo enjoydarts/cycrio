@@ -13,7 +13,21 @@ const candidateCTE = `WITH current_items AS (
  SELECT DISTINCT ON(message_id) * FROM mail_processing_items
  WHERE owner_id=$1 AND ($2='' OR account_id::text=lower($2)) AND state IN ('succeeded','not_related')
  ORDER BY message_id,created_at DESC,id DESC
-), candidates AS (
+` + candidateCTERemainder
+
+// 対象メールの全版から最新を選ぶ。候補の除外・集約規則は画面と共有する。
+func candidateMessagesCTE() string {
+	return `WITH current_items AS MATERIALIZED (
+ SELECT latest.* FROM unnest($3::uuid[]) target(message_id)
+ CROSS JOIN LATERAL (
+ SELECT * FROM mail_processing_items
+ WHERE message_id=target.message_id AND owner_id=$1 AND ($2='' OR account_id::text=lower($2)) AND state IN ('succeeded','not_related')
+ ORDER BY created_at DESC,id DESC LIMIT 1
+ ) latest
+` + candidateCTERemainder
+}
+
+const candidateCTERemainder = `), candidates AS (
  SELECT i.id AS result_id,i.message_id,i.account_id,i.received_at,e.ordinality::integer-1 AS event_index,e.event,
  CASE WHEN NULLIF(btrim(e.event->>'service'),'') IS NULL THEN jsonb_build_array(i.id,e.ordinality)
  ELSE jsonb_build_array(i.account_id,e.event->'service',e.event->'plan',e.event->'amount',e.event->'currency',e.event->'recurring_amount',e.event->'recurring_currency',e.event->'interval_unit',e.event->'interval_count',e.event->'event_type',e.event->'contract_kind') END AS group_key
