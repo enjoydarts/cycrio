@@ -175,6 +175,153 @@ func TestPushExpiredOtherOwnerPendingReleasesSubscription(t *testing.T) {
 	}
 }
 
+func TestPushExpiredPendingCrossOwnerRegistrationDoesNotDeadlock(t *testing.T) {
+	f, r, _ := pushSetup(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	now := time.Now().UTC()
+	r.now = func() time.Time { return now }
+	subscriptions := []string{uuid.NewString(), uuid.NewString()}
+	owners := []string{f.owner, f.other}
+	old := make([]pushnotifications.Registration, 2)
+	proofs := make([]pushnotifications.ConfirmationInput, 2)
+	tokens := make([]string, 2)
+	for i, owner := range owners {
+		var message pushnotifications.Message
+		sender := pushSenderFunc(func(_ context.Context, _ []byte, in pushnotifications.Message) (pushnotifications.SendResult, error) {
+			message = in
+			return pushnotifications.SendResult{State: "accepted"}, nil
+		})
+		var err error
+		old[i], err = r.RegisterPushDevice(ctx, owner, pushnotifications.RegistrationInput{SubscriptionID: subscriptions[i], RequestID: uuid.NewString()}, sender)
+		if err != nil {
+			t.Fatal(err)
+		}
+		proofs[i] = pushnotifications.ConfirmationInput{ChallengeID: old[i].ChallengeID, Secret: message.ChallengeSecret}
+		tokens[i], err = pushnotifications.DeriveRevocationToken(message.ChallengeSecret)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	now = now.Add(5 * time.Minute)
+
+	// テスト専用triggerで、最初の端末更新が行ロックを取った直後に待機させる。
+	// 旧実装では双方が別の端末を保持し、新実装では片方が登録準備の直列化を待つ。
+	if _, err := r.pool.Exec(ctx, `CREATE FUNCTION push_expiry_regression_gate() RETURNS trigger LANGUAGE plpgsql AS $$
+ BEGIN
+  IF OLD.state='pending' AND NEW.state='disabled' THEN
+   PERFORM pg_advisory_xact_lock(hashtextextended('push-expiry-regression/v1:'||OLD.id::text,0));
+  END IF;
+  RETURN NEW;
+ END $$;
+ CREATE TRIGGER push_expiry_regression_gate AFTER UPDATE ON push_devices FOR EACH ROW EXECUTE FUNCTION push_expiry_regression_gate()`); err != nil {
+		t.Fatal(err)
+	}
+	blocker, err := pgx.ConnectConfig(ctx, r.pool.Config().ConnConfig.Copy())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer blocker.Close(context.Background())
+	gate, err := blocker.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gate.Rollback(context.Background())
+	for _, registration := range old {
+		if _, err = gate.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "push-expiry-regression/v1:"+registration.DeviceID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	type outcome struct {
+		registration pushnotifications.Registration
+		err          error
+	}
+	results := []chan outcome{make(chan outcome, 1), make(chan outcome, 1)}
+	labels := []string{"push-cross-a-" + uuid.NewString(), "push-cross-b-" + uuid.NewString()}
+	messages := make(chan pushnotifications.Message, 2)
+	for i, owner := range owners {
+		configuration := r.pool.Config()
+		configuration.MaxConns = 1
+		configuration.ConnConfig.RuntimeParams["application_name"] = labels[i]
+		pool, err := pgxpool.NewWithConfig(ctx, configuration)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(pool.Close)
+		repository := NewPushNotificationRepository(pool, f.keys, true, r.now)
+		go func(i int, owner string) {
+			sender := pushSenderFunc(func(_ context.Context, _ []byte, m pushnotifications.Message) (pushnotifications.SendResult, error) {
+				messages <- m
+				return pushnotifications.SendResult{State: "accepted"}, nil
+			})
+			registration, err := repository.RegisterPushDevice(ctx, owner, pushnotifications.RegistrationInput{SubscriptionID: subscriptions[1-i], RequestID: uuid.NewString()}, sender)
+			results[i] <- outcome{registration, err}
+		}(i, owner)
+	}
+	ticker := time.NewTicker(5 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		var waiting int
+		if err = r.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity WHERE application_name=ANY($1) AND wait_event_type='Lock'`, labels).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting == 2 {
+			break
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatal("双方の最初のロック待機に到達しない")
+		case <-ticker.C:
+		}
+	}
+	if err = gate.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	next := make([]pushnotifications.Registration, 2)
+	failed := false
+	for i, result := range results {
+		out := <-result
+		if out.err != nil || out.registration.State != "pending" {
+			t.Errorf("所有者%dの相互登録が完了しない: state=%s err=%v", i, out.registration.State, out.err)
+			failed = true
+		}
+		next[i] = out.registration
+	}
+	if failed {
+		return
+	}
+	for i, owner := range owners {
+		if _, err = r.ConfirmPushDevice(ctx, owner, proofs[i]); !errors.Is(err, pushnotifications.ErrConflict) {
+			t.Fatal("旧確認で再有効化", err)
+		}
+		if err = r.RevokePushDeviceWithToken(ctx, old[i].DeviceID, tokens[i]); err != nil {
+			t.Fatal(err)
+		}
+		if err = r.RevokePushDeviceWithToken(ctx, next[i].DeviceID, tokens[i]); err != nil {
+			t.Fatal(err)
+		}
+		page, err := r.PushSettings(ctx, owner)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, device := range page.Devices {
+			if device.ID == next[i].DeviceID && device.State != "pending" {
+				t.Fatal("旧tokenが新登録を変更", device)
+			}
+		}
+	}
+	for range 2 {
+		message := <-messages
+		owner := f.owner
+		if message.SubscriptionIDs[0] == subscriptions[0] {
+			owner = f.other
+		}
+		if _, err = r.ConfirmPushDevice(ctx, owner, pushnotifications.ConfirmationInput{ChallengeID: message.ChallengeID, Secret: message.ChallengeSecret}); err != nil {
+			t.Fatal("新しい受信証明", err)
+		}
+	}
+}
+
 func TestPushAppChangeAndConfirmationUseConsistentLockOrder(t *testing.T) {
 	f, r, _ := pushSetup(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -362,6 +509,9 @@ func TestPushConcurrentReplayAndErasureFence(t *testing.T) {
 		var acquired bool
 		if e = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, "user-erasure-fence/v1:"+f.owner).Scan(&acquired); e != nil || acquired {
 			t.Error("退会保護なし", acquired, e)
+		}
+		if e = tx.QueryRow(ctx, `SELECT pg_try_advisory_xact_lock(hashtextextended($1,0))`, "push-device-registration/v1").Scan(&acquired); e != nil || !acquired {
+			t.Error("外部送信中に登録準備ロックが残存", acquired, e)
 		}
 		var persisted string
 		if e = tx.QueryRow(ctx, `SELECT state FROM push_device_requests WHERE id=$1`, m.IdempotencyKey).Scan(&persisted); e != nil || persisted != "unknown" {

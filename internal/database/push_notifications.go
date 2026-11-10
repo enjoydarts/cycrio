@@ -180,7 +180,9 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	}
 	now := r.now()
 	hash := sha256.Sum256([]byte(c.AppID + ":" + in.SubscriptionID))
-	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "push-subscription/v1:"+base64.RawURLEncoding.EncodeToString(hash[:])); e != nil {
+	// 他人の対象端末と本人の整理対象を相互に待たないよう、最初の端末ロック前に
+	// 登録準備を直列化する。このtxは外部送信前にcommitし、通信中は保持しない。
+	if _, e = tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1,0))`, "push-device-registration/v1"); e != nil {
 		return reg, pushError(e)
 	}
 	// この購読だけは旧本人が再ログインしなくても期限切れを解放する。
