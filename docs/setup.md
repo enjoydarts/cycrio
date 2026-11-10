@@ -127,3 +127,23 @@ IMAPの接続先は993の暗黙TLS、または143の必須STARTTLSです。証�
 メール通知を利用する場合は、本人の通知設定でメール通知への同意と種類ごとのメール通知を有効にします。管理者以外の利用者の宛先自動同期や、Clerk側の停止・削除の自動反映にはWebhookを使います。時刻は日本時間です。宛先を任意入力することはできません。
 
 Clerk / ResendのWebhookや宛先同期、暗号化鍵の保管は[運用ガイド](operations.md)を参照してください。
+
+## 任意設定：OneSignalとPWA
+
+Pushは既存の`CYCRIO_ENV=production`でのみ有効です。開発環境では「この環境ではPush通知を利用できません」と表示され、実OneSignalへの登録・配信は行いません。App IDやAPI keyのための環境変数は追加しません。実機受入はHTTPSの本番サイト`https://cycrio.com`で行います。
+
+1. OneSignalでCycrio用アプリを作り、`Settings > Push & In-App > Web`から**Custom Code**を選びます。Site NameをCycrio、Site URLを`https://cycrio.com`の正確なoriginにします。`www`など別originと混在させません。[公式Custom Code設定](https://documentation.onesignal.com/docs/en/web-push-custom-code-setup)に従ってWebプラットフォームを保存します。
+2. **Typical Siteは使用しません。** 固定SDKではTypical Siteのdashboard設定で初期化オプションが置き換えられるため、本人操作後の許可・自動prompt/welcome無効化をコードで管理するCycrioにはCustom Codeが必要です。自動再購読、自動prompt、welcome通知を有効にせず、管理画面の案内コードをHTMLへ追加しません。
+3. 同じアプリの`Settings > Keys & IDs`でApp IDと**App API key**を取得します。Organization API keyや一覧のKey IDは使用しません。App API keyの値は作成・更新時だけ表示されます。[公式Keys & IDs](https://documentation.onesignal.com/docs/en/keys-and-ids)を参照してください。
+4. Cycrioへ管理者でログインし、「設定」→「API キー」（`/settings/credentials`）→「OneSignal」を開きます。`App ID`と`API key`を別々の欄へ入力して保存します。既存の資格情報管理で暗号化・版管理・監査し、保存後の秘密値を再表示しません。通常利用者はこの画面を操作できません。
+5. 本人が「設定」→「通知」（`/settings/notifications`）でPushへの同意と種類別設定を保存し、端末の準備・通知許可・受信確認を行います。手順と実機受入項目は[通知ガイド](notifications.md#pwaと端末の受信確認)に従ってください。
+
+SDK版160800の原本・LICENSE・SHA256はリポジトリに固定しています。`npm` lifecycleとブラウザーfixtureがハッシュを検証し、`/vendor/onesignal/160800/`と`/OneSignalSDKWorker.js`を生成します。OneSignalのダウンロードZIPを手動コピーする必要はありません。root workerはローカルの固定`OneSignalSDK.sw.js`だけをimportし、独自のオフラインキャッシュを追加しません。
+
+デプロイ後は`/OneSignalSDKWorker.js`と固定SDKのURLが認証・redirect・HTML fallbackを介さずJavaScriptのMIMEで返ること、`/site.webmanifest`が`id: /`・`scope: /`・`display: standalone`であることを確認します。iPhoneはホーム画面に追加したアプリから許可します。一般のSafariタブからの許可操作や、OneSignalの受付結果だけでは実機受入は完了しません。
+
+### 鍵の更新・停止
+
+同じApp IDの鍵更新は、「API キー」のOneSignalへ新しいApp API keyと同じApp IDを保存します。確認済み端末は維持します。OneSignalで別の鍵を作成し、Cycrioを更新して新しい配信を確認してから旧鍵を失効させると、切替中の障害を抑えられます。OneSignalの既存鍵を直接rotateした場合は旧値が直ちに使えなくなるため、Cycrioも更新してください。
+
+CycrioのOneSignal資格情報を「無効化」するとPushの利用を停止します。再登録しても無効化した旧版は復活せず、旧版の端末を自動復活させません。App IDを変更した場合も旧Appの端末を停止します。ページを再読み込みし、本人が新しいAppで端末を登録・受信確認してください。送信結果が`unknown`となった過去の通知は、設定復旧後も自動再送しません。個別端末だけを止める場合は本人の通知設定の端末一覧を使います。
