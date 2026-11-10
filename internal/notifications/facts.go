@@ -26,7 +26,7 @@ func SameFacts(a, b Candidate) bool {
 		}
 		c.Amount, c.OldAmount, c.NewAmount = amount(c.Amount), amount(c.OldAmount), amount(c.NewAmount)
 		c.ScheduledAt = time.Time{}
-		c.InApp, c.Email = false, false
+		c.InApp, c.Email, c.Push = false, false, false
 		return c, true
 	}
 	var validA, validB bool

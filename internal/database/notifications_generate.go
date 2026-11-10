@@ -330,8 +330,11 @@ func (r *NotificationRepository) generateNotifications(ctx context.Context, owne
 				return 0, notificationError(e)
 			}
 		}
-		if candidate.Email && p.EmailOptIn && r.keyring != nil && r.issuer != "" {
-			// Reanalysis preserves the email identity of the original announcement.
+		for _, channel := range []string{"email", "push"} {
+			if r.keyring == nil || channel == "email" && (!candidate.Email || !p.EmailOptIn || r.issuer == "") || channel == "push" && (!candidate.Push || !p.PushOptIn) {
+				continue
+			}
+			// 再解析後も元の告知に対する各チャネルの配信IDを保持する。
 			var dedupe string
 			if candidate.Kind == notifications.PriceIncrease {
 				e = tx.QueryRow(ctx, `SELECT 'price:'||md5(jsonb_build_array($2::text,message_id,$3::text,trim_scale($4::numeric)::text)::text) FROM mail_processing_items WHERE owner_id=$1 AND id=$5`, owner, candidate.ContractID, candidate.Currency, candidate.NewAmount, candidate.ResultID).Scan(&dedupe)
@@ -341,9 +344,9 @@ func (r *NotificationRepository) generateNotifications(ctx context.Context, owne
 			} else {
 				dedupe = candidate.SourceKey
 			}
-			_, e = tx.Exec(ctx, `INSERT INTO notification_deliveries(id,owner_id,notification_id,channel,state,scheduled_at,dedupe_key) SELECT $1,$2,id,'email','queued',scheduled_at,$5 FROM notification_events WHERE owner_id=$2 AND kind=$3 AND source_key=$4 AND superseded_at IS NULL
+			_, e = tx.Exec(ctx, `INSERT INTO notification_deliveries(id,owner_id,notification_id,channel,state,scheduled_at,dedupe_key) SELECT $1,$2,id,$6,'queued',scheduled_at,$5 FROM notification_events WHERE owner_id=$2 AND kind=$3 AND source_key=$4 AND superseded_at IS NULL
 			 ON CONFLICT(owner_id,channel,dedupe_key) DO UPDATE SET notification_id=EXCLUDED.notification_id,state='queued',lease_id=NULL,lease_until=NULL,updated_at=clock_timestamp()
-			 WHERE notification_deliveries.notification_id<>EXCLUDED.notification_id AND notification_deliveries.state IN ('queued','claimed') AND notification_deliveries.attempt_started_at IS NULL`, uuid.NewString(), owner, candidate.Kind, candidate.SourceKey, dedupe)
+			 WHERE notification_deliveries.notification_id<>EXCLUDED.notification_id AND notification_deliveries.state IN ('queued','claimed') AND notification_deliveries.attempt_started_at IS NULL`, uuid.NewString(), owner, candidate.Kind, candidate.SourceKey, dedupe, channel)
 			if e != nil {
 				return 0, notificationError(e)
 			}

@@ -57,10 +57,10 @@ func Generate(in GenerationInput, p Preferences) ([]Candidate, error) {
 	rows := map[string]Candidate{}
 	add := func(c Candidate) error {
 		channels := p.Kinds[c.Kind]
-		if !channels.InApp && !channels.Email {
+		if !channels.InApp && !channels.Email && !channels.Push {
 			return nil
 		}
-		c.InApp, c.Email = channels.InApp, channels.Email
+		c.InApp, c.Email, c.Push = channels.InApp, channels.Email, channels.Push
 		if prior, ok := rows[c.SourceKey]; ok && !reflect.DeepEqual(prior, c) {
 			return ErrInvalid
 		}

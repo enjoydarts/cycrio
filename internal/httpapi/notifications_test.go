@@ -64,12 +64,12 @@ func TestNotificationHTTPStrictOwnerInputs(t *testing.T) {
 	}
 	p := notifications.DefaultPreferences()
 	raw, _ := json.Marshal(p.Kinds)
-	body := `{"expected_version":1,"kinds":` + string(raw) + `,"lead_days":7,"send_hour":9,"timezone":"Asia/Tokyo","email_opt_in":false,"confirmed":true}`
+	body := `{"expected_version":1,"kinds":` + string(raw) + `,"lead_days":7,"send_hour":9,"timezone":"Asia/Tokyo","email_opt_in":false,"push_opt_in":false,"confirmed":true}`
 	w := credentialRequest(h, "PUT", "/v1/notification-settings", body, "Bearer valid", "http://localhost:3100", "application/json")
 	if w.Code != 200 || f.settings.ExpectedVersion != 1 {
 		t.Fatal(w.Code, w.Body.String())
 	}
-	for _, bad := range []string{strings.TrimSuffix(body, "}") + `,"owner_id":"` + subscriptionUUID + `"}`, strings.Replace(body, `"confirmed":true`, `"confirmed":false`, 1), strings.Replace(body, `"send_hour":9`, `"send_hour":null`, 1), strings.Replace(body, `"lead_days":7`, `"lead_days":31`, 1), strings.Replace(body, `"annual_charge":`, `"unknown":`, 1), strings.Replace(body, `"in_app":true`, `"in_app":null`, 1), strings.Replace(body, `"in_app":true,`, ``, 1), strings.Replace(body, `"in_app":true`, `"in_app":true,"unknown":false`, 1), strings.Replace(body, `"in_app":true`, `"in_app":true,"in_app":false`, 1), strings.Replace(body, `"kinds":{`, `"kinds":{"renewal":{"in_app":true,"email":false},`, 1), strings.Replace(body, `"annual_charge":{"in_app":true,"email":false}`, `"annual_charge":null`, 1)} {
+	for _, bad := range []string{strings.TrimSuffix(body, "}") + `,"owner_id":"` + subscriptionUUID + `"}`, strings.Replace(body, `"confirmed":true`, `"confirmed":false`, 1), strings.Replace(body, `"send_hour":9`, `"send_hour":null`, 1), strings.Replace(body, `"lead_days":7`, `"lead_days":31`, 1), strings.Replace(body, `"annual_charge":`, `"unknown":`, 1), strings.Replace(body, `"in_app":true`, `"in_app":null`, 1), strings.Replace(body, `"in_app":true,`, ``, 1), strings.Replace(body, `"in_app":true`, `"in_app":true,"unknown":false`, 1), strings.Replace(body, `"in_app":true`, `"in_app":true,"in_app":false`, 1), strings.Replace(body, `"kinds":{`, `"kinds":{"renewal":{"in_app":true,"email":false,"push":false},`, 1), strings.Replace(body, `"annual_charge":{"in_app":true,"email":false,"push":false}`, `"annual_charge":null`, 1), strings.Replace(body, `"push_opt_in":false,`, ``, 1), strings.Replace(body, `"push_opt_in":false`, `"push_opt_in":null`, 1), strings.Replace(body, `"push_opt_in":false`, `"push_opt_in":true,"push_opt_in":false`, 1), strings.Replace(body, `"push":false`, `"push":null`, 1), strings.Replace(body, `"push":false`, `"push":true`, 1), strings.Replace(body, `,"push":false`, ``, 1)} {
 		f.calls = 0
 		w := credentialRequest(h, "PUT", "/v1/notification-settings", bad, "Bearer valid", "http://localhost:3100", "application/json")
 		if w.Code != 400 || f.calls != 0 {

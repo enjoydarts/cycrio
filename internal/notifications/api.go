@@ -26,8 +26,13 @@ type EmailAvailability struct {
 type SettingsPage struct {
 	Preferences Preferences       `json:"preferences"`
 	Email       EmailAvailability `json:"email"`
+	Push        PushAvailability  `json:"push"`
 	AsOf        string            `json:"as_of"`
 	Timezone    string            `json:"timezone"`
+}
+type PushAvailability struct {
+	Available bool   `json:"available"`
+	Reason    string `json:"reason"`
 }
 type Item struct {
 	ID           string     `json:"id"`

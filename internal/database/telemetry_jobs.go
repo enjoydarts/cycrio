@@ -53,7 +53,7 @@ func jobTelemetryQuery(kind string) string {
 	case "ai_test":
 		return `SELECT r.requested_by::text,CASE WHEN r.finished_at >= $2 THEN r.state ELSE '' END,CASE WHEN r.finished_at >= $2 THEN coalesce(nullif(r.secondary_outcome,''),r.primary_outcome,'') ELSE '' END,coalesce(c.http_status,0),coalesce(c.stage,''),coalesce(c.provider,'') FROM ai_test_runs r JOIN users u ON u.id=r.requested_by AND u.state='active' LEFT JOIN LATERAL (SELECT http_status,stage,provider FROM ai_calls WHERE run_id=r.id AND scope='admin_test' AND initiated_by_user_id=r.requested_by AND r.finished_at >= $2 AND finished_at >= $2 AND outcome=coalesce(nullif(r.secondary_outcome,''),r.primary_outcome,'') AND stage=CASE WHEN nullif(r.secondary_outcome,'') IS NOT NULL THEN 'extraction' ELSE 'classification' END ORDER BY finished_at DESC,id DESC LIMIT 1) c ON true WHERE r.id=$1`
 	case "notification":
-		return `SELECT d.owner_id::text,CASE WHEN d.updated_at >= $2 THEN d.state ELSE '' END,CASE WHEN d.updated_at >= $2 THEN d.reason ELSE '' END,0,'','' FROM notification_deliveries d JOIN users u ON u.id=d.owner_id AND u.state='active' WHERE d.id=$1 AND d.channel='email'`
+		return `SELECT d.owner_id::text,CASE WHEN d.updated_at >= $2 THEN d.state ELSE '' END,CASE WHEN d.updated_at >= $2 THEN d.reason ELSE '' END,0,'','' FROM notification_deliveries d JOIN users u ON u.id=d.owner_id AND u.state='active' WHERE d.id=$1 AND d.channel IN ('email','push')`
 	case "research":
 		return `SELECT '',CASE WHEN finished_at >= $2 THEN state ELSE '' END,CASE WHEN finished_at >= $2 THEN error_code ELSE '' END,0,'','' FROM price_research_runs WHERE id=$1`
 	}

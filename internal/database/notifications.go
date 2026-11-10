@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/notifications"
+	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/enjoydarts/cycrio/internal/subscriptions"
 	"github.com/google/uuid"
@@ -17,10 +18,18 @@ import (
 )
 
 type NotificationRepository struct {
-	pool    *pgxpool.Pool
-	issuer  string
-	keyring *secretstore.Keyring
-	now     func() time.Time
+	pool        *pgxpool.Pool
+	issuer      string
+	keyring     *secretstore.Keyring
+	now         func() time.Time
+	pushSender  pushnotifications.Sender
+	pushEnabled bool
+}
+
+func (r *NotificationRepository) WithPush(sender pushnotifications.Sender, enabled bool) *NotificationRepository {
+	copy := *r
+	copy.pushSender, copy.pushEnabled = sender, enabled
+	return &copy
 }
 
 func NewNotificationRepository(pool *pgxpool.Pool, issuer string, now ...func() time.Time) *NotificationRepository {
@@ -70,6 +79,16 @@ func notificationPreferences(ctx context.Context, tx pgx.Tx, owner string) (noti
 func (r *NotificationRepository) settingsView(ctx context.Context, tx pgx.Tx, owner string, p notifications.Preferences) (notifications.SettingsPage, error) {
 	v := notifications.SettingsPage{Preferences: p, AsOf: r.now().In(time.FixedZone(notifications.Timezone, 9*3600)).Format("2006-01-02"), Timezone: notifications.Timezone, Email: notifications.EmailAvailability{Reason: "delivery_engine_unavailable"}}
 	e := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM integration_profiles p JOIN auth_identities i ON i.issuer=p.issuer AND i.subject=p.subject WHERE i.user_id=$1 AND p.issuer=$2 AND NOT p.blocked AND NOT p.deleted AND p.ciphertext IS NOT NULL),EXISTS(SELECT 1 FROM integration_settings s WHERE s.singleton AND s.sender<>'' AND s.clerk_instance_id<>'' AND EXISTS(SELECT 1 FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider AND v.version=p.version WHERE p.provider='resend' AND p.state='configured' AND v.state='active'))`, owner, r.issuer).Scan(&v.Email.ProfileReady, &v.Email.SenderReady)
+	v.Push.Reason = "environment_disabled"
+	if r.pushEnabled {
+		v.Push.Reason = "not_configured"
+		_, _, err := NewPushNotificationRepository(r.pool, r.keyring, true).credential(ctx, tx)
+		if err == nil {
+			v.Push.Available, v.Push.Reason = true, ""
+		} else if !errors.Is(err, pushnotifications.ErrNotReady) {
+			return v, notificationError(err)
+		}
+	}
 	if r.keyring != nil && r.issuer != "" {
 		v.Email.Reason = ""
 		if !v.Email.ProfileReady {
@@ -121,6 +140,15 @@ func (r *NotificationRepository) SaveNotificationSettings(ctx context.Context, o
 			return view, err
 		}
 		if !view.Email.Available {
+			return notifications.SettingsPage{}, notifications.ErrNotReady
+		}
+	}
+	if p.PushOptIn {
+		view, err := r.settingsView(ctx, tx, owner, p)
+		if err != nil {
+			return view, err
+		}
+		if !view.Push.Available {
 			return notifications.SettingsPage{}, notifications.ErrNotReady
 		}
 	}
@@ -223,11 +251,11 @@ func (r *NotificationRepository) NotificationDeliveries(ctx context.Context, own
 		return p, notifications.ErrNotFound
 	}
 	rows, e := tx.Query(ctx, `SELECT id,channel,state,reason,scheduled_at,created_at,updated_at,
-	 EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.sent'),
-	 EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.delivered'),
-	 EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.bounced'),
-	 EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.complained'),
-	 EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type IN ('email.failed','email.suppressed'))
+	 d.channel='email' AND EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.sent'),
+	 d.channel='email' AND EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.delivered'),
+	 d.channel='email' AND EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.bounced'),
+	 d.channel='email' AND EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type='email.complained'),
+	 d.channel='email' AND EXISTS(SELECT 1 FROM integration_webhook_events e WHERE e.provider='resend' AND e.email_id=d.provider_id AND e.event_type IN ('email.failed','email.suppressed'))
 	 FROM notification_deliveries d WHERE owner_id=$1 AND notification_id=$2 ORDER BY channel,id`, owner, id)
 	if e != nil {
 		return p, notificationError(e)

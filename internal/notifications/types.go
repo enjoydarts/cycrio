@@ -26,6 +26,7 @@ var kinds = []Kind{Renewal, AnnualCharge, TrialEnd, PriceIncrease, ImportError}
 type Channels struct {
 	InApp bool `json:"in_app"`
 	Email bool `json:"email"`
+	Push  bool `json:"push"`
 }
 type Preferences struct {
 	Version    int64        `json:"version"`
@@ -34,6 +35,7 @@ type Preferences struct {
 	SendHour   int          `json:"send_hour"`
 	Timezone   string       `json:"timezone"`
 	EmailOptIn bool         `json:"email_opt_in"`
+	PushOptIn  bool         `json:"push_opt_in"`
 }
 type Contract struct {
 	ID              string
@@ -92,6 +94,7 @@ type Candidate struct {
 	NewAmount   *string   `json:"new_amount,omitempty"`
 	InApp       bool      `json:"in_app"`
 	Email       bool      `json:"email"`
+	Push        bool      `json:"push"`
 }
 type EmailContent struct {
 	Subject string `json:"subject"`

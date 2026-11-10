@@ -30,6 +30,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/notificationruntime"
 	"github.com/enjoydarts/cycrio/internal/priceresearch"
 	"github.com/enjoydarts/cycrio/internal/priceresearchruntime"
+	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/enjoydarts/cycrio/internal/telemetry"
 	"github.com/google/uuid"
@@ -151,7 +152,7 @@ func run() (result error) {
 			return out, err
 		})
 	}, hatchet.WithRetries(0), hatchet.WithExecutionTimeout(5*time.Minute))
-	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer())
+	notificationRepository := database.NewNotificationDeliveryRepository(pool, keyring, config.Issuer()).WithPush(pushnotifications.NewOneSignalSender(nil, "https://cycrio.com"), os.Getenv("CYCRIO_ENV") == "production")
 	notificationService := notificationruntime.NewService(notificationRepository, notificationruntime.NewResendSender(nil))
 	notificationTask := client.NewStandaloneTask(notificationTaskName, func(ctx hatchet.Context, input notificationruntime.Task) (notificationruntime.Result, error) {
 		return captureWorkerTask(withWorkerTelemetry(ctx, reporter), readOutcome, "worker_notification_delivery", "notification", input.DeliveryID, func(ctx context.Context) (notificationruntime.Result, error) {

@@ -32,7 +32,7 @@ func (r *NotificationRepository) ClaimNotifications(ctx context.Context) ([]noti
 	}
 	now := r.now()
 	rows, err := r.pool.Query(ctx, `WITH due AS (
-	 SELECT id FROM notification_deliveries WHERE channel='email' AND scheduled_at<=$1
+	 SELECT id FROM notification_deliveries WHERE channel IN ('email','push') AND scheduled_at<=$1
 	 AND (state='queued' OR state='claimed' AND lease_until<=$1)
 	 ORDER BY scheduled_at,id LIMIT 20 FOR UPDATE SKIP LOCKED
 	) UPDATE notification_deliveries d SET state='claimed',reason='',lease_id=gen_random_uuid(),lease_until=$2,updated_at=clock_timestamp()
@@ -172,6 +172,20 @@ func (r *NotificationRepository) DeliverNotification(ctx context.Context, delive
 	task, err := notificationruntime.NormalizeTask(notificationruntime.Task{DeliveryID: delivery, LeaseID: lease})
 	if err != nil {
 		return notificationruntime.Result{}, err
+	}
+	if r.keyring == nil {
+		return notificationruntime.Result{}, notificationruntime.ErrUnavailable
+	}
+	var channel string
+	err = r.pool.QueryRow(ctx, `SELECT channel FROM notification_deliveries WHERE id=$1`, task.DeliveryID).Scan(&channel)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return notificationruntime.Result{Status: notificationruntime.TaskIgnored}, nil
+	}
+	if err != nil {
+		return notificationruntime.Result{}, diagnostics.Wrap(notificationruntime.ErrUnavailable, err)
+	}
+	if channel == "push" {
+		return r.deliverPushNotification(ctx, task)
 	}
 	if r.keyring == nil || r.issuer == "" || sender == nil {
 		return notificationruntime.Result{}, notificationruntime.ErrUnavailable

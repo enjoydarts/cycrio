@@ -15,13 +15,11 @@ func TestPushMigrationRoundTripVersionAndDestructiveDown(t *testing.T) {
 	ctx := context.Background()
 	p := automationMigrationProvider(t, pool)
 	down, e := p.DownTo(ctx, 48)
-	if e != nil || len(down) != 1 || down[0].Source.Version != 49 || down[0].Direction != "down" || down[0].Error != nil {
-		t.Fatal(down, e)
-	}
+	assertMigrationRange(t, down, e, latestMigrationVersion, 49)
 	up, e := p.Up(ctx)
-	assertMigrationRange(t, up, e, 49, 49)
+	assertMigrationRange(t, up, e, 49, latestMigrationVersion)
 	var version int64
-	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != 49 {
+	if e = pool.QueryRow(ctx, `SELECT max(version_id) FROM goose_db_version WHERE is_applied`).Scan(&version); e != nil || version != latestMigrationVersion {
 		t.Fatal(version, e)
 	}
 	f, r, _ := pushSetup(t)

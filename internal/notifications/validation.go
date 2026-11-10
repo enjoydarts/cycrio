@@ -32,7 +32,7 @@ func NormalizePreferences(p Preferences) (Preferences, error) {
 	normalized.Kinds = map[Kind]Channels{}
 	for _, kind := range kinds {
 		channels, ok := p.Kinds[kind]
-		if !ok || channels.Email && !p.EmailOptIn {
+		if !ok || channels.Email && !p.EmailOptIn || channels.Push && !p.PushOptIn {
 			return Preferences{}, ErrInvalid
 		}
 		normalized.Kinds[kind] = channels

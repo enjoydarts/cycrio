@@ -59,7 +59,7 @@ func registerNotifications(mux *http.ServeMux, service NotificationService, prot
 	})
 	register("PUT /v1/notification-settings", false, func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
 		var in notifications.SettingsInput
-		keys := []string{"expected_version", "kinds", "lead_days", "send_hour", "timezone", "email_opt_in", "confirmed"}
+		keys := []string{"expected_version", "kinds", "lead_days", "send_hour", "timezone", "email_opt_in", "push_opt_in", "confirmed"}
 		if e := readSubscriptionJSON(w, r, &in, keys, keys...); e != nil {
 			return nil, e
 		}

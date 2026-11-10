@@ -20,7 +20,7 @@ func lockErasedResendEmail(ctx context.Context, tx pgx.Tx, hash string) error {
 }
 
 func archiveErasureResendEmails(ctx context.Context, tx pgx.Tx, owner string) error {
-	rows, err := tx.Query(ctx, `SELECT provider_id FROM notification_deliveries WHERE owner_id=$1 AND provider_id IS NOT NULL UNION SELECT email_id FROM integration_email_tests WHERE owner_id=$1 AND email_id IS NOT NULL ORDER BY 1`, owner)
+	rows, err := tx.Query(ctx, `SELECT provider_id FROM notification_deliveries WHERE owner_id=$1 AND channel='email' AND provider_id IS NOT NULL UNION SELECT email_id FROM integration_email_tests WHERE owner_id=$1 AND email_id IS NOT NULL ORDER BY 1`, owner)
 	if err != nil {
 		return err
 	}

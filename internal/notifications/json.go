@@ -36,12 +36,12 @@ func strictMembers(raw []byte, keys []string) (map[string]json.RawMessage, error
 	return values, nil
 }
 func (c *Channels) UnmarshalJSON(raw []byte) error {
-	fields, e := strictMembers(raw, []string{"in_app", "email"})
+	fields, e := strictMembers(raw, []string{"in_app", "email", "push"})
 	if e != nil {
 		return e
 	}
 	var next Channels
-	if json.Unmarshal(fields["in_app"], &next.InApp) != nil || json.Unmarshal(fields["email"], &next.Email) != nil {
+	if json.Unmarshal(fields["in_app"], &next.InApp) != nil || json.Unmarshal(fields["email"], &next.Email) != nil || json.Unmarshal(fields["push"], &next.Push) != nil {
 		return ErrInvalid
 	}
 	*c = next
@@ -49,6 +49,39 @@ func (c *Channels) UnmarshalJSON(raw []byte) error {
 }
 
 type KindChannels map[Kind]Channels
+
+func (p *Preferences) UnmarshalJSON(raw []byte) error {
+	if _, err := strictMembers(raw, []string{"version", "kinds", "lead_days", "send_hour", "timezone", "email_opt_in", "push_opt_in"}); err != nil {
+		return err
+	}
+	type plain Preferences
+	var next plain
+	if err := json.Unmarshal(raw, &next); err != nil {
+		return ErrInvalid
+	}
+	*p = Preferences(next)
+	return nil
+}
+
+func (s *SettingsInput) UnmarshalJSON(raw []byte) error {
+	fields, err := strictMembers(raw, []string{"expected_version", "kinds", "lead_days", "send_hour", "timezone", "email_opt_in", "push_opt_in", "confirmed"})
+	if err != nil {
+		return err
+	}
+	var next SettingsInput
+	if json.Unmarshal(fields["expected_version"], &next.ExpectedVersion) != nil || json.Unmarshal(fields["confirmed"], &next.Confirmed) != nil {
+		return ErrInvalid
+	}
+	delete(fields, "expected_version")
+	delete(fields, "confirmed")
+	fields["version"], _ = json.Marshal(next.ExpectedVersion)
+	preferences, _ := json.Marshal(fields)
+	if json.Unmarshal(preferences, &next.Preferences) != nil {
+		return ErrInvalid
+	}
+	*s = next
+	return nil
+}
 
 func (k *KindChannels) UnmarshalJSON(raw []byte) error {
 	keys := []string{}
