@@ -42,7 +42,7 @@ func (r *NotificationRepository) notificationPushInput(ctx context.Context, tx p
 		return in, "", err
 	}
 	for _, candidate := range candidates {
-		if notifications.SameFacts(facts, candidate) {
+		if candidate.Push && notifications.SameFacts(facts, candidate) {
 			in.scheduled = candidate.ScheduledAt
 			break
 		}
@@ -89,6 +89,8 @@ func (r *NotificationRepository) notificationPushInput(ctx context.Context, tx p
 func notificationPushMessage(id string, facts notifications.Candidate, in notificationPushInput) pushnotifications.Message {
 	m := pushnotifications.Message{AppID: in.config.AppID, IdempotencyKey: id, Kind: "reminder", URL: "https://cycrio.com/subscriptions"}
 	switch facts.Kind {
+	case notifications.PendingReview:
+		m.Kind, m.URL = "pending_review", "https://cycrio.com/analysis?tab=attention"
 	case notifications.PriceIncrease:
 		m.Kind, m.URL = "pending_review", "https://cycrio.com/analysis"
 	case notifications.ImportError:

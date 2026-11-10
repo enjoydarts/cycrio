@@ -50,6 +50,24 @@ func (c *Channels) UnmarshalJSON(raw []byte) error {
 
 type KindChannels map[Kind]Channels
 
+// 保存済みの旧5種類設定だけを補完する。更新APIの厳密な型検証は維持する。
+func UnmarshalStoredPreferences(raw []byte, p *Preferences) error {
+	var doc map[string]json.RawMessage
+	if json.Unmarshal(raw, &doc) != nil {
+		return ErrInvalid
+	}
+	var stored map[string]json.RawMessage
+	if json.Unmarshal(doc["kinds"], &stored) != nil || stored == nil {
+		return ErrInvalid
+	}
+	if _, exists := stored[string(PendingReview)]; !exists {
+		stored[string(PendingReview)] = json.RawMessage(`{"in_app":true,"email":false,"push":false}`)
+		doc["kinds"], _ = json.Marshal(stored)
+		raw, _ = json.Marshal(doc)
+	}
+	return json.Unmarshal(raw, p)
+}
+
 func (p *Preferences) UnmarshalJSON(raw []byte) error {
 	if _, err := strictMembers(raw, []string{"version", "kinds", "lead_days", "send_hour", "timezone", "email_opt_in", "push_opt_in"}); err != nil {
 		return err

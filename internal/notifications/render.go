@@ -2,6 +2,7 @@ package notifications
 
 import (
 	"html"
+	"strconv"
 	"strings"
 )
 
@@ -13,7 +14,20 @@ func RenderEmail(c Candidate) (EmailContent, error) {
 		return EmailContent{}, ErrInvalid
 	}
 	var title, message string
+	if c.Kind != PendingReview && (c.ReviewRunID != nil || c.ReviewCount != nil) {
+		return EmailContent{}, ErrInvalid
+	}
 	switch c.Kind {
+	case PendingReview:
+		if c.ReviewRunID == nil || c.ReviewCount == nil || *c.ReviewCount < 1 || c.ContractID != nil || c.AccountID != nil || c.ResultID != nil || c.EventIndex != nil || c.EpisodeID != nil || c.Service != "" || c.DueDate != nil || c.Amount != nil || c.Currency != nil || c.OldAmount != nil || c.NewAmount != nil || c.DateSource != "" {
+			return EmailContent{}, ErrInvalid
+		}
+		id, e := normalizeID(*c.ReviewRunID)
+		if e != nil || c.SourceKey != string(PendingReview)+":"+id {
+			return EmailContent{}, ErrInvalid
+		}
+		title = "新しい確認待ちがあります"
+		message = "解析後の通知作成時点で" + strconv.Itoa(*c.ReviewCount) + "件の新しい確認待ちがありました。Cycrioで現在の確認待ちを確認してください。"
 	case Renewal, AnnualCharge, TrialEnd, PriceIncrease:
 		if c.ContractID == nil || !label(c.Service) {
 			return EmailContent{}, ErrInvalid

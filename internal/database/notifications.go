@@ -71,7 +71,7 @@ func notificationPreferences(ctx context.Context, tx pgx.Tx, owner string) (noti
 		return notifications.Preferences{}, notificationError(e)
 	}
 	var p notifications.Preferences
-	if diagnosticErr := json.Unmarshal(raw, &p); diagnosticErr != nil {
+	if diagnosticErr := notifications.UnmarshalStoredPreferences(raw, &p); diagnosticErr != nil {
 		return p, diagnostics.Wrap(notifications.ErrUnavailable, diagnosticErr)
 	}
 	return notifications.NormalizePreferences(p)
@@ -133,6 +133,9 @@ func (r *NotificationRepository) SaveNotificationSettings(ctx context.Context, o
 	}
 	if prior.Version != in.ExpectedVersion {
 		return notifications.SettingsPage{}, notifications.ErrConflict
+	}
+	if e = updateNotificationReviewChannels(ctx, tx, owner, prior, p, r.now()); e != nil {
+		return notifications.SettingsPage{}, e
 	}
 	if p.EmailOptIn {
 		view, err := r.settingsView(ctx, tx, owner, p)

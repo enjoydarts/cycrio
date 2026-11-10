@@ -162,6 +162,24 @@ func Generate(in GenerationInput, p Preferences) ([]Candidate, error) {
 			return nil, e
 		}
 	}
+	for _, review := range in.ReviewRuns {
+		id, e := normalizeID(review.RunID)
+		if e != nil || review.Count < 1 {
+			return nil, ErrInvalid
+		}
+		if !review.Pending {
+			continue
+		}
+		key := string(PendingReview) + ":" + id
+		channels := p.Kinds[PendingReview]
+		c := Candidate{Kind: PendingReview, SourceKey: key, ReviewRunID: reference(id), ReviewCount: reference(review.Count), ScheduledAt: now, InApp: channels.InApp && review.Channels.InApp, Email: channels.Email && review.Channels.Email, Push: channels.Push && review.Channels.Push}
+		if prior, ok := rows[key]; ok && !reflect.DeepEqual(prior, c) {
+			return nil, ErrInvalid
+		}
+		if c.InApp || c.Email || c.Push {
+			rows[key] = c
+		}
+	}
 	out := make([]Candidate, 0, len(rows))
 	for _, row := range rows {
 		out = append(out, row)

@@ -19,9 +19,10 @@ const (
 	TrialEnd      Kind = "trial_end"
 	PriceIncrease Kind = "price_increase"
 	ImportError   Kind = "import_error"
+	PendingReview Kind = "pending_review"
 )
 
-var kinds = []Kind{Renewal, AnnualCharge, TrialEnd, PriceIncrease, ImportError}
+var kinds = []Kind{Renewal, AnnualCharge, TrialEnd, PriceIncrease, ImportError, PendingReview}
 
 type Channels struct {
 	InApp bool `json:"in_app"`
@@ -70,11 +71,18 @@ type ImportEpisode struct {
 	ManualStop bool
 	Reason     string
 }
+type PendingReviewRun struct {
+	RunID    string
+	Count    int
+	Pending  bool
+	Channels Channels
+}
 type GenerationInput struct {
 	Now            time.Time
 	Contracts      []Contract
 	PriceChanges   []PendingPriceChange
 	ImportEpisodes []ImportEpisode
+	ReviewRuns     []PendingReviewRun
 }
 type Candidate struct {
 	Kind        Kind      `json:"kind"`
@@ -84,6 +92,8 @@ type Candidate struct {
 	ResultID    *string   `json:"result_id,omitempty"`
 	EventIndex  *int      `json:"event_index,omitempty"`
 	EpisodeID   *string   `json:"episode_id,omitempty"`
+	ReviewRunID *string   `json:"review_run_id,omitempty"`
+	ReviewCount *int      `json:"review_count,omitempty"`
 	Service     string    `json:"service"`
 	DueDate     *string   `json:"due_date,omitempty"`
 	ScheduledAt time.Time `json:"scheduled_at"`

@@ -21,9 +21,9 @@ func TestAllNotificationKindsRenderFixedTemplatesAndStableIdentities(t *testing.
 	monthly.ID = "33333333-3333-4333-8333-333333333333"
 	price := PendingPriceChange{ContractID: annual.ID, ResultID: testResultID, Pending: true, OldAmount: ptr("10"), OldCurrency: ptr("USD"), NewAmount: ptr("20"), NewCurrency: ptr("USD")}
 	episode := ImportEpisode{AccountID: testContractID, EpisodeID: testResultID, Active: true, Reason: "authentication_failed"}
-	in := GenerationInput{Now: notificationNow(), Contracts: []Contract{annual, monthly}, PriceChanges: []PendingPriceChange{price}, ImportEpisodes: []ImportEpisode{episode}}
+	in := GenerationInput{Now: notificationNow(), Contracts: []Contract{annual, monthly}, PriceChanges: []PendingPriceChange{price}, ImportEpisodes: []ImportEpisode{episode}, ReviewRuns: []PendingReviewRun{{RunID: testResultID, Count: 2, Pending: true, Channels: Channels{InApp: true, Email: true}}}}
 	rows, e := Generate(in, p)
-	if e != nil || len(rows) != 5 {
+	if e != nil || len(rows) != 6 {
 		t.Fatal(rows, e)
 	}
 	seen := map[Kind]bool{}

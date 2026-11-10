@@ -69,7 +69,11 @@ func currentNotificationCandidates(ctx context.Context, tx pgx.Tx, owner string,
 	if err != nil {
 		return nil, err
 	}
-	return notifications.Generate(notifications.GenerationInput{Now: now, Contracts: contracts, PriceChanges: prices, ImportEpisodes: episodes}, p)
+	reviews, err := notificationReviewRuns(ctx, tx, owner)
+	if err != nil {
+		return nil, err
+	}
+	return notifications.Generate(notifications.GenerationInput{Now: now, Contracts: contracts, PriceChanges: prices, ImportEpisodes: episodes, ReviewRuns: reviews}, p)
 }
 
 type notificationSendInput struct {
@@ -110,7 +114,7 @@ func (r *NotificationRepository) notificationSendInput(ctx context.Context, tx p
 	}
 	current := false
 	for _, candidate := range candidates {
-		if notifications.SameFacts(facts, candidate) {
+		if candidate.Email && notifications.SameFacts(facts, candidate) {
 			current = true
 			in.delivery.Candidate.Email = true
 			in.delivery.Candidate.ScheduledAt = candidate.ScheduledAt
