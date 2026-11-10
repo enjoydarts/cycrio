@@ -123,23 +123,29 @@ test('production gate, exception-only capture, safe identity and reset', async (
   f.controller.dispose();
 });
 
-test('all capture entrypoints deduplicate Error objects and teardown listeners', async () => {
-  const f = fixture();
-  f.controller.start();
-  await turn();
-  const error = new Error('private');
-  const event = new Event('error');
-  Object.defineProperty(event, 'error', { value: error });
-  f.target.dispatchEvent(event);
-  f.controller.capture(error);
-  const rejection = new Event('unhandledrejection');
-  Object.defineProperty(rejection, 'reason', { value: error });
-  f.target.dispatchEvent(rejection);
-  assert.equal(f.calls.length, 1);
-  f.controller.dispose();
-  f.target.dispatchEvent(new Event('error'));
-  f.controller.capture(new Error('late'));
-  assert.equal(f.calls.length, 1);
+test('all capture entrypoints deduplicate rejection objects and teardown listeners', async (t) => {
+  for (const error of [
+    new Error('private'),
+    { name: 'SDKError', message: 'permission failed' },
+    new DOMException('Permission denied', 'NotAllowedError'),
+  ]) {
+    const f = fixture();
+    t.after(() => f.controller.dispose());
+    f.controller.start();
+    await turn();
+    const event = new Event('error');
+    Object.defineProperty(event, 'error', { value: error });
+    f.target.dispatchEvent(event);
+    f.controller.capture(error);
+    const rejection = new Event('unhandledrejection');
+    Object.defineProperty(rejection, 'reason', { value: error });
+    f.target.dispatchEvent(rejection);
+    assert.equal(f.calls.length, 1);
+    f.controller.dispose();
+    f.target.dispatchEvent(new Event('error'));
+    f.controller.capture(new Error('late'));
+    assert.equal(f.calls.length, 1);
+  }
 });
 
 test('disabled or failed configuration stops capture and capture errors do not escape', async () => {

@@ -148,14 +148,33 @@ export function sanitizeException(
         : 'Unhandled non-Error rejection',
   };
   try {
-    if (!(error instanceof Error)) return exception;
-    const originalName = typeof error.name === 'string' ? error.name : 'Error';
-    const originalMessage =
-      typeof error.message === 'string' ? error.message : '';
+    let originalName = 'Error',
+      originalMessage = '',
+      rawStack: unknown;
+    if (
+      error instanceof Error ||
+      (typeof DOMException !== 'undefined' && error instanceof DOMException)
+    ) {
+      originalName = typeof error.name === 'string' ? error.name : 'Error';
+      originalMessage = typeof error.message === 'string' ? error.message : '';
+      rawStack = 'stack' in error ? error.stack : undefined;
+    } else if (error !== null && typeof error === 'object') {
+      // SDK and cross-realm rejections may not inherit this realm's Error.
+      // Read only own data fields; never invoke getters or serialize payloads.
+      const field = (key: string) => {
+        const value = Object.getOwnPropertyDescriptor(error, key)?.value;
+        return typeof value === 'string' ? value : undefined;
+      };
+      const message = field('message');
+      if (message === undefined) return exception;
+      originalMessage = message;
+      originalName = field('name') ?? 'Error';
+      rawStack = field('stack');
+    } else return exception;
     exception.type = exceptionType(originalName);
     exception.value = scrubText(originalMessage);
-    if (!origin || typeof error.stack !== 'string') return exception;
-    let stack = error.stack.slice(0, 65_536);
+    if (!origin || typeof rawStack !== 'string') return exception;
+    let stack = rawStack.slice(0, 65_536);
     const header = `${originalName}${originalMessage ? ': ' + originalMessage : ''}`;
     // V8 includes the entire multiline message before the real stack. Remove
     // that exact prefix, so a message cannot inject an allowlisted fake frame.
@@ -344,7 +363,7 @@ export function createTelemetryController(options: {
   let disposed = false;
   let started = false;
   let timer: ReturnType<typeof setInterval> | undefined;
-  const seen = new WeakSet<Error>();
+  const seen = new WeakSet<object>();
   type PageView = {
     page: TelemetryPage;
     sessionID: string;
@@ -581,7 +600,7 @@ export function createTelemetryController(options: {
   function capture(error: unknown) {
     if (disposed || !sdk) return;
     try {
-      if (error instanceof Error) {
+      if (error !== null && typeof error === 'object') {
         if (seen.has(error)) return;
         seen.add(error);
       }

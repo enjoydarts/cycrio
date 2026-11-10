@@ -1,12 +1,12 @@
+import { defineParams } from '@sveltejs/kit/params';
 import { uuid } from './lib/daily-api.ts';
 
-function matchUUID(value: string): boolean {
+function matchUUID(value: string): string | undefined {
   try {
-    uuid(value);
-    return true;
+    return uuid(value);
   } catch {
-    return false;
+    return undefined;
   }
 }
 
-export const params = { uuid: matchUUID };
+export const params = defineParams({ uuid: matchUUID });

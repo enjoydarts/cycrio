@@ -29,10 +29,18 @@ test('subscription detail routes accept UUIDs and leave removed summary URLs unm
     params_path: manifest.params,
     root: vite.root,
   });
-  const match = params.uuid;
-  assert.equal(match('summary'), false);
-  assert.equal(match('11111111-1111-4111-8111-111111111111'), true);
-  assert.equal(match('invalid'), false);
+  const { parse_route_id, exec } = await import(
+    new URL('utils/routing.js', kitRoot).href
+  );
+  const route = parse_route_id('/subscriptions/[id=uuid]');
+  const match = (value: string) =>
+    exec(route.pattern.exec('/subscriptions/' + value), route.params, params);
+  assert.equal(match('summary'), undefined);
+  assert.deepEqual(match('11111111-1111-4111-8111-111111111111'), {
+    id: '11111111-1111-4111-8111-111111111111',
+  });
+  assert.equal(match('invalid'), undefined);
+  assert.equal(match('%2F'), undefined);
 });
 test('billing history accepts a parent draft store and reports unsaved editor state across detail lifetimes', async () => {
   const history = await source('BillingHistory.svelte');
