@@ -20,9 +20,14 @@ export const notificationKinds = [
   'trial_end',
   'price_increase',
   'import_error',
+  'pending_review',
 ] as const;
 export type NotificationKind = (typeof notificationKinds)[number];
-export type NotificationChannels = { in_app: boolean; email: boolean };
+export type NotificationChannels = {
+  in_app: boolean;
+  email: boolean;
+  push: boolean;
+};
 export type NotificationPreferences = {
   version: number;
   kinds: Record<NotificationKind, NotificationChannels>;
@@ -30,6 +35,7 @@ export type NotificationPreferences = {
   send_hour: number;
   timezone: 'Asia/Tokyo';
   email_opt_in: boolean;
+  push_opt_in: boolean;
 };
 export type NotificationSettings = {
   preferences: NotificationPreferences;
@@ -39,6 +45,7 @@ export type NotificationSettings = {
     profile_ready: boolean;
     sender_ready: boolean;
   };
+  push: { available: boolean; reason: string };
   as_of: string;
   timezone: 'Asia/Tokyo';
 };
@@ -54,6 +61,8 @@ export type NotificationFacts = {
   result_id?: string;
   event_index?: number;
   episode_id?: string;
+  review_run_id?: string;
+  review_count?: number;
   service: string;
   due_date?: string;
   scheduled_at: string;
@@ -64,6 +73,7 @@ export type NotificationFacts = {
   new_amount?: string;
   in_app: boolean;
   email: boolean;
+  push: boolean;
 };
 export type Notification = {
   id: string;
@@ -89,7 +99,7 @@ export type NotificationFilter = {
 };
 export type NotificationDelivery = {
   id: string;
-  channel: 'in_app' | 'email';
+  channel: 'in_app' | 'email' | 'push';
   state:
     'queued' | 'claimed' | 'unknown' | 'accepted' | 'failed' | 'suppressed';
   reason: string;
@@ -122,14 +132,21 @@ export function parseNotificationPreferences(
   const kinds = Object.fromEntries(
     notificationKinds.map((kind) => {
       const channel = record(raw[kind]);
-      if (Object.keys(channel).length !== 2) return invalid();
+      if (Object.keys(channel).length !== 3) return invalid();
       return [
         kind,
-        { in_app: bool(channel.in_app), email: bool(channel.email) },
+        {
+          in_app: bool(channel.in_app),
+          email: bool(channel.email),
+          push: bool(channel.push),
+        },
       ];
     }),
   ) as NotificationPreferences['kinds'];
   const email_opt_in = bool(v.email_opt_in);
+  const push_opt_in = bool(v.push_opt_in);
+  if (!push_opt_in && Object.values(kinds).some((channel) => channel.push))
+    return invalid();
   if (!email_opt_in && Object.values(kinds).some((channel) => channel.email))
     return invalid();
   return {
@@ -139,13 +156,22 @@ export function parseNotificationPreferences(
     send_hour: integer(v.send_hour, 0, 23),
     timezone: choice(v.timezone, ['Asia/Tokyo']),
     email_opt_in,
+    push_opt_in,
   };
 }
 export function parseNotificationSettings(
   value: unknown,
 ): NotificationSettings {
   const v = record(value),
-    email = record(v.email);
+    email = record(v.email),
+    push = record(v.push);
+  const available = bool(push.available),
+    reason = choice(push.reason, [
+      '',
+      'environment_disabled',
+      'not_configured',
+    ]);
+  if (available !== (reason === '')) return invalid();
   return {
     preferences: parseNotificationPreferences(v.preferences),
     email: {
@@ -154,6 +180,7 @@ export function parseNotificationSettings(
       profile_ready: bool(email.profile_ready),
       sender_ready: bool(email.sender_ready),
     },
+    push: { available, reason },
     as_of: date(v.as_of),
     timezone: choice(v.timezone, ['Asia/Tokyo']),
   };
@@ -166,9 +193,11 @@ export const notificationPreferencesEqual = (
   a.send_hour === b.send_hour &&
   a.timezone === b.timezone &&
   a.email_opt_in === b.email_opt_in &&
+  a.push_opt_in === b.push_opt_in &&
   notificationKinds.every(
     (kind) =>
       a.kinds[kind].in_app === b.kinds[kind].in_app &&
+      a.kinds[kind].push === b.kinds[kind].push &&
       a.kinds[kind].email === b.kinds[kind].email,
   );
 export function parseNotification(value: unknown): Notification {
@@ -182,6 +211,9 @@ export function parseNotification(value: unknown): Notification {
     scheduled_at: timestamp(f.scheduled_at),
     in_app: bool(f.in_app),
     email: bool(f.email),
+    push: bool(f.push),
+    ...optional(f, 'review_run_id', uuid),
+    ...optional(f, 'review_count', (x) => integer(x, 1)),
     ...optional(f, 'contract_id', uuid),
     ...optional(f, 'account_id', uuid),
     ...optional(f, 'result_id', uuid),
@@ -196,10 +228,35 @@ export function parseNotification(value: unknown): Notification {
     ...optional(f, 'old_amount', amount),
     ...optional(f, 'new_amount', amount),
   };
+  if (kind === 'pending_review') {
+    if (
+      !facts.review_run_id ||
+      !facts.review_count ||
+      facts.service !== '' ||
+      [
+        'contract_id',
+        'account_id',
+        'result_id',
+        'episode_id',
+        'event_index',
+        'due_date',
+        'date_source',
+        'amount',
+        'currency',
+        'old_amount',
+        'new_amount',
+      ].some((key) => f[key] !== undefined) ||
+      v.match_basis !== undefined
+    )
+      return invalid();
+  } else if (f.review_run_id !== undefined || f.review_count !== undefined)
+    return invalid();
   if (
-    kind === 'import_error'
-      ? !facts.account_id || !facts.episode_id
-      : !facts.contract_id || !facts.service.trim()
+    kind === 'pending_review'
+      ? false
+      : kind === 'import_error'
+        ? !facts.account_id || !facts.episode_id
+        : !facts.contract_id || !facts.service.trim()
   )
     return invalid();
   if (
@@ -278,6 +335,7 @@ export function createNotificationsAPI(
           send_hour: p.send_hour,
           timezone: p.timezone,
           email_opt_in: p.email_opt_in,
+          push_opt_in: p.push_opt_in,
           confirmed: true,
         };
       });
@@ -326,7 +384,7 @@ export function createNotificationsAPI(
         const v = record(value);
         return {
           id: uuid(v.id),
-          channel: choice(v.channel, ['in_app', 'email']),
+          channel: choice(v.channel, ['in_app', 'email', 'push']),
           state: choice(v.state, [
             'queued',
             'claimed',

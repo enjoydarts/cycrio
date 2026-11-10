@@ -9,7 +9,7 @@ services:
     environment:
       NODE_OPTIONS: --max-old-space-size=512
     working_dir: /app
-    command: [sh, -c, 'node scripts/generate-service-logos.mjs && exec node node_modules/vite/bin/vite.js --config browser-tests/vite.config.mjs --host 0.0.0.0']
+    command: [sh, -c, 'node scripts/generate-service-logos.mjs && node scripts/prepare-push-assets.mjs && exec node node_modules/vite/bin/vite.js --config browser-tests/vite.config.mjs --host 0.0.0.0']
     volumes:
       - ./web/browser-tests:/app/browser-tests:ro
       - ./web/browser-tests/tsconfig.fixture.json:/app/tsconfig.json:ro

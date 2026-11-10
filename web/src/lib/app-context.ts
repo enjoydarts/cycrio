@@ -7,6 +7,8 @@ import type { createMailAPI } from './mail-api.ts';
 import type { createMailSyncAPI } from './mail-sync-api.ts';
 import type { createMailProcessingAPI } from './mail-processing-api.ts';
 import type { ThemePreference } from './theme.ts';
+import type { NotificationsAPI } from './notifications-api.ts';
+import type { PushController } from './push-controller.ts';
 
 const appSession = Symbol('cycrio-app-session');
 export type AppSession = {
@@ -24,6 +26,8 @@ export type AppSession = {
   mailAPI: ReturnType<typeof createMailAPI>;
   mailSyncAPI: ReturnType<typeof createMailSyncAPI>;
   mailProcessingAPI: ReturnType<typeof createMailProcessingAPI>;
+  notificationsAPI: NotificationsAPI;
+  readonly pushController?: PushController;
 };
 export function provideAppSession(session: AppSession) {
   setContext(appSession, session);

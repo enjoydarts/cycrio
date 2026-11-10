@@ -76,6 +76,7 @@ export function createAuthController(
   mode: 'home' | 'admin' | 'callback' | 'mail',
   changed: (state: AuthState) => void,
   load: (key: string) => Promise<AuthSDK> = loadClerk,
+  onSessionEnd: () => Promise<void> | void = () => {},
 ) {
   let disposed = false;
   let sdk: AuthSDK | undefined;
@@ -84,6 +85,7 @@ export function createAuthController(
   let request = new AbortController();
   type SessionScope = { clerkUserId: string; sessionId: string };
   let allowedScope: SessionScope | undefined;
+  let verifiedClerkUser: string | undefined;
 
   function sameSession(scope: SessionScope) {
     return (
@@ -109,6 +111,10 @@ export function createAuthController(
     const current = nextRequest();
     const user = sdk.user;
     const session = sdk.session;
+    if (verifiedClerkUser && (!session || user?.id !== verifiedClerkUser)) {
+      verifiedClerkUser = undefined;
+      void onSessionEnd();
+    }
     if (!user || !session) {
       emit({
         status: 'signed_out',
@@ -132,11 +138,16 @@ export function createAuthController(
       const identity = await api.me(token, current.signal);
       if (!disposed && generation === current.id && sameSession(scope)) {
         allowedScope = scope;
+        verifiedClerkUser = scope.clerkUserId;
         emit({ status: 'allowed', user: identity });
       }
     } catch (error) {
       if (disposed || generation !== current.id) return;
       const code = authError(error);
+      if (code === 'access_denied' || code === 'authentication_required') {
+        verifiedClerkUser = undefined;
+        void onSessionEnd();
+      }
       if (code === 'access_denied') {
         emit(
           mode === 'admin'
@@ -224,6 +235,8 @@ export function createAuthController(
       nextRequest();
       emit({ status: 'checking' });
       try {
+        verifiedClerkUser = undefined;
+        await onSessionEnd();
         await sdk.signOut();
         await refresh();
       } catch {

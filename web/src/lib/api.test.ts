@@ -142,6 +142,7 @@ const summaries = [
   'outlook_oauth',
   'healthchecks',
   'posthog',
+  'onesignal',
 ].map((provider) => ({
   provider,
   state: 'not_configured',

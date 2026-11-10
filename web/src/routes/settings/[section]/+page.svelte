@@ -5,6 +5,7 @@
   import MailAccounts from '#lib/MailAccounts.svelte';
   import Appearance from '#lib/Appearance.svelte';
   import AccountSettings from '#lib/AccountSettings.svelte';
+  import NotificationSettings from '#lib/NotificationSettings.svelte';
   import { createErasureAPI } from '#lib/erasure-api.ts';
   import AdminCredentials from '#lib/AdminCredentials.svelte';
   import ModelCatalog from '#lib/ModelCatalog.svelte';
@@ -59,6 +60,13 @@
         />
       {:else if section === 'appearance'}
         <Appearance />
+      {:else if section === 'notifications'}
+        <NotificationSettings
+          api={session.notificationsAPI}
+          token={session.token}
+          onDenied={session.onDenied}
+          pushController={session.pushController}
+        />
       {:else if section === 'account'}
         <AccountSettings
           api={erasureAPI}

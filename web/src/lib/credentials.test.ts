@@ -5,6 +5,7 @@ import {
   createCredentialsController,
   validSecret,
   serializeOAuthCredential,
+  serializeOneSignalCredential,
   type CredentialsState,
 } from './credentials.ts';
 
@@ -21,12 +22,29 @@ const rows = [
   'outlook_oauth',
   'healthchecks',
   'posthog',
+  'onesignal',
 ].map((provider) => ({
   provider,
   state: 'not_configured',
   version: 0,
   updated_at: null,
 }));
+test('OneSignal設定はApp IDとAPI keyの別入力を正規JSONへ変換する', () => {
+  const app_id = 'AA427041-A738-4CAF-A8F7-192ACA0CBA98';
+  assert.deepEqual(
+    JSON.parse(
+      serializeOneSignalCredential({ app_id, api_key: '"'.repeat(4096) }),
+    ),
+    { app_id: app_id.toLowerCase(), api_key: '"'.repeat(4096) },
+  );
+  for (const fields of [
+    { app_id: 'bad', api_key: 'secret' },
+    { app_id, api_key: '' },
+    { app_id, api_key: 'private key' },
+    { app_id, api_key: '\n' },
+  ])
+    assert.throws(() => serializeOneSignalCredential(fields));
+});
 function fixture(
   handle?: (url: string, init?: RequestInit) => Promise<Response>,
 ) {

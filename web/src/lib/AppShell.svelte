@@ -5,6 +5,7 @@
   import Button from './Button.svelte';
   import ActionGroup from './ActionGroup.svelte';
   import NotificationCenter from './NotificationCenter.svelte';
+  import type { PushController } from './push-controller.ts';
   import type { NotificationsAPI } from './notifications-api.ts';
   import ActionLink from './ActionLink.svelte';
   import { onMount, tick, type Snippet } from 'svelte';
@@ -27,6 +28,7 @@
     mailAPI,
     overviewAPI,
     notificationsAPI,
+    pushController,
     onDenied = () => {},
     theme = 'system',
     setTheme = () => {},
@@ -40,6 +42,7 @@
     mailAPI?: Pick<MailAPI, 'list'>;
     overviewAPI?: Pick<ReturnType<typeof createOverviewAPI>, 'read'>;
     notificationsAPI?: NotificationsAPI;
+    pushController?: PushController;
     onDenied?: () => void;
     theme?: ThemePreference;
     setTheme?: (value: ThemePreference) => void;
@@ -398,6 +401,7 @@
       <ActionGroup>
         {#key user.id}<NotificationCenter
             api={notificationsAPI}
+            {pushController}
             {token}
             {onDenied}
           />{/key}

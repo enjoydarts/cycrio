@@ -15,6 +15,7 @@
     type CredentialsState,
     serializeOAuthCredential,
     serializePostHogCredential,
+    serializeOneSignalCredential,
   } from './credentials';
 
   let {
@@ -43,6 +44,7 @@
   let nextProvider = $state<CredentialProvider | null>(null);
   let controller: ReturnType<typeof createCredentialsController> | undefined;
   const providers = {
+    onesignal: { label: 'OneSignal', purpose: '端末へのPush通知' },
     posthog: {
       label: 'PostHog',
       purpose: '本番環境のエラー追跡',
@@ -183,18 +185,23 @@
     let secret = '';
     try {
       secret =
-        provider === 'posthog'
-          ? serializePostHogCredential({
-              project_token: field('project_token'),
-              host: field('host'),
+        provider === 'onesignal'
+          ? serializeOneSignalCredential({
+              app_id: field('app_id'),
+              api_key: field('api_key'),
             })
-          : provider === 'gmail_oauth' || provider === 'outlook_oauth'
-            ? serializeOAuthCredential(provider, {
-                ClientID: field('client_id'),
-                ClientSecret: field('client_secret'),
-                RedirectURI: field('redirect_uri'),
+          : provider === 'posthog'
+            ? serializePostHogCredential({
+                project_token: field('project_token'),
+                host: field('host'),
               })
-            : field('secret');
+            : provider === 'gmail_oauth' || provider === 'outlook_oauth'
+              ? serializeOAuthCredential(provider, {
+                  ClientID: field('client_id'),
+                  ClientSecret: field('client_secret'),
+                  RedirectURI: field('redirect_uri'),
+                })
+              : field('secret');
     } catch {
       /* The controller publishes the same safe validation error. */
     }
@@ -376,7 +383,35 @@
                   oninput={() => (dirty = true)}
                   novalidate
                 >
-                  {#if credential.provider === 'posthog'}
+                  {#if credential.provider === 'onesignal'}
+                    <div class="credential-field">
+                      <label for="app-id-onesignal">App ID</label><input
+                        id="app-id-onesignal"
+                        name="app_id"
+                        type="text"
+                        required
+                        disabled={busy}
+                        autocomplete="off"
+                        spellcheck="false"
+                      />
+                    </div>
+                    <div class="credential-field">
+                      <label for="api-key-onesignal">API key</label><input
+                        id="api-key-onesignal"
+                        name="api_key"
+                        type="password"
+                        required
+                        disabled={busy}
+                        autocomplete="new-password"
+                        spellcheck="false"
+                      />
+                      <p class="help">
+                        OneSignalのApp API
+                        keyを入力します。保存後は再表示しません。更新時はApp
+                        IDも再入力してください。
+                      </p>
+                    </div>
+                  {:else if credential.provider === 'posthog'}
                     <p class="help">
                       本番環境の未処理エラーだけを送信します。自動アクセス解析・録画・Cookieは利用しません。
                     </p>

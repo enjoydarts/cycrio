@@ -2,6 +2,31 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ApiError } from './api.ts';
 import { createNotificationSettings } from './notification-settings-controller.ts';
+test('Push同意OFFはPushだけを止めメール同意OFFはメールだけを止める', async () => {
+  const p = notificationSettings();
+  p.email.available = true;
+  p.push.available = true;
+  p.email.reason = '';
+  p.push.reason = '';
+  p.preferences.email_opt_in = true;
+  p.preferences.push_opt_in = true;
+  p.preferences.kinds.renewal.email = true;
+  p.preferences.kinds.renewal.push = true;
+  const c = createNotificationSettings(
+    { settings: async () => p, updateSettings: async () => p },
+    async () => 't',
+    () => {},
+    () => {},
+  );
+  await c.load();
+  c.edit({ push_opt_in: false });
+  assert.equal(c.state().values!.kinds.renewal.push, false);
+  assert.equal(c.state().values!.kinds.renewal.email, true);
+  c.edit({ push_opt_in: true, kinds: { ...p.preferences.kinds } });
+  c.edit({ email_opt_in: false });
+  assert.equal(c.state().values!.kinds.renewal.push, true);
+  assert.equal(c.state().values!.kinds.renewal.email, false);
+});
 import { notificationSettings } from './notifications-fixtures.ts';
 test('email consent can be withdrawn with all email kinds after sender readiness is lost', async () => {
   const page = notificationSettings();
@@ -175,7 +200,7 @@ test('reactive preference objects can update one channel without losing the othe
   c.edit({
     kinds: {
       ...kinds,
-      renewal: { in_app: false, email: false },
+      renewal: { in_app: false, email: false, push: false },
       trial_end: new Proxy(kinds.trial_end, {}),
     },
   });

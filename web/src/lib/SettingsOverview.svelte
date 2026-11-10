@@ -6,6 +6,7 @@
   const session = getAppSession();
   const descriptions: Record<string, string> = {
     mail: '接続したメールの確認・変更',
+    notifications: 'アプリ内・メール・Push通知と端末の設定',
     appearance: 'ライト・ダーク・端末の設定に合わせる',
     ai: 'モデルの選択、接続テストと本文の送信許可',
     credentials: 'AI・メールサービスの認証情報',

@@ -14,6 +14,16 @@ import { deliveryState } from './notification-text.ts';
 const List = (await import('./NotificationList.svelte')).default;
 const Fields = (await import('./NotificationPreferenceFields.svelte')).default;
 const Shell = (await import('./AppShell.svelte')).default;
+test('確認待ちの即時通知を時刻設定から区別しモバイルは共通カード表示にする', () => {
+  const p = notificationSettings();
+  const html = render(Fields, {
+    props: { values: p.preferences, email: p.email, onchange: () => {} },
+  }).body;
+  assert.match(html, /確認待ちの候補を除く通知に適用します/);
+  assert.match(html, /確認待ちの候補はメール解析後に通知します/);
+  assert.doesNotMatch(html, /すべての種類に適用します/);
+  assert.match(html, /<table[^>]*class="[^"]*cards/);
+});
 test('unavailable email sender explains the reason and leaves existing consent revocable', () => {
   const p = notificationSettings();
   p.email.reason = 'sender_unavailable';
@@ -53,11 +63,11 @@ test('compiled preferences expose five in-app options but leave unprepared email
   const html = render(Fields, {
     props: { values: p.preferences, email: p.email, onchange: () => {} },
   }).body;
-  assert.equal((html.match(/をアプリ内で通知/g) ?? []).length, 5);
+  assert.equal((html.match(/をアプリ内で通知/g) ?? []).length, 6);
   const email = [
     ...html.matchAll(/<input[^>]*aria-label="[^"]*をメールで通知"[^>]*>/g),
   ].map((x) => x[0]);
-  assert.equal(email.length, 5);
+  assert.equal(email.length, 6);
   for (const input of email) assert.match(input, /disabled/);
   assert.match(html, /メール通知は準備中/);
   assert.doesNotMatch(html, /type="email"/);

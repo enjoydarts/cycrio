@@ -9,20 +9,25 @@ export const notificationKindNames: Record<NotificationKind, string> = {
   trial_end: '無料期間終了',
   price_increase: '値上げ候補',
   import_error: '取り込みエラー',
+  pending_review: '確認待ちの候補',
 };
 export function notificationAction(notification: Notification) {
   const f = notification.facts;
-  return f.kind === 'price_increase'
-    ? `/analysis?tab=attention&result_id=${f.result_id}&event_index=${f.event_index}`
-    : f.kind === 'import_error'
-      ? `/import?account_id=${f.account_id}`
-      : `/subscriptions/${f.contract_id}`;
+  return f.kind === 'pending_review'
+    ? `/analysis?tab=attention&run_id=${f.review_run_id}`
+    : f.kind === 'price_increase'
+      ? `/analysis?tab=attention&result_id=${f.result_id}&event_index=${f.event_index}`
+      : f.kind === 'import_error'
+        ? `/import?account_id=${f.account_id}`
+        : `/subscriptions/${f.contract_id}`;
 }
 export function deliveryState(delivery: NotificationDelivery) {
   if (delivery.channel === 'in_app')
     return delivery.state === 'accepted'
       ? 'アプリ内に表示済み'
       : 'アプリ内の表示を確認';
+  if (delivery.channel === 'push' && delivery.state === 'accepted')
+    return 'Push送信受付済み（配信未確認）';
   if (delivery.complained) return '迷惑メールとして報告';
   if (delivery.bounced) return '宛先へ配信できませんでした';
   if (delivery.delivered) return '配信済み';
@@ -48,6 +53,9 @@ export function deliveryReason(reason: string) {
     lease_expired: '送信準備の期限を過ぎました。',
     provider_rejected: '送信サービスが要求を受け付けませんでした。',
     unknown_result: '受付結果を確認できません。自動で再送しません。',
+    environment_disabled: 'この環境ではPush通知を利用できません。',
+    not_configured: 'Push送信サービスの準備ができていません。',
+    no_active_device: '有効な通知端末がありません。',
   };
   return reasons[reason] ?? '通知の状態を確認してください。';
 }

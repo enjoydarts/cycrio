@@ -8,10 +8,10 @@ import {
 test('ordinary owners see personal settings including account, administrators retain every separate setting URL', () => {
   assert.deepEqual(
     availableSettings('user').map((section) => section.id),
-    ['mail', 'appearance', 'account'],
+    ['mail', 'notifications', 'appearance', 'account'],
   );
-  assert.equal(availableSettings('platform_admin').length, 11);
-  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 11);
+  assert.equal(availableSettings('platform_admin').length, 12);
+  assert.equal(new Set(settingsSections.map((section) => section.id)).size, 12);
 });
 test('direct administrator routes deny owners and unknown sections are unavailable', () => {
   for (const section of settingsSections) {

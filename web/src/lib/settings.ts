@@ -1,6 +1,7 @@
 import type { Role } from './api.ts';
 export const settingsSections = [
   { id: 'mail', title: 'メール連携', admin: false },
+  { id: 'notifications', title: '通知', admin: false },
   { id: 'appearance', title: '表示', admin: false },
   { id: 'account', title: 'アカウント', admin: false },
   { id: 'ai', title: 'AI の準備・送信許可', admin: true },

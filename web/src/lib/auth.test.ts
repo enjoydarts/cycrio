@@ -52,6 +52,36 @@ function fixture(response: (url: string) => Response, signedIn = true) {
     listener: () => listener?.(),
   };
 }
+test('端末停止は通常token更新では行わず外部所有者切替とlogout前に行う', async () => {
+  const f = fixture(() =>
+    Response.json({ id: '11111111-1111-4111-8111-111111111111', role: 'user' }),
+  );
+  const events: string[] = [];
+  const controller = createAuthController(
+    f.api,
+    'home',
+    f.changed,
+    async () => f.sdk,
+    async () => {
+      events.push('stop');
+    },
+  );
+  await controller.start();
+  f.listener();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(events.length, 0);
+  f.sdk.user = { id: 'other_clerk' };
+  f.listener();
+  assert.deepEqual(events, ['stop']);
+  await new Promise((r) => setTimeout(r, 0));
+  f.sdk.signOut = async () => {
+    events.push('sdk signout');
+    f.sdk.user = null;
+    f.sdk.session = null;
+  };
+  await controller.signOut();
+  assert.ok(events.indexOf('stop', 1) < events.indexOf('sdk signout'));
+});
 
 test('unconfigured installation does not initialize Clerk or call private endpoints', async () => {
   const states: AuthState[] = [];

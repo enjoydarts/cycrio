@@ -21,6 +21,33 @@ export type CredentialsState = {
 export function validSecret(secret: string): boolean {
   return /^[\x21-\x7e]{8,4096}$/.test(secret);
 }
+export function serializeOneSignalCredential(fields: {
+  app_id: string;
+  api_key: string;
+}): string {
+  const app_id = fields.app_id.toLowerCase();
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      app_id,
+    ) ||
+    app_id === '00000000-0000-0000-0000-000000000000' ||
+    !/^[\x21-\x7e]{1,4096}$/.test(fields.api_key)
+  )
+    throw new ApiError('invalid_request');
+  return JSON.stringify({ app_id, api_key: fields.api_key });
+}
+function validProviderSecret(provider: CredentialProvider, secret: string) {
+  if (provider !== 'onesignal') return validSecret(secret);
+  try {
+    const fields = JSON.parse(secret);
+    return (
+      Object.keys(fields).sort().join() === 'api_key,app_id' &&
+      serializeOneSignalCredential(fields) === secret
+    );
+  } catch {
+    return false;
+  }
+}
 
 export function serializePostHogCredential(fields: {
   project_token: string;
@@ -145,7 +172,7 @@ export function createCredentialsController(
     secret?: string,
   ) {
     if (!active()) return;
-    if (secret !== undefined && !validSecret(secret)) {
+    if (secret !== undefined && !validProviderSecret(provider, secret)) {
       emit({ ...state, error: 'invalid_request', success: null });
       return;
     }

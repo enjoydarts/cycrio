@@ -20,12 +20,19 @@
   import { createMailProcessingAPI } from '#lib/mail-processing-api.ts';
   import { createOverviewAPI } from '#lib/overview-api.ts';
   import { createNotificationsAPI } from '#lib/notifications-api.ts';
+  import { createPushAPI } from '#lib/push-api.ts';
+  import { createPushBrowser } from '#lib/push-browser.ts';
+  import {
+    createPushController,
+    type PushController,
+  } from '#lib/push-controller.ts';
   import { startBrowserTelemetry } from '#lib/telemetry-browser.ts';
 
   let { children } = $props();
   let controller: ReturnType<typeof createAuthController> | undefined;
   let browserTelemetry: ReturnType<typeof startBrowserTelemetry> | undefined;
   let themeController: ReturnType<typeof createThemeController> | undefined;
+  let pushController = $state<PushController | undefined>();
   const boundary = createSessionBoundary(
     async () => (await controller?.getToken()) ?? null,
   );
@@ -41,6 +48,7 @@
     theme = preference;
   }
   function onDenied() {
+    void pushController?.bind(null);
     void controller?.refresh();
   }
   provideAppSession({
@@ -68,6 +76,10 @@
     mailAPI,
     mailSyncAPI: createMailSyncAPI(PUBLIC_API_BASE_URL),
     mailProcessingAPI: createMailProcessingAPI(PUBLIC_API_BASE_URL),
+    notificationsAPI,
+    get pushController() {
+      return pushController;
+    },
   });
   afterNavigate(({ to }) => {
     if (to) browserTelemetry?.navigate(to.url.pathname);
@@ -89,6 +101,27 @@
       media: window.matchMedia('(prefers-color-scheme: dark)'),
     });
     theme = themeController.preference();
+    try {
+      pushController = createPushController({
+        api: createPushAPI(PUBLIC_API_BASE_URL),
+        sdk: createPushBrowser({ window, document }),
+        storage: window.localStorage,
+        denied: () => {
+          void controller?.refresh();
+        },
+      });
+    } catch {
+      // 解除情報を永続化できない環境では端末登録を開始しない。
+    }
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key?.startsWith('cycrio.push.'))
+        void pushController?.synchronize();
+    };
+    const retryPushCleanup = () => {
+      void pushController?.retryCleanup();
+    };
+    window.addEventListener('storage', storageChanged);
+    window.addEventListener('online', retryPushCleanup);
     controller = createAuthController(
       api,
       page.url.pathname === '/sso-callback' ? 'callback' : 'home',
@@ -96,7 +129,17 @@
         boundary.update(auth);
         sessionState = boundary.current();
         telemetry.setUser(auth.status === 'allowed' ? auth.user.id : null);
+        if (auth.status === 'allowed')
+          void pushController?.bind(auth.user.id, sessionState.token);
+        else if (
+          ['signed_out', 'denied', 'pending', 'unconfigured'].includes(
+            auth.status,
+          )
+        )
+          void pushController?.bind(null);
       },
+      undefined,
+      () => pushController?.bind(null),
     );
     void controller.start();
     return () => {
@@ -104,6 +147,8 @@
       telemetry.dispose();
       if (browserTelemetry === telemetry) browserTelemetry = undefined;
       themeController?.dispose();
+      window.removeEventListener('storage', storageChanged);
+      window.removeEventListener('online', retryPushCleanup);
     };
   });
 </script>
@@ -118,6 +163,7 @@
       {mailAPI}
       {overviewAPI}
       {notificationsAPI}
+      {pushController}
       {onDenied}
       {theme}
       {setTheme}

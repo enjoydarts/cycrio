@@ -13,19 +13,23 @@
   let {
     values,
     email,
+    push = { available: false, reason: 'environment_disabled' },
     disabled = false,
     onchange,
   }: {
     values: NotificationPreferences;
     email: NotificationSettings['email'];
+    push?: NotificationSettings['push'];
     disabled?: boolean;
     onchange: (patch: Partial<NotificationPreferences>) => void;
   } = $props();
 </script>
 
 <LibraryPanel
-  ><DataTable responsive="compact"
-    ><thead><tr><th>通知の種類</th><th>アプリ内</th><th>メール</th></tr></thead
+  ><DataTable responsive="cards"
+    ><thead
+      ><tr><th>通知の種類</th><th>アプリ内</th><th>メール</th><th>Push</th></tr
+      ></thead
     ><tbody>
       {#each notificationKinds as kind}<tr
           ><td data-primary>{notificationKindNames[kind]}</td><td
@@ -52,7 +56,8 @@
               type="checkbox"
               checked={values.kinds[kind].email}
               disabled={disabled ||
-                (!email.available && !values.kinds[kind].email)}
+                ((!email.available || !values.email_opt_in) &&
+                  !values.kinds[kind].email)}
               onchange={(event) =>
                 onchange({
                   kinds: {
@@ -60,6 +65,25 @@
                     [kind]: {
                       ...values.kinds[kind],
                       email: event.currentTarget.checked,
+                    },
+                  },
+                })}
+            /></td
+          ><td data-label="Push"
+            ><input
+              type="checkbox"
+              aria-label={`${notificationKindNames[kind]}をPushで通知`}
+              checked={values.kinds[kind].push}
+              disabled={disabled ||
+                ((!push.available || !values.push_opt_in) &&
+                  !values.kinds[kind].push)}
+              onchange={(event) =>
+                onchange({
+                  kinds: {
+                    ...values.kinds,
+                    [kind]: {
+                      ...values.kinds[kind],
+                      push: event.currentTarget.checked,
                     },
                   },
                 })}
@@ -98,7 +122,7 @@
           value={hour}>{hour}:00</option
         >{/each}</select
     ><small class="muted"
-      >すべての種類に適用します。日本時間（Asia/Tokyo）です。</small
+      >確認待ちの候補を除く通知に適用します。日本時間（Asia/Tokyo）です。確認待ちの候補はメール解析後に通知します。</small
     ></label
   >
 </div>
@@ -119,6 +143,19 @@
 {#if !email.available}<p class="notice">
     {deliveryReason(email.reason)} アプリ内通知の設定とメール通知の停止は可能です。
   </p>{/if}
+<label class="choice"
+  ><input
+    type="checkbox"
+    aria-label="登録した端末へPush通知を送る"
+    checked={values.push_opt_in}
+    disabled={disabled || (!push.available && !values.push_opt_in)}
+    onchange={(event) => onchange({ push_opt_in: event.currentTarget.checked })}
+  /><span>登録した端末へPush通知を送る</span></label
+>
+<p class="muted">
+  Pushとメールの同意はそれぞれ独立しています。Pushには、この端末の通知許可と受信確認も必要です。
+</p>
+{#if !push.available}<p class="notice">{deliveryReason(push.reason)}</p>{/if}
 
 <style>
   .timing {

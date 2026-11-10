@@ -48,7 +48,9 @@
         <strong
           >{delivery.channel === 'in_app'
             ? 'アプリ内'
-            : 'メール'}：{deliveryState(delivery)}</strong
+            : delivery.channel === 'push'
+              ? 'Push'
+              : 'メール'}：{deliveryState(delivery)}</strong
         >
         <p>更新日時：{processingDate(delivery.updated_at)}（日本時間）</p>
         {#if delivery.reason}<p>{deliveryReason(delivery.reason)}</p>{/if}

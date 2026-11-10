@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { ApiError, type TokenProvider } from './api.ts';
   import type { NotificationsAPI } from './notifications-api.ts';
+  import type { PushController } from './push-controller.ts';
   import {
     createNotificationInbox,
     type NotificationInboxView,
@@ -17,10 +18,12 @@
   let {
     api,
     token,
+    pushController,
     onDenied = () => {},
   }: {
     api?: NotificationsAPI;
     token?: TokenProvider;
+    pushController?: PushController;
     onDenied?: () => void;
   } = $props();
   let open = $state(false),
@@ -177,6 +180,7 @@
       ></ActionGroup
     >
     {#if tab === 'settings'}<NotificationSettings
+        {pushController}
         {api}
         {token}
         onDenied={denied}

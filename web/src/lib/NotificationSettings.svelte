@@ -11,17 +11,22 @@
   } from './notification-settings-controller.ts';
   import NotificationPreferenceFields from './NotificationPreferenceFields.svelte';
   import Button from './Button.svelte';
+  import PushSettings from './PushSettings.svelte';
+  import type { PushController } from './push-controller.ts';
+  import LibraryHeader from './LibraryHeader.svelte';
   import { processingErrors } from './mail-processing-text.ts';
   let {
     api,
     token,
     onDenied,
-    onFrozen,
+    onFrozen = () => {},
+    pushController,
   }: {
     api: NotificationsAPI;
     token: TokenProvider;
     onDenied: () => void;
-    onFrozen: (frozen: boolean) => void;
+    onFrozen?: (frozen: boolean) => void;
+    pushController?: PushController;
   } = $props();
   let view = $state<NotificationSettingsView>({
     page: null,
@@ -64,7 +69,10 @@
 </script>
 
 <section class="daily" aria-label="本人の通知設定">
-  <h3>通知設定</h3>
+  <LibraryHeader
+    title="通知設定"
+    description="アプリ内・メール・Push通知を設定します。"
+  />
   <p>
     保存すると本人の通知に反映します。メール通知は、連携済みの本人の検証済みメール宛てです。
   </p>
@@ -78,6 +86,7 @@
       <NotificationPreferenceFields
         values={view.values}
         email={view.page.email}
+        push={view.page.push}
         disabled={locked || view.conflict}
         onchange={(patch) => controller?.edit(patch)}
       />
@@ -123,6 +132,7 @@
       onclick={() => controller?.load()}>通知設定を再取得</Button
     >{/if}
 </section>
+{#if pushController}<PushSettings controller={pushController} />{/if}
 
 <style>
   .choice {

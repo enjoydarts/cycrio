@@ -33,7 +33,12 @@
       {#each notifications as notification}{@const f = notification.facts}<tr>
           <td data-primary
             ><strong>{notificationKindNames[f.kind]}</strong>
-            <p>{f.service || 'メールの取り込み'}</p>
+            <p>
+              {f.service ||
+                (f.kind === 'pending_review'
+                  ? 'メール解析の確認待ち'
+                  : 'メールの取り込み')}
+            </p>
             <small>{processingDate(notification.created_at)}（日本時間）</small
             >{#if notification.superseded_at}<p class="muted">
                 現在は対象外の通知です。
@@ -56,6 +61,9 @@
               </p>
               <p class="muted">
                 契約の一致は未確定です。元の抽出情報を確認してください。承認まで契約内容は変更されません。
+              </p>
+            {:else if f.kind === 'pending_review'}<p>
+                確認待ちの候補が {f.review_count} 件あります。内容を確認してください。
               </p>
             {:else if f.kind === 'import_error'}<p>
                 接続設定と取り込み状況を確認してください。

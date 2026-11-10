@@ -1,5 +1,6 @@
 <script lang="ts">
   import AdminCredentials from '../src/lib/AdminCredentials.svelte';
+  import PushFixture from './PushFixture.svelte';
   import MailAccounts from '../src/lib/MailAccounts.svelte';
   import { createMailAPI } from '../src/lib/mail-api.ts';
   import { createAPI } from '../src/lib/api.ts';
@@ -225,7 +226,8 @@
   }}
 />
 
-{#if mode === 'mobile-overview' || mode === 'mobile-subscriptions'}
+{#if mode.startsWith('push')}<PushFixture {mode} />
+{:else if mode === 'mobile-overview' || mode === 'mobile-subscriptions'}
   <AppShell
     user={{ id: initial.id, role: 'user' }}
     pathname={mode === 'mobile-overview' ? '/' : fixturePage.url.pathname}

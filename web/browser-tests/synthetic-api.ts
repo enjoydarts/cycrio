@@ -25,6 +25,14 @@ declare global {
       ownerGeneration?: number;
       switchNotificationOwner?: () => void;
       releaseOldNotification?: () => void;
+      pushCalls?: string[];
+      pushActive?: boolean;
+      pushStoredBeforeConfirm?: boolean;
+      pushEmit?: () => void;
+      pushFinishConfirm?: () => void;
+      pushLogout?: () => Promise<void>;
+      pushRefreshToken?: () => Promise<void>;
+      pushToggleSettings?: () => void;
     };
   }
 }

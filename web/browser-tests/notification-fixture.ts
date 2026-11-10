@@ -27,6 +27,7 @@ export function notificationFixture(mode: string) {
         date_source: 'explicit_trial_end',
         in_app: true,
         email: false,
+        push: false,
       },
     },
   ];
@@ -118,7 +119,7 @@ export function notificationFixture(mode: string) {
           writes !== 1 ||
           !body ||
           Object.keys(body).sort().join() !==
-            'confirmed,email_opt_in,expected_version,kinds,lead_days,send_hour,timezone' ||
+            'confirmed,email_opt_in,expected_version,kinds,lead_days,push_opt_in,send_hour,timezone' ||
           body.expected_version !== 1 ||
           body.confirmed !== true ||
           body.lead_days !== 3 ||

@@ -119,6 +119,7 @@ export function createNotificationSettings(
                   {
                     in_app: channel.in_app,
                     email: patch.email_opt_in === false ? false : channel.email,
+                    push: patch.push_opt_in === false ? false : channel.push,
                   },
                 ];
               }),
@@ -148,6 +149,8 @@ export function createNotificationSettings(
       try {
         pending = parseNotificationPreferences(view.values);
         if (!view.page.email.available && pending.email_opt_in)
+          throw new ApiError('invalid_request');
+        if (!view.page.push.available && pending.push_opt_in)
           throw new ApiError('invalid_request');
       } catch {
         pending = null;

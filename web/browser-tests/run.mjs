@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { runPushProbe } from './push-probe.mjs';
 import { runSubscriptionsLayoutProbe } from './subscriptions-layout-probe.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import {
@@ -174,18 +175,31 @@ try {
       })
     ).sessionId;
   results.push(
-    await runSubscriptionsLayoutProbe(
+    await runPushProbe({
       api,
       session,
       visit,
       js,
       wait,
-      layout,
       click,
+      layout,
       screenshot,
-    ),
+    }),
   );
-  for (const width of [1280, 390, 320]) {
+  if (!process.env.PUSH_ONLY)
+    results.push(
+      await runSubscriptionsLayoutProbe(
+        api,
+        session,
+        visit,
+        js,
+        wait,
+        layout,
+        click,
+        screenshot,
+      ),
+    );
+  for (const width of process.env.PUSH_ONLY ? [] : [1280, 390, 320]) {
     await api('POST', session + '/goog/cdp/execute', {
       cmd: 'Emulation.setDeviceMetricsOverride',
       params: { width, height: 1100, deviceScaleFactor: 1, mobile: false },
@@ -1222,7 +1236,7 @@ try {
           await js(
             'return Array.from(document.querySelectorAll("input[aria-label$=をメールで通知]")).every(e=>e.disabled)',
           ),
-          mode !== 'notifications',
+          true,
         );
         assert.equal(
           await js(

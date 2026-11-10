@@ -66,6 +66,7 @@ test('personal settings index never offers administrator destinations', async ()
   assert.match(html, /href="\/settings\/mail"/);
   assert.match(html, /href="\/settings\/appearance"/);
   assert.match(html, /href="\/settings\/account"/);
+  assert.match(html, /href="\/settings\/notifications"/);
   assert.doesNotMatch(
     html,
     /href="\/settings\/(ai|credentials|integrations|catalog|usage)"/,

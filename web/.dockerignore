@@ -6,3 +6,5 @@ build
 .env.*
 !.env.example
 *.log
+static/vendor/onesignal
+static/OneSignalSDKWorker.js

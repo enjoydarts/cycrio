@@ -12,6 +12,49 @@ import {
   notification,
   notificationID,
 } from './notifications-fixtures.ts';
+test('Push同意とメール同意を独立して検証し確認候補の集約事実を扱う', () => {
+  const p: any = notificationSettings();
+  p.preferences.push_opt_in = true;
+  for (const c of Object.values(p.preferences.kinds) as any[]) c.push = false;
+  p.preferences.kinds.pending_review = {
+    in_app: true,
+    email: false,
+    push: true,
+  };
+  p.push = { available: true, reason: '' };
+  assert.equal(parseNotificationSettings(p).preferences.push_opt_in, true);
+  p.preferences.push_opt_in = false;
+  assert.throws(() => parseNotificationSettings(p));
+  const facts = {
+    kind: 'pending_review',
+    source_key: 'review:synthetic',
+    service: '',
+    scheduled_at: '2026-11-10T00:00:00Z',
+    in_app: true,
+    email: false,
+    push: true,
+    review_run_id: notificationID,
+    review_count: 3,
+  };
+  assert.equal(
+    parseNotification({ ...notification(), match_basis: undefined, facts })
+      .facts.review_count,
+    3,
+  );
+  for (const patch of [
+    { review_count: 0 },
+    { contract_id: notificationID },
+    { service: 'secret' },
+    { amount: '1' },
+  ])
+    assert.throws(() =>
+      parseNotification({
+        ...notification(),
+        match_basis: undefined,
+        facts: { ...facts, ...patch },
+      }),
+    );
+});
 test('notification settings validate all five kinds, three readiness states and explicit safe values', () => {
   assert.equal(
     parseNotificationSettings(notificationSettings()).preferences.email_opt_in,
@@ -108,6 +151,7 @@ test('notification API sends only known preferences, read confirmation and owner
     'expected_version',
     'kinds',
     'lead_days',
+    'push_opt_in',
     'send_hour',
     'timezone',
   ]);
