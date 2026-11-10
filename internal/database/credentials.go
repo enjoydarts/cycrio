@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -68,6 +69,9 @@ func updateCredential(ctx context.Context, tx pgx.Tx, actor, provider, state, ac
 	return s, nil
 }
 func (r *CredentialRepository) Put(ctx context.Context, actor string, expected int64, v credentials.CredentialVersion) (credentials.Summary, error) {
+	if v.Provider == "onesignal" && !pushnotifications.ValidID(v.OneSignalAppID) {
+		return credentials.Summary{}, credentials.ErrInvalid
+	}
 	if expected < 0 || expected == math.MaxInt64 || v.Version != expected+1 || v.Envelope.KeyID == "" || len(v.Envelope.Ciphertext) == 0 {
 		return credentials.Summary{}, credentials.ErrInvalid
 	}
@@ -85,6 +89,12 @@ func (r *CredentialRepository) Put(ctx context.Context, actor string, expected i
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO credential_versions(id,provider,version,key_id,ciphertext,state,created_by) VALUES($1,$2,$3,$4,$5,'active',$6)`, v.ID, v.Provider, v.Version, v.Envelope.KeyID, v.Envelope.Ciphertext, actor); err != nil {
 		return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
+	}
+	if v.Provider == "onesignal" {
+		// App変更を元に戻しても旧activeを復活させない。通常の同Appキー更新は保持する。
+		if _, err := tx.Exec(ctx, `UPDATE push_devices SET state='disabled',revocation_hash=NULL,updated_at=clock_timestamp() WHERE app_id<>$1 AND state<>'disabled'`, v.OneSignalAppID); err != nil {
+			return credentials.Summary{}, diagnostics.Wrap(credentials.ErrUnavailable, err)
+		}
 	}
 	action := "credential_updated"
 	if previous.Version == 0 {
@@ -142,7 +152,7 @@ func (r *CredentialRepository) Resolve(ctx context.Context, id string) (credenti
 }
 func (r *CredentialRepository) HasEncryptedCredentials(ctx context.Context) (bool, error) {
 	var exists bool
-	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials) OR EXISTS(SELECT 1 FROM mail_discovered_messages) OR EXISTS(SELECT 1 FROM erased_identities) OR EXISTS(SELECT 1 FROM clerk_erasure_outbox) OR EXISTS(SELECT 1 FROM research_call_traces)`).Scan(&exists); err != nil {
+	if err := r.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM credential_versions) OR EXISTS(SELECT 1 FROM mail_account_credentials) OR EXISTS(SELECT 1 FROM mail_discovered_messages) OR EXISTS(SELECT 1 FROM erased_identities) OR EXISTS(SELECT 1 FROM clerk_erasure_outbox) OR EXISTS(SELECT 1 FROM research_call_traces) OR EXISTS(SELECT 1 FROM push_devices)`).Scan(&exists); err != nil {
 		return false, diagnostics.Wrap(credentials.ErrUnavailable, err)
 	}
 	return exists, nil

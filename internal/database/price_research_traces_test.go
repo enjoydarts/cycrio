@@ -212,6 +212,9 @@ func TestResearchTraceMigrationAndKeyringGuard(t *testing.T) {
 	if _, err = p.DownTo(ctx, 43); err == nil {
 		t.Fatal("discarded retained encrypted trace")
 	}
+	if _, err = p.Up(ctx); err != nil {
+		t.Fatal("拒否したmigration以降を復元", err)
+	}
 	// Isolate this new guard branch in the test-only schema while preserving
 	// the existing credential FK target by its PostgreSQL relation identity.
 	if _, err = r.pool.Exec(ctx, `ALTER TABLE credential_versions RENAME TO trace_saved_credentials; CREATE TABLE credential_versions(id uuid)`); err != nil {

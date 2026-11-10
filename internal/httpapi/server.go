@@ -81,6 +81,7 @@ func NewHandler(config bootstrap.Config, verifier auth.Verifier, lookup Principa
 	registerOverview(mux, settings.overview, protect)
 	registerReports(mux, settings.reports, protect)
 	registerNotifications(mux, settings.notifications, protect)
+	registerPushNotifications(mux, settings.push, settings.pushSender, protect)
 	registerExchangeRates(mux, settings.exchangeRates, protect)
 	registerIntegrations(mux, settings.integrations, protect)
 	registerModelCatalog(mux, settings.catalog, protect)

@@ -10,6 +10,7 @@ import (
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
 	"github.com/enjoydarts/cycrio/internal/database"
+	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 )
 
 type CredentialService interface {
@@ -42,6 +43,8 @@ type handlerOptions struct {
 	billing         BillingService
 	billingSchedule BillingScheduleService
 	notifications   NotificationService
+	push            PushNotificationService
+	pushSender      pushnotifications.Sender
 }
 type Option func(*handlerOptions)
 
@@ -123,7 +126,11 @@ func readCredentialInput(w http.ResponseWriter, r *http.Request) (string, int64,
 	if err != nil || mediaType != "application/json" {
 		return "", 0, credentials.ErrInvalid
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	limit := int64(8 << 10)
+	if r.PathValue("provider") == "onesignal" {
+		limit = 64 << 10
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	d := json.NewDecoder(r.Body)
 	opening, err := d.Token()
 	if err != nil || opening != json.Delim('{') {

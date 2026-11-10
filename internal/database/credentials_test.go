@@ -89,7 +89,7 @@ func TestCredentialLifecycleAndNoResurrection(t *testing.T) {
 	repo := NewCredentialRepository(pool)
 	service := credentials.NewService(repo, keys)
 	summaries, err := service.List(ctx)
-	if err != nil || len(summaries) != 12 {
+	if err != nil || len(summaries) != 13 {
 		t.Fatal("seeded providers", err)
 	}
 	for _, s := range summaries {

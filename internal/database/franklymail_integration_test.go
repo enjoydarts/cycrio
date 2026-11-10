@@ -225,11 +225,14 @@ func TestFranklyMailMigrationPreservesExistingAccountsAndRefusesDestructiveDown(
 		t.Fatal(err)
 	}
 	p := automationMigrationProvider(t, pool)
+	if _, err := p.DownTo(ctx, 48); err != nil {
+		t.Fatal("後続migrationを戻す", err)
+	}
 	down, err := p.DownTo(ctx, 47)
 	if err != nil || len(down) != 1 || down[0].Source.Version != 48 || down[0].Direction != "down" || down[0].Error != nil {
 		t.Fatal("migration down", down, err)
 	}
-	up, err := p.Up(ctx)
+	up, err := p.UpTo(ctx, 48)
 	assertMigrationRange(t, up, err, 48, 48)
 	if err := pool.QueryRow(ctx, snapshot).Scan(&after); err != nil || before != after {
 		t.Fatal("existing accounts or credentials changed", err)

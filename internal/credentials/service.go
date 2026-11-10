@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/healthchecks"
+	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/enjoydarts/cycrio/internal/telemetry"
 	"github.com/google/uuid"
@@ -44,6 +45,8 @@ type CredentialVersion struct {
 	Provider string               `json:"-"`
 	Version  int64                `json:"-"`
 	Envelope secretstore.Envelope `json:"-"`
+	// OneSignalAppIDは端末失効の判定だけに使う内部入力。秘密本文から設定する。
+	OneSignalAppID string `json:"-"`
 }
 type Repository interface {
 	List(context.Context) ([]Summary, error)
@@ -63,7 +66,7 @@ func NewService(repository Repository, keyring *secretstore.Keyring) *Service {
 }
 func validProvider(provider string) bool {
 	switch provider {
-	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_backend", "clerk_webhook", "resend_webhook", "gmail_oauth", "outlook_oauth", "healthchecks", "posthog":
+	case "liquid", "openrouter", "openai", "anthropic", "resend", "clerk_backend", "clerk_webhook", "resend_webhook", "gmail_oauth", "outlook_oauth", "healthchecks", "posthog", "onesignal":
 		return true
 	}
 	return false
@@ -104,6 +107,13 @@ func (s *Service) List(ctx context.Context) ([]Summary, error) {
 	return items, nil
 }
 func (s *Service) Put(ctx context.Context, actor, provider string, expected int64, secret string) (Summary, error) {
+	if provider == "onesignal" {
+		var err error
+		secret, err = pushnotifications.NormalizeCredential(secret)
+		if err != nil {
+			return Summary{}, ErrInvalid
+		}
+	}
 	if provider == "posthog" {
 		if _, err := telemetry.ParseConfig([]byte(secret)); err != nil {
 			return Summary{}, ErrInvalid
@@ -112,7 +122,11 @@ func (s *Service) Put(ctx context.Context, actor, provider string, expected int6
 	if provider == "healthchecks" && !healthchecks.ValidPingURL(secret) {
 		return Summary{}, ErrInvalid
 	}
-	if !validRequest(actor, provider, expected) || len(secret) < 8 || len(secret) > 4096 {
+	limit := 4096
+	if provider == "onesignal" {
+		limit = 32 * 1024
+	}
+	if !validRequest(actor, provider, expected) || len(secret) < 8 || len(secret) > limit {
 		return Summary{}, ErrInvalid
 	}
 	for i := range len(secret) {
@@ -121,6 +135,13 @@ func (s *Service) Put(ctx context.Context, actor, provider string, expected int6
 		}
 	}
 	v := CredentialVersion{ID: uuid.NewString(), Provider: provider, Version: expected + 1}
+	if provider == "onesignal" {
+		configuration, err := pushnotifications.ParseCredential([]byte(secret))
+		if err != nil {
+			return Summary{}, ErrInvalid
+		}
+		v.OneSignalAppID = configuration.AppID
+	}
 	envelope, err := s.keyring.Seal([]byte(secret), credentialAAD(v))
 	if err != nil {
 		return Summary{}, diagnostics.Wrap(ErrUnavailable, err)

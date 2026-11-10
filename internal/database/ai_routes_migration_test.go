@@ -41,7 +41,7 @@ func allLegacyRouteRecords(t *testing.T, pool *pgxpool.Pool) map[string]string {
 	out := map[string]string{}
 	for _, name := range names {
 		var doc string
-		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[]-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed'-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend','healthchecks','posthog')) x`, mailConnectionMigrationColumns(name)).Scan(&doc); e != nil {
+		if e = pool.QueryRow(ctx, `SELECT COALESCE(jsonb_agg(row ORDER BY row::text),'[]')::text FROM (SELECT to_jsonb(t)-$1::text[]-'provenance'-'auto_last_event_date'-'auto_last_event_date_basis'-'full_email_allowed'-'automation_id'-'automation_generation'-'automation_version'-'mode'-'window_index'-'initialized'-'discovery_page_count' AS row FROM `+pgx.Identifier{name}.Sanitize()+` t WHERE COALESCE(to_jsonb(t)->>'provider','') NOT IN ('clerk_webhook','resend_webhook','gmail_oauth','outlook_oauth','clerk_backend','healthchecks','posthog','onesignal')) x`, mailConnectionMigrationColumns(name)).Scan(&doc); e != nil {
 			t.Fatal(name, e)
 		}
 		out[name] = doc
