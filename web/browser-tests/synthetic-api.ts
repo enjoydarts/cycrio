@@ -32,6 +32,7 @@ declare global {
       pushFinishConfirm?: () => void;
       pushLogout?: () => Promise<void>;
       pushRefreshToken?: () => Promise<void>;
+      pushFinishPermission?: () => void;
       pushSetPermission?: (permission: NotificationPermission) => Promise<void>;
       pushExpire?: () => void;
       pushToggleSettings?: () => void;

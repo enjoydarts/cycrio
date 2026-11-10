@@ -21,7 +21,9 @@
   trace.pushActive = false;
   let receive: (data: unknown) => void = () => {};
   let deviceState: 'pending' | 'active' | 'disabled' | 'expired' | null = null;
-  let nativePermission: NotificationPermission = 'granted';
+  let nativePermission: NotificationPermission =
+    mode === 'push-prompt-wait' ? 'default' : 'granted';
+  let finishPermission: () => void = () => {};
   let clock = Date.now(),
     preparations = 0;
   let finish: () => void = () => {};
@@ -56,6 +58,13 @@
       },
       permission: async () => {
         trace.pushCalls!.push('permission');
+        if (mode === 'push-prompt-wait')
+          return new Promise<NotificationPermission>((resolve) => {
+            finishPermission = () => {
+              nativePermission = 'granted';
+              resolve('granted');
+            };
+          });
         return mode === 'push-denied' ? 'denied' : 'granted';
       },
       subscription: async () => {
@@ -151,6 +160,7 @@
   void controller.bind(app, async () => 'synthetic');
   trace.pushEmit = emit;
   trace.pushFinishConfirm = () => finish();
+  trace.pushFinishPermission = () => finishPermission();
   trace.pushLogout = () => controller.bind(null);
   trace.pushRefreshToken = () => controller.bind(app, async () => 'new-token');
   trace.pushSetPermission = async (permission) => {

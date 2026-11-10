@@ -80,7 +80,7 @@ function fixture(shared?: PushStorage) {
     prepare: async () => {
       calls.push('prepare');
     },
-    permission: async () => {
+    permission: async (): Promise<NotificationPermission> => {
       calls.push('permission');
       return 'granted' as const;
     },
@@ -123,6 +123,73 @@ function fixture(shared?: PushStorage) {
   };
 }
 const flush = () => new Promise((r) => setTimeout(r, 15));
+for (const outcome of ['granted', 'denied', 'owner_changed'] as const)
+  test(`初回許可の回答待ちで復帰同期した後の${outcome}を区別する`, async () => {
+    const f = fixture();
+    const permission = deferred<NotificationPermission>();
+    f.sdk.currentPermission = () => 'default';
+    f.sdk.permission = () => permission.promise;
+    f.registration.resolve({
+      device_id: b,
+      challenge_id: challenge,
+      state: 'pending',
+      expires_at: new Date(300000).toISOString(),
+    });
+    await f.c.load();
+    await f.c.prepare();
+    const allowing = f.c.allow();
+    await f.c.synchronize();
+    if (outcome === 'granted') {
+      assert.equal(f.c.state().status, 'registering');
+      assert.equal(f.c.state().busy, true);
+    } else if (outcome === 'denied') {
+      f.sdk.currentPermission = () => 'denied';
+      await f.c.synchronize();
+    } else await f.c.bind(b, f.token);
+    f.sdk.currentPermission = () => 'granted';
+    permission.resolve('granted');
+    await allowing;
+    assert.equal(
+      f.calls.filter((c) => c === 'register').length,
+      outcome === 'granted' ? 1 : 0,
+    );
+    assert.equal(
+      f.c.state().status,
+      outcome === 'granted'
+        ? 'waiting'
+        : outcome === 'denied'
+          ? 'denied'
+          : 'idle',
+    );
+    assert.equal(f.calls.includes('revoke'), false);
+  });
+for (const observation of ['permission_response', 'native_read'] as const)
+  test(`capability保存前でも${observation}でgranted観測後のdefaultは取消す`, async () => {
+    const f = fixture();
+    const permission = deferred<NotificationPermission>();
+    const subscription = deferred<string>();
+    f.sdk.currentPermission = () => 'default';
+    f.sdk.permission = () => permission.promise;
+    f.sdk.subscription = () => subscription.promise;
+    await f.c.load();
+    await f.c.prepare();
+    const allowing = f.c.allow();
+    if (observation === 'permission_response') {
+      permission.resolve('granted');
+      await flush();
+    } else {
+      f.sdk.currentPermission = () => 'granted';
+      await f.c.synchronize();
+    }
+    f.sdk.currentPermission = () => 'default';
+    await f.c.synchronize();
+    permission.resolve('granted');
+    subscription.resolve(b);
+    await allowing;
+    assert.equal(f.c.state().status, 'denied');
+    assert.equal(f.calls.includes('register'), false);
+    assert.equal(f.calls.includes('revoke'), false);
+  });
 test('初回defaultは解除やSDK起動を行わない', async () => {
   const f = fixture();
   f.sdk.currentPermission = () => 'default';

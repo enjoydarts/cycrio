@@ -76,6 +76,35 @@ export async function runPushProbe({
     );
     await js('window.browserTest.pushLogout()');
     await wait('window.browserTest.pushActive===false');
+    await visit('push-prompt-wait', width);
+    await click(
+      'document.querySelector(\'a[href="/settings/notifications"]\')',
+    );
+    await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait('window.browserTest.pushCalls.includes("permission")');
+    await js('return window.browserTest.pushSetPermission("default")');
+    assert.equal(
+      await js(
+        'return document.body.textContent.includes("端末を登録しています")',
+      ),
+      true,
+    );
+    assert.equal(
+      await js('return window.browserTest.pushCalls.includes("register")'),
+      false,
+    );
+    await js('window.browserTest.pushFinishPermission()');
+    await wait('window.browserTest.pushActive===true');
+    assert.equal(
+      await js(
+        'return window.browserTest.pushCalls.filter(x=>x==="register").length',
+      ),
+      1,
+    );
+    await layout();
     for (const permission of ['denied', 'default']) {
       await visit('push', width);
       await click(

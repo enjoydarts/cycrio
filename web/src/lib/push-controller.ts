@@ -86,6 +86,7 @@ export function createPushController({
     generation: number;
     operation: string;
     token: TokenProvider;
+    permissionGranted: boolean;
     registration?: PushRegistration;
     confirming: boolean;
     sent: boolean;
@@ -176,13 +177,16 @@ export function createPushController({
       )
         return;
       const permission = sdk.currentPermission();
+      if (permission === 'granted' && attempt && current(attempt))
+        attempt.permissionGranted = true;
       const localReceipts = receipts().filter(
         (r) => r.owner === expected && !r.stop,
       );
       if (
         permission === 'denied' ||
         (permission === 'default' &&
-          (localReceipts.length > 0 || (attempt && current(attempt))))
+          (localReceipts.length > 0 ||
+            (attempt?.permissionGranted && current(attempt))))
       ) {
         permissionRevoked = true;
         if (attempt && current(attempt)) {
@@ -483,6 +487,7 @@ export function createPushController({
         generation,
         operation: crypto.randomUUID(),
         token,
+        permissionGranted: sdk.currentPermission() === 'granted',
         confirming: false,
         sent: false,
       };
@@ -501,6 +506,7 @@ export function createPushController({
           });
           return;
         }
+        a.permissionGranted = true;
         const subscription_id = await sdk.subscription();
         if (!current(a)) return;
         registrationStarted = true;
