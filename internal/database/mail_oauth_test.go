@@ -11,6 +11,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailoauth"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"path/filepath"
 	"testing"
 	"time"
@@ -77,6 +78,49 @@ func TestMailOAuthStateIsEncryptedSingleUseAndOwnerBound(t *testing.T) {
 	if e = pool.QueryRow(ctx, `SELECT id,owner_id,account_id,version,key_id,ciphertext FROM mail_account_credentials WHERE account_id=$1`, p.AccountID).Scan(&v.ID, &v.OwnerID, &v.AccountID, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext); e != nil {
 		t.Fatal(e)
 	}
+	t.Run("token callback can resolve a credential from a one-connection pool", func(t *testing.T) {
+		config := pool.Config().Copy()
+		config.MaxConns, config.MinConns = 1, 0
+		limited, err := pgxpool.NewWithConfig(ctx, config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer limited.Close()
+		bounded, cancel := context.WithTimeout(ctx, time.Second)
+		defer cancel()
+		_, err = NewMailOAuthRepository(limited, keys).WithConnection(bounded, v, func(s mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error) {
+			var value int
+			err := limited.QueryRow(bounded, `SELECT 1`).Scan(&value)
+			if err == nil && value != 1 {
+				t.Error("invalid callback result")
+			}
+			return s, err
+		})
+		if err != nil {
+			t.Fatalf("OAuth callback exhausted its own caller pool: %v", err)
+		}
+		parallel, stop := context.WithTimeout(ctx, 3*time.Second)
+		defer stop()
+		results := make(chan error, 4)
+		start := make(chan struct{})
+		for range 4 {
+			go func() {
+				<-start
+				_, err := NewMailOAuthRepository(limited, keys).WithConnection(parallel, v, func(s mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error) {
+					var value int
+					err := limited.QueryRow(parallel, `SELECT 1`).Scan(&value)
+					return s, err
+				})
+				results <- err
+			}()
+		}
+		close(start)
+		for range 4 {
+			if err := <-results; err != nil {
+				t.Errorf("並列OAuth処理が接続を待ち合った: %v", err)
+			}
+		}
+	})
 	secret, e := r.WithConnection(ctx, v, func(s mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error) {
 		if string(s.Password) != "dummy-refresh" {
 			t.Fatal("refresh unavailable")

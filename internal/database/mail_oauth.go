@@ -176,7 +176,15 @@ func (r *MailOAuthRepository) SaveConnection(ctx context.Context, p mailoauth.Pe
 func (r *MailOAuthRepository) WithConnection(ctx context.Context, v mailaccounts.CredentialVersion, update func(mailaccounts.ConnectionSecret) (mailaccounts.ConnectionSecret, error)) (mailaccounts.ConnectionSecret, error) {
 	ctx, cancel := context.WithTimeout(ctx, 25*time.Second)
 	defer cancel()
-	tx, e := r.pool.Begin(ctx)
+	// The callback resolves OAuth client credentials through the caller's pool.
+	// Parallel readers must not occupy every pooled connection while one of
+	// them holds the token row lock and waits for that nested lookup.
+	conn, e := pgx.ConnectConfig(ctx, r.pool.Config().ConnConfig.Copy())
+	if e != nil {
+		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
+	}
+	defer conn.Close(context.Background())
+	tx, e := conn.Begin(ctx)
 	if e != nil {
 		return mailaccounts.ConnectionSecret{}, diagnostics.Wrap(mailaccounts.ErrUnavailable, e)
 	}
