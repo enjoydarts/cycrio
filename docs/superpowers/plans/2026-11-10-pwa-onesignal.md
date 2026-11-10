@@ -94,6 +94,6 @@
 **対象ファイル:** `docs/notifications.md`、`docs/setup.md`、`README.md`、必要な`AGENTS.md`の実装済み記述を変更する。ブラウザー回帰は`web/browser-tests/`へ統合する。
 
 - [x] **検証:** `make check`、関連DB/HTTP integration、`make test-web-browser`を順に実行する。migration適用/version、root SWのMIME/実JS、manifest、SDKハッシュと個人情報非cacheを確認する。
-- [ ] **検証:** 独立レビューで新旧設定・端末/所有者分離・解除/退会・結果不明/重複防止・初回/再解析を再確認し、重要な指摘は回帰テストから修正する。
+- [x] **検証:** 独立レビューで新旧設定・端末/所有者分離・解除/退会・結果不明/重複防止・初回/再解析を再確認し、重要な指摘は回帰テストから修正する。
 - [x] **文書:** OneSignalのCustom Code/Web設定、App ID/Keyの管理画面登録、本人による端末許可、iPhone実機受入、鍵更新/無効化、配信状態を記載する。秘密・個人パス・実メール評価情報を含めない。
 - [ ] **公開:** 適切な単位のコミットをmainへ統合してpushし、CI/migration/本番公開を確認する。資格情報・実端末が未準備の場合は実送信を成功扱いせず、その設定だけを残課題として明記する。
