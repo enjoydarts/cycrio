@@ -65,13 +65,13 @@ func automationReadiness(ctx context.Context, tx pgx.Tx, owner, account string, 
 	if !credential {
 		reasons = append(reasons, "credentials_required")
 	}
-	budget, e := readAIBudget(ctx, tx, owner, time.Now())
+	budgetReason, e := aiBudgetBlockedReason(ctx, tx, owner, time.Now())
 	if e != nil {
 		return basis, reasons, processingError(e)
 	}
 	// A calling marker is ordinary worker activity, not an administrator wait.
-	if budget.BlockedReason != "" && budget.BlockedReason != "budget_pending" {
-		reasons = append(reasons, budget.BlockedReason)
+	if budgetReason != "" && budgetReason != "budget_pending" {
+		reasons = append(reasons, budgetReason)
 	}
 	settings, p, e := processingState(ctx, tx, lock)
 	if e != nil {

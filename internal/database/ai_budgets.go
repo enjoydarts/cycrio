@@ -57,6 +57,18 @@ func budgetLocks(ctx context.Context, tx pgx.Tx, actor, owner string, write bool
 }
 
 func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (aibudget.State, error) {
+	return readAIBudgetState(ctx, tx, owner, now, true)
+}
+
+// Guard callers already hold the owner's lock. Without a configured limit,
+// the ledger cannot change admission, so avoid aggregating it on every poll or
+// call. Administrative reads still include usage for unlimited owners.
+func aiBudgetBlockedReason(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (string, error) {
+	s, err := readAIBudgetState(ctx, tx, owner, now, false)
+	return s.BlockedReason, err
+}
+
+func readAIBudgetState(ctx context.Context, tx pgx.Tx, owner string, now time.Time, includeUnlimitedUsage bool) (aibudget.State, error) {
 	loc, err := time.LoadLocation("Asia/Tokyo")
 	if err != nil {
 		return aibudget.State{}, diagnostics.Wrap(aibudget.ErrUnavailable, err)
@@ -68,6 +80,9 @@ func readAIBudget(ctx context.Context, tx pgx.Tx, owner string, now time.Time) (
 	err = tx.QueryRow(ctx, `SELECT version,monthly_limit_usd::text FROM ai_user_budgets WHERE owner_id=$1`, owner).Scan(&s.Version, &s.MonthlyLimitUSD)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return s, diagnostics.Wrap(aibudget.ErrUnavailable, err)
+	}
+	if s.MonthlyLimitUSD == nil && !includeUnlimitedUsage {
+		return s, nil
 	}
 	err = tx.QueryRow(ctx, `SELECT
  COALESCE(sum(adopted_amount) FILTER(WHERE started_at >= $2 AND started_at < $3 AND cost_kind<>'unknown' AND currency='USD'),0)::text,
@@ -102,11 +117,11 @@ func checkAIBudget(ctx context.Context, tx pgx.Tx, owner string) error {
 	if diagnosticErr := tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); diagnosticErr != nil {
 		return diagnostics.Wrap(aibudget.ErrUnavailable, diagnosticErr)
 	}
-	s, err := readAIBudget(ctx, tx, owner, now)
+	reason, err := aiBudgetBlockedReason(ctx, tx, owner, now)
 	if err != nil {
 		return err
 	}
-	switch s.BlockedReason {
+	switch reason {
 	case "budget_exceeded":
 		return aibudget.ErrExceeded
 	case "budget_unknown":
