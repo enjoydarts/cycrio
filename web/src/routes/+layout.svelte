@@ -21,7 +21,8 @@
   import { createOverviewAPI } from '#lib/overview-api.ts';
   import { createNotificationsAPI } from '#lib/notifications-api.ts';
   import { createPushAPI } from '#lib/push-api.ts';
-  import { createPushBrowser } from '#lib/push-browser.ts';
+  import { createPushBrowser, type PushBrowser } from '#lib/push-browser.ts';
+  import PushInvitation from '#lib/PushInvitation.svelte';
   import {
     createPushController,
     type PushController,
@@ -33,6 +34,7 @@
   let browserTelemetry: ReturnType<typeof startBrowserTelemetry> | undefined;
   let themeController: ReturnType<typeof createThemeController> | undefined;
   let pushController = $state<PushController | undefined>();
+  let pushBrowser = $state<PushBrowser | undefined>();
   const boundary = createSessionBoundary(
     async () => (await controller?.getToken()) ?? null,
   );
@@ -102,9 +104,10 @@
     });
     theme = themeController.preference();
     try {
+      pushBrowser = createPushBrowser({ window, document });
       pushController = createPushController({
         api: createPushAPI(PUBLIC_API_BASE_URL),
-        sdk: createPushBrowser({ window, document }),
+        sdk: pushBrowser,
         storage: window.localStorage,
         denied: () => {
           void controller?.refresh();
@@ -181,6 +184,17 @@
     >
       {@render children()}
     </AppShell>
+    {#if pushController && pushBrowser}
+      <PushInvitation
+        owner={sessionState.auth.user.id}
+        token={sessionState.token}
+        pathname={page.url.pathname}
+        {pushController}
+        browser={pushBrowser}
+        {notificationsAPI}
+        {onDenied}
+      />
+    {/if}
   {/key}
 {:else}
   <AppAccess

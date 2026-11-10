@@ -1,5 +1,6 @@
 <script lang="ts">
   import NotificationSettings from '../src/lib/NotificationSettings.svelte';
+  import PushInvitation from '../src/lib/PushInvitation.svelte';
   import SettingsOverview from '../src/lib/SettingsOverview.svelte';
   import {
     provideAppSession,
@@ -7,6 +8,7 @@
   } from '../src/lib/app-context.ts';
   import { createPushAPI, deriveRevocationToken } from '../src/lib/push-api.ts';
   import { createPushController } from '../src/lib/push-controller.ts';
+  import type { PushBrowser } from '../src/lib/push-browser.ts';
   import { createNotificationsAPI } from '../src/lib/notifications-api.ts';
   import { notificationSettings } from '../src/lib/notifications-fixtures.ts';
   let { mode }: { mode: string } = $props();
@@ -16,13 +18,19 @@
     secret = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
   for (const key of Object.keys(localStorage))
     if (key.startsWith('cycrio.push.')) localStorage.removeItem(key);
+  if (mode.startsWith('push-invitation') && mode !== 'push-invitation-seen')
+    for (const key of Object.keys(localStorage))
+      if (key.startsWith('cycrio.push-invitation.'))
+        localStorage.removeItem(key);
   const trace = window.browserTest;
   trace.pushCalls = [];
   trace.pushActive = false;
   let receive: (data: unknown) => void = () => {};
   let deviceState: 'pending' | 'active' | 'disabled' | 'expired' | null = null;
   let nativePermission: NotificationPermission =
-    mode === 'push-prompt-wait' ? 'default' : 'granted';
+    mode === 'push-prompt-wait' || mode.startsWith('push-invitation')
+      ? 'default'
+      : 'granted';
   let finishPermission: () => void = () => {};
   let clock = Date.now(),
     preparations = 0;
@@ -39,44 +47,46 @@
       cycrio_challenge_id: challenge,
       cycrio_challenge_secret: secret,
     });
+  const sdk: PushBrowser = {
+    currentPermission: () => nativePermission,
+    availability: () =>
+      ['push-home', 'push-invitation-home'].includes(mode)
+        ? 'home_screen'
+        : mode === 'push-unsupported'
+          ? 'unsupported'
+          : 'supported',
+    prepare: async () => {
+      trace.pushCalls!.push('prepare');
+      if (mode === 'push-sdk-retry' && ++preparations === 1)
+        throw Error('sdk unavailable');
+      if (mode === 'push-sdk-reload') throw Error('reload');
+    },
+    permission: async () => {
+      trace.pushCalls!.push('permission');
+      if (mode === 'push-prompt-wait')
+        return new Promise<NotificationPermission>((resolve) => {
+          finishPermission = () => {
+            nativePermission = 'granted';
+            resolve('granted');
+          };
+        });
+      nativePermission = mode === 'push-denied' ? 'denied' : 'granted';
+      return nativePermission;
+    },
+    subscription: async () => {
+      if (mode === 'push-subscription-retry' && ++subscriptions === 1)
+        throw Error('合成の購読取得失敗');
+      return deviceID;
+    },
+    listen: (cb) => {
+      receive = cb;
+      return () => {};
+    },
+  } as const;
   const controller = createPushController({
     now: () => clock,
     storage: localStorage,
-    sdk: {
-      currentPermission: () => nativePermission,
-      availability: () =>
-        mode === 'push-home'
-          ? 'home_screen'
-          : mode === 'push-unsupported'
-            ? 'unsupported'
-            : 'supported',
-      prepare: async () => {
-        trace.pushCalls!.push('prepare');
-        if (mode === 'push-sdk-retry' && ++preparations === 1)
-          throw Error('sdk unavailable');
-        if (mode === 'push-sdk-reload') throw Error('reload');
-      },
-      permission: async () => {
-        trace.pushCalls!.push('permission');
-        if (mode === 'push-prompt-wait')
-          return new Promise<NotificationPermission>((resolve) => {
-            finishPermission = () => {
-              nativePermission = 'granted';
-              resolve('granted');
-            };
-          });
-        return mode === 'push-denied' ? 'denied' : 'granted';
-      },
-      subscription: async () => {
-        if (mode === 'push-subscription-retry' && ++subscriptions === 1)
-          throw Error('合成の購読取得失敗');
-        return deviceID;
-      },
-      listen: (cb) => {
-        receive = cb;
-        return () => {};
-      },
-    },
+    sdk,
     api: createPushAPI('/synthetic-push', async (url, init) => {
       const path = new URL(String(url), location.origin).pathname;
       if (
@@ -139,6 +149,7 @@
     '/synthetic-notifications',
     async (url, init) => {
       if (init?.method === 'PUT') {
+        trace.pushCalls!.push('preferences');
         const input = JSON.parse(String(init.body));
         prefs = { ...input, version: input.expected_version + 1 };
       }
@@ -205,6 +216,19 @@
         pushController={controller}
       />{/if}{:else}<SettingsOverview />{/if}
 </main>
+{#if mode.startsWith('push-invitation')}
+  <PushInvitation
+    owner={app}
+    token={async () => 'synthetic'}
+    pathname="/"
+    pushController={controller}
+    browser={sdk}
+    {notificationsAPI}
+    onDenied={() => {
+      throw Error('合成権限拒否');
+    }}
+  />
+{/if}
 
 <style>
   main {

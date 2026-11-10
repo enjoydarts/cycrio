@@ -7,7 +7,10 @@
   import DataTable from './DataTable.svelte';
   import { deliveryReason } from './notification-text.ts';
   import { processingDate } from './mail-processing-text.ts';
-  let { controller }: { controller: PushController } = $props();
+  let {
+    controller,
+    loadOnMount = true,
+  }: { controller: PushController; loadOnMount?: boolean } = $props();
   let view = $state<PushView>({
     page: null,
     status: 'idle',
@@ -43,7 +46,7 @@
   };
   onMount(() => {
     const unsubscribe = controller.subscribe((next) => (view = next));
-    void controller.load();
+    if (loadOnMount) void controller.load();
     return unsubscribe;
   });
 </script>

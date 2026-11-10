@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { runPushProbe } from './push-probe.mjs';
+import { runPushInvitationProbe } from './push-invitation-probe.mjs';
 import { runSubscriptionsLayoutProbe } from './subscriptions-layout-probe.mjs';
 import { mkdir, writeFile } from 'node:fs/promises';
 import {
@@ -175,6 +176,16 @@ try {
       })
     ).sessionId;
   results.push(
+    await runPushInvitationProbe({
+      api,
+      session,
+      visit,
+      js,
+      wait,
+      click,
+      layout,
+      screenshot,
+    }),
     await runPushProbe({
       api,
       session,

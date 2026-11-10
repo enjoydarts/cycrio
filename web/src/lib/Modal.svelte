@@ -6,6 +6,7 @@
     title,
     onclose,
     busy = false,
+    size = 'default',
     canClose = () => true,
     children,
   }: {
@@ -13,6 +14,7 @@
     title: string;
     onclose: () => void;
     busy?: boolean;
+    size?: 'default' | 'compact';
     canClose?: () => boolean;
     children: Snippet;
   } = $props();
@@ -45,6 +47,7 @@
 />
 
 <dialog
+  class:compact={size === 'compact'}
   bind:this={dialog}
   aria-labelledby={titleId}
   oncancel={(event) => {
@@ -89,6 +92,9 @@
   }
   dialog::backdrop {
     background: #142f2966;
+  }
+  dialog.compact {
+    max-width: 480px;
   }
   header {
     display: flex;
