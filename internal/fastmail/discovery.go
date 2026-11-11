@@ -27,11 +27,20 @@ func (c *Client) Discover(ctx context.Context, login string, password []byte, in
 	}
 	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
 	defer cancel()
-	page, err := c.discover(ctx, login, password, input, automatic, dates, since, before)
+	// Reserve time for one fresh connection when a peer accepts commands but
+	// stops responding. Giving the first session the entire operation budget
+	// makes a timeout impossible to recover inside this read-only operation.
+	first, stopFirst := context.WithTimeout(ctx, checkTimeout/2)
+	page, err := c.discover(first, login, password, input, automatic, dates, since, before)
+	stopFirst()
 	var interrupted *interruptedDiscovery
-	if errors.As(err, &interrupted) && ctx.Err() == nil {
+	var adapter mailaccounts.AdapterError
+	timeout := errors.As(err, &adapter) && adapter.Code == "timeout"
+	deadline, _ := ctx.Deadline()
+	// Socket deadlines can fire before the context timer publishes Err().
+	if (errors.As(err, &interrupted) || timeout) && ctx.Err() == nil && time.Now().Before(deadline) {
 		// This entire operation is read-only. Discard incomplete results and
-		// reconnect once, sharing the original operation deadline and input.
+		// reconnect once with the original input and remaining total budget.
 		page, err = c.discover(ctx, login, password, input, automatic, dates, since, before)
 	}
 	if errors.As(err, &interrupted) {
@@ -103,7 +112,7 @@ func (c *Client) discover(ctx context.Context, login string, password []byte, in
 			// A tagged rejection is authoritative even if the server closes the
 			// connection immediately afterwards. Never retry rejected credentials
 			// or commands based on that later EOF.
-			return checkError(ctx, nil, err, fallback)
+			return checkError(context.WithoutCancel(ctx), nil, err, fallback)
 		}
 		classified := checkError(ctx, wire, err, fallback)
 		var adapter mailaccounts.AdapterError

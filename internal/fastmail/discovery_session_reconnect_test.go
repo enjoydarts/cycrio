@@ -92,14 +92,15 @@ func TestDiscoveryReconnectsInterruptedReadOnlyCommands(t *testing.T) {
 			c, closed, _ := discoveryClient(t, 77, 10, "2 5")
 			next := c.dial
 			attempts := 0
-			var deadline time.Time
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			deadline, _ := ctx.Deadline()
 			c.dial = func(ctx context.Context, address string, config *tls.Config) (net.Conn, error) {
 				attempts++
 				current, ok := ctx.Deadline()
-				if !ok || !deadline.IsZero() && !current.Equal(deadline) {
+				if !ok || current.After(deadline) {
 					t.Fatal("reconnect changed operation deadline")
 				}
-				deadline = current
 				if attempts == 1 {
 					return first.dial(ctx, address, config)
 				}
@@ -108,7 +109,7 @@ func TestDiscoveryReconnectsInterruptedReadOnlyCommands(t *testing.T) {
 				}
 				return next(ctx, address, config)
 			}
-			page, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-password"), discoveryInput())
+			page, err := c.Discover(ctx, "synthetic@example.test", []byte("synthetic-password"), discoveryInput())
 			waitClosed(t, firstClosed)
 			if err != nil {
 				t.Fatalf("read-only discovery did not recover: attempts=%d code=%s", attempts, adapterCode(err))

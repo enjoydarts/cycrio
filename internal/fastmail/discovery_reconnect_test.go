@@ -91,7 +91,9 @@ func TestDiscoveryReconnectsAfterInterruptedGreeting(t *testing.T) {
 func TestDiscoveryDoesNotRetryPersistentGreetingDisconnectForever(t *testing.T) {
 	c := NewClient()
 	attempts := 0
-	var deadline time.Time
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	deadline, _ := ctx.Deadline()
 	var closed []<-chan struct{}
 	c.dial = func(ctx context.Context, _ string, _ *tls.Config) (net.Conn, error) {
 		attempts++
@@ -99,10 +101,9 @@ func TestDiscoveryDoesNotRetryPersistentGreetingDisconnectForever(t *testing.T) 
 			t.Fatal("persistent disconnect exceeded reconnect bound")
 		}
 		currentDeadline, ok := ctx.Deadline()
-		if !ok || !deadline.IsZero() && !currentDeadline.Equal(deadline) {
+		if !ok || currentDeadline.After(deadline) {
 			t.Fatal("reconnect reset the operation deadline")
 		}
-		deadline = currentDeadline
 		client, server := net.Pipe()
 		done := make(chan struct{})
 		closed = append(closed, done)
@@ -112,7 +113,7 @@ func TestDiscoveryDoesNotRetryPersistentGreetingDisconnectForever(t *testing.T) 
 		}()
 		return client, nil
 	}
-	page, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"), discoveryInput())
+	page, err := c.Discover(ctx, "synthetic@example.test", []byte("synthetic-private-password"), discoveryInput())
 	for _, done := range closed {
 		waitClosed(t, done)
 	}
