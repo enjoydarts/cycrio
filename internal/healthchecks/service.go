@@ -5,6 +5,9 @@ import (
 	"time"
 )
 
+// TickTimeout includes readiness, credential lookup and the bounded HTTP ping.
+const TickTimeout = 15 * time.Second
+
 type Repository interface {
 	Due(context.Context) (bool, error)
 	Claim(context.Context) (string, error)
@@ -25,7 +28,7 @@ func NewService(repository Repository, resolve func(context.Context, string) ([]
 }
 
 func (s *Service) Tick(parent context.Context) error {
-	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, TickTimeout)
 	defer cancel()
 	if ctx.Err() != nil {
 		return NewFailure(StageTick, ctx.Err())

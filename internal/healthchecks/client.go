@@ -39,7 +39,7 @@ func boundedClient(client *http.Client, timeout time.Duration) *http.Client {
 	return &copy
 }
 func NewClient(client *http.Client) *Client {
-	return &Client{http: boundedClient(client, 3*time.Second)}
+	return &Client{http: boundedClient(client, 10*time.Second)}
 }
 
 func checkResponse(response *http.Response, expected string, stage Stage) error {

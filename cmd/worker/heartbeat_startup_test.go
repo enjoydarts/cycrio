@@ -9,6 +9,24 @@ import (
 	"time"
 )
 
+func TestHeartbeatTickBudgetIncludesReadinessAndOutboundRequest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		done := make(chan error, 1)
+		go dispatchHeartbeat(ctx, func(context.Context) error { return nil }, func(tick context.Context) error {
+			time.Sleep(6 * time.Second)
+			err := tick.Err()
+			done <- err
+			cancel()
+			return err
+		})
+		if err := <-done; err != nil {
+			t.Fatalf("外部送信の期限前にHeartbeat全体が打ち切られた: %v", err)
+		}
+	})
+}
+
 func TestHeartbeatWaitsForInitialReadinessOnly(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		r := &failureRecorder{}

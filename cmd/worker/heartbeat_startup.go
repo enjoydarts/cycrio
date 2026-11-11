@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"github.com/enjoydarts/cycrio/internal/healthchecks"
 	"time"
 )
 
@@ -32,5 +33,7 @@ func dispatchHeartbeat(ctx context.Context, ready func(context.Context) error, t
 	if ctx.Err() != nil {
 		return
 	}
-	dispatchSubscriptionAutomation(ctx, func(ctx context.Context, _ int) (int, error) { return 0, tick(ctx) }, 10*time.Second)
+	// Include readiness probes and credential lookup before the bounded 10s
+	// outbound request. Other database-only pollers retain their 5s budget.
+	dispatchSubscriptionAutomationBudget(ctx, func(ctx context.Context, _ int) (int, error) { return 0, tick(ctx) }, 10*time.Second, healthchecks.TickTimeout)
 }
