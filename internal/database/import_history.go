@@ -2,7 +2,9 @@ package database
 
 import (
 	"context"
+	"errors"
 	"github.com/enjoydarts/cycrio/internal/mailprocessing"
+	"github.com/jackc/pgx/v5"
 )
 
 // Membership is immutable evidence: an approved scope's discovered messages or
@@ -10,6 +12,8 @@ import (
 // legacy retries without parent attribution retain independent execution rows.
 // Excluding cancelled attempts restores an unsent
 // retry's preceding outcome. Shared messages reuse their latest known outcome.
+// Each membership arm is unique by its table constraint; automatic/manual IDs
+// have disjoint prefixes, so UNION ALL retains the same membership without sort.
 const importHistoryCTE = candidateCTE + `, histories AS (
  SELECT 'automation:'||s.automation_id::text||':'||s.generation::text AS id,
  'automatic'::text AS kind,s.confirmed_at AS created_at,s.since::text,s.before::text,
@@ -26,18 +30,54 @@ const importHistoryCTE = candidateCTE + `, histories AS (
 ), members AS (
  SELECT 'automation:'||m.automation_id::text||':'||m.generation::text AS history_id,m.message_id
  FROM mail_automation_messages m WHERE m.owner_id=$1 AND m.account_id=$2::text::uuid
- UNION
+ UNION ALL
  SELECT 'manual:'||i.run_id::text,i.message_id FROM mail_processing_items i
  JOIN histories h ON h.id='manual:'||i.run_id::text
  WHERE i.owner_id=$1 AND i.account_id=$2::text::uuid
 ) `
+
+const importHistoryLatestCTE = `, latest_history_items AS MATERIALIZED (
+ SELECT DISTINCT ON(message_id) id,message_id,state FROM mail_processing_items
+ WHERE owner_id=$1 AND account_id=$2::text::uuid AND state<>'cancelled'
+ ORDER BY message_id,created_at DESC,id DESC
+) `
+
+// Reference-only history reads fence deletion without reserving the mutation
+// locks needed by sync completion and other account transitions. Read Committed
+// checks current ownership after acquiring the erasure fence, including if a
+// purge held it first. No row writes or provider operations run in this scope.
+func (r *MailProcessingRepository) beginHistoryRead(ctx context.Context, owner, account string) (pgx.Tx, error) {
+	if !mailprocessing.ValidID(owner) || !mailprocessing.ValidID(account) {
+		return nil, mailprocessing.ErrInvalid
+	}
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted, AccessMode: pgx.ReadOnly})
+	if err != nil {
+		return nil, processingError(err)
+	}
+	fail := func(err error) (pgx.Tx, error) {
+		_ = tx.Rollback(context.Background())
+		return nil, processingError(err)
+	}
+	if _, err = tx.Exec(ctx, `SELECT pg_advisory_xact_lock_shared(hashtextextended($1,0))`, "user-erasure-fence/v1:"+owner); err != nil {
+		return fail(err)
+	}
+	var state string
+	err = tx.QueryRow(ctx, `SELECT u.state FROM users u JOIN mail_accounts a ON a.owner_id=u.id WHERE u.id=$1 AND a.id=$2`, owner, account).Scan(&state)
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && state != "active" {
+		return fail(mailprocessing.ErrNotFound)
+	}
+	if err != nil {
+		return fail(err)
+	}
+	return tx, nil
+}
 
 func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, account string, limit, offset int) (mailprocessing.ImportHistoryPage, error) {
 	out := mailprocessing.ImportHistoryPage{History: []mailprocessing.ImportHistory{}, Limit: limit, Offset: offset}
 	if limit < 1 || limit > 100 || offset < 0 || offset > 1000000 {
 		return out, mailprocessing.ErrInvalid
 	}
-	tx, e := r.beginAccount(ctx, owner, account)
+	tx, e := r.beginHistoryRead(ctx, owner, account)
 	if e != nil {
 		return out, e
 	}
@@ -62,7 +102,7 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
 	if e = tx.QueryRow(ctx, importHistoryCTE+`SELECT count(*) FROM histories`, owner, account).Scan(&out.Total); e != nil {
 		return out, processingError(e)
 	}
-	rows, e := tx.Query(ctx, importHistoryCTE+`SELECT h.id,h.kind,h.created_at,h.since,h.before,
+	rows, e := tx.Query(ctx, importHistoryCTE+importHistoryLatestCTE+`SELECT h.id,h.kind,h.created_at,h.since,h.before,
  CASE WHEN h.kind IN ('manual','reanalysis') THEN COALESCE(active.state,h.state) ELSE h.state END,h.is_current,h.incremental,
  counts.discovered,counts.pending,counts.completed,counts.candidates,registered.count,counts.failed,counts.unknown,active.id
  FROM (SELECT * FROM histories ORDER BY created_at DESC,id DESC LIMIT $3 OFFSET $4) h
@@ -78,7 +118,7 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
  count(*) FILTER(WHERE latest.state IN ('succeeded','not_related')) AS completed,
  (SELECT count(DISTINCT c.group_key) FROM candidates c JOIN members cm ON cm.message_id=c.message_id AND cm.history_id=h.id) AS candidates,
  count(*) FILTER(WHERE latest.state='failed') AS failed,count(*) FILTER(WHERE latest.state='unknown') AS unknown
- FROM members m LEFT JOIN LATERAL(SELECT i.id,i.state,i.events FROM mail_processing_items i WHERE i.owner_id=$1 AND i.account_id=$2::text::uuid AND i.message_id=m.message_id AND i.state<>'cancelled' ORDER BY i.created_at DESC,i.id DESC LIMIT 1) latest ON true
+ FROM members m LEFT JOIN latest_history_items latest ON latest.message_id=m.message_id
  WHERE m.history_id=h.id
  ) counts CROSS JOIN LATERAL (
  SELECT count(DISTINCT s.subscription_id) FROM subscription_sources s JOIN mail_processing_items i ON i.owner_id=s.owner_id AND i.id=s.result_id
