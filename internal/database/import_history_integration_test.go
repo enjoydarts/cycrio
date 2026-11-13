@@ -298,3 +298,130 @@ func TestImportHistoryCombinesAutomaticInternalBatches(t *testing.T) {
 		t.Fatal("internal batches must form one continuously monitored scope", h)
 	}
 }
+
+func TestImportHistorySingleRetryKeepsAutomaticOrigin(t *testing.T) {
+	f, automation, in := automaticFixture(t)
+	ctx := context.Background()
+	current := automaticBootstrap(t, f, automation, in, 1)
+	automaticDiscover(t, f, automation, syncRefs(1), 1)
+	lease, work := f.start(t)
+	if err := f.repo.Finish(ctx, lease, mailprocessing.Completion{State: "failed", ErrorCode: "timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	historyID := "automation:" + current.ID + ":1"
+	f.in.PolicyVersion = in.PolicyVersion
+	f.in.MaxMessages = 1
+	// A second retry must retain the first attempt's origin too. Existing
+	// recovery runs have exactly these parent result references, without a
+	// history_id or automation_id on the retry itself.
+	for attempt := range 2 {
+		var result string
+		if err := f.runtime.pool.QueryRow(ctx, `SELECT id FROM mail_processing_items WHERE message_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, work.MessageID).Scan(&result); err != nil {
+			t.Fatal(err)
+		}
+		f.in.RequestID = uuid.NewString()
+		input := mailprocessing.RetryInput{Input: f.in, ExpectedResultID: result}
+		run, err := f.repo.Retry(ctx, f.owner, f.account, work.MessageID, input)
+		if err != nil {
+			t.Fatal(err)
+		}
+		replay, err := f.repo.Retry(ctx, f.owner, f.account, work.MessageID, input)
+		if err != nil || replay.ID != run.ID {
+			t.Fatal("retry receipt changed", replay, err)
+		}
+		page, err := f.repo.ImportHistory(ctx, f.owner, f.account, 20, 0)
+		if err != nil || page.Total != 1 || len(page.History) != 1 {
+			t.Fatal("automatic retry became a manual history", page, err)
+		}
+		h := page.History[0]
+		if h.ID != historyID || h.Kind != "automatic" || h.PendingCount != 1 || h.FailedCount != 0 || h.ActiveRunID == nil || *h.ActiveRunID != run.ID {
+			t.Fatal("retry must belong to the original scope with its own stop target", h)
+		}
+		if _, err := f.repo.ImportHistory(ctx, f.other, f.account, 20, 0); !errors.Is(err, mailprocessing.ErrNotFound) {
+			t.Fatal("retry owner isolation", err)
+		}
+		if attempt == 0 {
+			if _, err := f.repo.Cancel(ctx, f.owner, f.account, run.ID); err != nil {
+				t.Fatal(err)
+			}
+			page, err = f.repo.ImportHistory(ctx, f.owner, f.account, 20, 0)
+			if err != nil || page.Total != 1 || page.History[0].FailedCount != 1 || page.History[0].ActiveRunID != nil {
+				t.Fatal("cancelled retry must restore the original failure", page, err)
+			}
+			f.in.RequestID = uuid.NewString()
+			run, err = f.repo.Retry(ctx, f.owner, f.account, work.MessageID, mailprocessing.RetryInput{Input: f.in, ExpectedResultID: result})
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		lease, _ = f.start(t)
+		completion := mailprocessing.Completion{State: "failed", ErrorCode: "timeout"}
+		if attempt == 1 {
+			label := "not_related"
+			completion = mailprocessing.Completion{State: "not_related", Classification: &label}
+		}
+		if err := f.repo.Finish(ctx, lease, completion); err != nil {
+			t.Fatal(err)
+		}
+	}
+	page, err := f.repo.ImportHistory(ctx, f.owner, f.account, 1, 0)
+	if err != nil || page.Total != 1 || page.History[0].CompletedCount != 1 || page.History[0].FailedCount != 0 || page.History[0].ActiveRunID != nil {
+		t.Fatal("completed retries must remain grouped and counted once", page, err)
+	}
+}
+
+func TestImportHistorySingleRetryOfScopedRetryKeepsOldGeneration(t *testing.T) {
+	f, automation, in := automaticFixture(t)
+	ctx := context.Background()
+	current := automaticBootstrap(t, f, automation, in, 1)
+	automaticDiscover(t, f, automation, syncRefs(1), 1)
+	lease, work := f.start(t)
+	if err := f.repo.Finish(ctx, lease, mailprocessing.Completion{State: "failed", ErrorCode: "timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	historyID := "automation:" + current.ID + ":1"
+	f.in.PolicyVersion = in.PolicyVersion
+	f.in.RequestID = uuid.NewString()
+	f.in.HistoryID = historyID
+	if _, err := f.repo.RetryFailed(ctx, f.owner, f.account, f.in); err != nil {
+		t.Fatal(err)
+	}
+	lease, _ = f.start(t)
+	if err := f.repo.Finish(ctx, lease, mailprocessing.Completion{State: "failed", ErrorCode: "timeout"}); err != nil {
+		t.Fatal(err)
+	}
+	var result string
+	if err := f.runtime.pool.QueryRow(ctx, `SELECT id FROM mail_processing_items WHERE message_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1`, work.MessageID).Scan(&result); err != nil {
+		t.Fatal(err)
+	}
+	// The same message can belong to a new confirmed scope. Its membership
+	// alone must not move this retry away from the original generation.
+	if _, err := f.runtime.pool.Exec(ctx, `UPDATE mail_automations SET generation=2;
+ INSERT INTO mail_automation_scopes SELECT owner_id,account_id,automation_id,2,account_version,runtime_version,profile_id,policy_version,since,before,full_email,interval_seconds,auto_register,confirmed_at+interval '1 second' FROM mail_automation_scopes WHERE generation=1;
+ INSERT INTO mail_automation_messages SELECT owner_id,account_id,automation_id,2,message_id,lane,discovered_at FROM mail_automation_messages WHERE generation=1`); err != nil {
+		t.Fatal(err)
+	}
+	f.in.HistoryID = ""
+	f.in.RequestID = uuid.NewString()
+	f.in.MaxMessages = 1
+	run, err := f.repo.Retry(ctx, f.owner, f.account, work.MessageID, mailprocessing.RetryInput{Input: f.in, ExpectedResultID: result})
+	if err != nil {
+		t.Fatal(err)
+	}
+	page, err := f.repo.ImportHistory(ctx, f.owner, f.account, 20, 0)
+	if err != nil || page.Total != 2 {
+		t.Fatal("retry must not create a third history", page, err)
+	}
+	for _, h := range page.History {
+		if h.Kind != "automatic" {
+			t.Fatal("manual retry history", h)
+		}
+		if h.ID == historyID {
+			if h.IsCurrent || h.State != "superseded" || h.ActiveRunID == nil || *h.ActiveRunID != run.ID {
+				t.Fatal("old generation lost retry stop target", h)
+			}
+		} else if h.ActiveRunID != nil {
+			t.Fatal("new generation gained another scope's retry stop target", h)
+		}
+	}
+}

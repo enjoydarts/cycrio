@@ -9,12 +9,37 @@ import (
 
 // Membership is immutable evidence: an approved scope's discovered messages or
 // an original manual run's items. Scoped retries are attempts on this membership;
-// legacy retries without parent attribution retain independent execution rows.
+// Single retries retain automatic origins through their immutable parent result
+// references, including recovery runs written before history attribution existed.
+// Other legacy retries retain independent execution rows.
 // Excluding cancelled attempts restores an unsent
 // retry's preceding outcome. Shared messages reuse their latest known outcome.
 // Each membership arm is unique by its table constraint; automatic/manual IDs
 // have disjoint prefixes, so UNION ALL retains the same membership without sort.
-const importHistoryCTE = candidateCTE + `, histories AS (
+const importHistoryCTE = candidateCTE + `, automatic_retry_histories AS (
+ WITH RECURSIVE retry_links AS MATERIALIZED (
+ SELECT r.id,parent.id AS parent_run_id,parent.automation_id,parent.automation_generation,
+ parent.request_doc->'input'->>'history_id' AS parent_history_id
+ FROM mail_processing_runs r
+ JOIN mail_processing_items source ON source.id=CASE
+ WHEN r.request_doc->>'expected_result_id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
+ THEN (r.request_doc->>'expected_result_id')::uuid END
+ AND source.owner_id=r.owner_id AND source.account_id=r.account_id
+ AND source.message_id::text=r.request_doc->>'message_id'
+ JOIN mail_processing_runs parent ON parent.id=source.run_id AND parent.owner_id=r.owner_id AND parent.account_id=r.account_id
+ WHERE r.owner_id=$1 AND r.account_id=$2::text::uuid AND r.automation_id IS NULL
+ AND COALESCE(r.request_doc->'input'->>'history_id','')=''
+ AND EXISTS(SELECT 1 FROM mail_processing_items own WHERE own.run_id=r.id AND own.owner_id=r.owner_id AND own.account_id=r.account_id AND own.message_id=source.message_id)
+ ), origins AS (
+ SELECT link.id,'automation:'||scope.automation_id::text||':'||scope.generation::text AS history_id
+ FROM retry_links link JOIN mail_automation_scopes scope
+ ON scope.owner_id=$1 AND scope.account_id=$2::text::uuid
+ AND ((scope.automation_id=link.automation_id AND scope.generation=link.automation_generation)
+ OR 'automation:'||scope.automation_id::text||':'||scope.generation::text=link.parent_history_id)
+ UNION
+ SELECT link.id,origin.history_id FROM retry_links link JOIN origins origin ON origin.id=link.parent_run_id
+ ) SELECT id,history_id FROM origins
+), histories AS (
  SELECT 'automation:'||s.automation_id::text||':'||s.generation::text AS id,
  'automatic'::text AS kind,s.confirmed_at AS created_at,s.since::text,s.before::text,
  CASE WHEN s.generation=a.generation THEN a.state ELSE 'superseded' END AS state,
@@ -27,6 +52,7 @@ const importHistoryCTE = candidateCTE + `, histories AS (
  SELECT 'manual:'||r.id::text,CASE WHEN r.request_doc->>'reanalysis'='true' THEN 'reanalysis' ELSE 'manual' END,r.created_at,NULL::text,NULL::text,r.state,false,false
  FROM mail_processing_runs r WHERE r.owner_id=$1 AND r.account_id=$2::text::uuid AND r.automation_id IS NULL
  AND COALESCE(r.request_doc->'input'->>'history_id','')=''
+ AND NOT EXISTS(SELECT 1 FROM automatic_retry_histories retry WHERE retry.id=r.id)
 ), members AS (
  SELECT 'automation:'||m.automation_id::text||':'||m.generation::text AS history_id,m.message_id
  FROM mail_automation_messages m WHERE m.owner_id=$1 AND m.account_id=$2::text::uuid
@@ -110,7 +136,8 @@ func (r *MailProcessingRepository) ImportHistory(ctx context.Context, owner, acc
  JOIN mail_processing_items i ON i.run_id=r.id AND i.owner_id=r.owner_id AND i.account_id=r.account_id
  JOIN members member ON member.message_id=i.message_id AND member.history_id=h.id
  WHERE r.owner_id=$1 AND r.account_id=$2::text::uuid AND r.automation_id IS NULL AND r.state IN ('queued','leased','running')
- AND (r.request_doc->'input'->>'history_id'=h.id OR h.id='manual:'||r.id::text)
+ AND (r.request_doc->'input'->>'history_id'=h.id OR h.id='manual:'||r.id::text
+ OR EXISTS(SELECT 1 FROM automatic_retry_histories retry WHERE retry.id=r.id AND retry.history_id=h.id))
  ORDER BY r.created_at DESC,r.id DESC LIMIT 1) active ON true
  CROSS JOIN LATERAL (
  SELECT count(*) AS discovered,
