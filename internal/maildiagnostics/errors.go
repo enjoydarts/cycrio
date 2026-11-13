@@ -15,7 +15,10 @@ import (
 
 var html = regexp.MustCompile(`(?i)<\s*(?:!doctype\b|/?[a-z][a-z0-9]*\b[^>]*>)`)
 var requestID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
-var endpointURL = regexp.MustCompile(`(?i)https?://[^\s<>"']+`)
+
+// Apostrophes are valid URL characters, including Graph's OData folder selectors.
+// Stopping at one would retain the folder identifier and query credentials.
+var endpointURL = regexp.MustCompile(`(?i)https?://[^\s<>"]+`)
 
 // Failure accepts error envelopes only; successful mail/token payloads must
 // never be supplied as body. Snapshots retain no raw transport object.

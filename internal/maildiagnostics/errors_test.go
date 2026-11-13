@@ -2,10 +2,43 @@ package maildiagnostics
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
+
+func TestFailureRedactsCompleteEndpointAndRetainsTransportReason(t *testing.T) {
+	for _, tc := range []struct{ name, endpoint string }{
+		{"standard", "https://mail.example.test/messages?token=synthetic-query-token"},
+		{"odata", "https://graph.example.test/v1.0/me/mailfolders('synthetic-folder-id')/messages/delta?$deltatoken=synthetic-query-token"},
+		{"odata_escaped_quote", "https://graph.example.test/v1.0/me/mailfolders('synthetic''folder-id')/messages/delta?$skiptoken=synthetic-query-token"},
+		{"http", "HTTP://mail.example.test/messages?token=synthetic-query-token"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := &url.Error{Op: "Get", URL: tc.endpoint, Err: errors.New("context deadline exceeded")}
+			err := Failure("connection_failed", "outlook", "mail_api", 0, nil, nil, fmt.Errorf("request failed: %w", transport))
+			detail := errors.Unwrap(err)
+			if detail == nil {
+				t.Fatal("missing diagnostic detail")
+			}
+			for current := detail; current != nil; current = errors.Unwrap(current) {
+				for _, private := range []string{"example.test", "synthetic-folder-id", "synthetic''folder-id", "synthetic-query-token", "/messages/delta", "$deltatoken", "$skiptoken"} {
+					if strings.Contains(current.Error(), private) {
+						t.Fatalf("endpoint data retained in cause snapshot: %q", current.Error())
+					}
+				}
+				if !strings.Contains(current.Error(), "context deadline exceeded") {
+					t.Fatalf("safe transport reason lost: %q", current.Error())
+				}
+			}
+			if !strings.Contains(detail.Error(), "[mail endpoint]") {
+				t.Fatalf("endpoint redaction missing: %q", detail.Error())
+			}
+		})
+	}
+}
 
 func TestFranklyMailRetainsProviderAndSafeTransportReason(t *testing.T) {
 	err := Failure("connection_failed", "franklymail", "jmap_session", 429, http.Header{"X-Request-Id": []string{"request-synthetic"}}, nil, nil)
