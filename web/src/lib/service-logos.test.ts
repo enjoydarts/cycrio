@@ -371,6 +371,26 @@ test('popular services and Japanese names resolve to the appropriate product rat
   }
 });
 
+test('U-NEXT billing names resolve without confusing its mobile service or unrelated names', async () => {
+  const { resolveServiceLogo } = await import('./service-logos.ts');
+  for (const name of [
+    'U-NEXT',
+    'ユーネクスト',
+    'ユーネクストサービス',
+    'ユ－ネクストサ－ビス',
+    'ユ-ネクストサ-ビス',
+    'ﾕ-ﾈｸｽﾄｻ-ﾋﾞｽ',
+    'ユ－ネクスト',
+    'ユ－ネクストサ－ビス 月額プラン',
+  ]) {
+    assert.equal(resolveServiceLogo(name)?.slug, 'unext', name);
+  }
+  assert.equal(resolveServiceLogo('U-NEXT MOBILE')?.slug, 'unextmobile');
+  for (const name of ['ユ－ネクストサ－ビス代理店', 'U-NEXT Consulting']) {
+    assert.equal(resolveServiceLogo(name), null, name);
+  }
+});
+
 test('catalog lookup covers ordinary brands without a per-service implementation', async () => {
   const { resolveServiceLogo } = await import('./service-logos.ts');
   assert.equal(resolveServiceLogo('Linear')?.slug, 'linear');

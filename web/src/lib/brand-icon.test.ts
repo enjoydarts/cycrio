@@ -39,6 +39,17 @@ test('The X Subscription renders the X image at list and detail sizes', async ()
   }
 });
 
+test('U-NEXT billing names render the local logo at list and detail sizes', async () => {
+  const { default: BrandIcon } = await import('./BrandIcon.svelte');
+  for (const size of ['small', 'large'] as const) {
+    const html = render(BrandIcon, {
+      props: { name: 'ユ－ネクストサ－ビス', size },
+    }).body;
+    assert.match(html, /<img[^>]*src="\/brand\/services\/unext\.ico"/);
+    assert.doesNotMatch(html, /<svg|ユ－ネクストサ－ビス/);
+  }
+});
+
 test('mail providers take priority over service names and support compact sizes', async () => {
   const { default: BrandIcon } = await import('./BrandIcon.svelte');
   const html = render(BrandIcon, {

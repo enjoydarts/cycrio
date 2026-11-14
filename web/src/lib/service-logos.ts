@@ -345,7 +345,16 @@ const names: [string, string[]][] = [
   ['adobe', ['Adobe', 'アドビ']],
   ['disneyplus', ['Disney+', 'Disney Plus', 'ディズニープラス']],
   ['hulu', ['Hulu', 'フールー']],
-  ['unext', ['U-NEXT', 'ユーネクスト']],
+  [
+    'unext',
+    [
+      'U-NEXT',
+      'ユーネクスト',
+      'ユーネクストサービス',
+      'ユ－ネクスト',
+      'ユ－ネクストサ－ビス',
+    ],
+  ],
   ['notion', ['Notion', 'ノーション']],
   ['dropbox', ['Dropbox', 'ドロップボックス']],
   ['slack', ['Slack', 'スラック']],
