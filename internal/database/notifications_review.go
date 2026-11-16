@@ -113,6 +113,9 @@ func observeNotificationReviews(ctx context.Context, tx pgx.Tx, owner string, p 
 	if err != nil {
 		return notificationError(err)
 	}
+	if err = attachRecurringReviewSources(ctx, tx, owner, messages); err != nil {
+		return err
+	}
 	groups, err := currentReviewSourceGroups(ctx, tx, owner, messages)
 	if err != nil {
 		return err

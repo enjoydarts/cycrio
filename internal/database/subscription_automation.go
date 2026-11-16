@@ -64,13 +64,11 @@ func saveAutomationPreference(ctx context.Context, tx pgx.Tx, owner string, in a
 	return p, nil
 }
 
-// RegisterDue reads only saved results. It has no provider, mailbox or key access.
-// Owner locks serialize workers with manual registration and preference changes.
+// RegisterDue links unchanged recurring evidence to owner-approved contracts.
+// New contracts and changed facts still require explicit approval.
 func (r *SubscriptionRepository) RegisterDue(ctx context.Context, limit int) (int, error) {
 	if limit < 1 || limit > 100 {
 		return 0, subscriptions.ErrInvalid
 	}
-	// Extraction now requires explicit owner approval. Keep the worker contract
-	// compatible while preserving historical registration data and preferences.
-	return 0, nil
+	return r.attachRecurringDue(ctx, limit)
 }

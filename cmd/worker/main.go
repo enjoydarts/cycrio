@@ -171,7 +171,7 @@ func run() (result error) {
 	for _, group := range groups {
 		workerNames = append(workerNames, group.name)
 	}
-	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_subscription_register"), database.NewSubscriptionRepository(pool).RegisterDue, time.Second)
+	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_subscription_register"), database.NewSubscriptionRepository(pool).RegisterDue, 30*time.Second)
 	go dispatchSubscriptionAutomation(withWorkerOperation(ctx, "worker_subscription_changes"), database.NewSubscriptionRepository(pool).ApplyScheduledChangesDue, 2*time.Second)
 	go dispatchPriceResearch(withWorkerOperation(ctx, "worker_price_research"), research.ClaimDue, func(ctx context.Context, l priceresearch.Lease) error {
 		_, err := researchTask.RunNoWait(ctx, l)

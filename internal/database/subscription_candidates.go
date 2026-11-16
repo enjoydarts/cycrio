@@ -28,7 +28,7 @@ func candidateMessagesCTE() string {
 }
 
 const candidateCTERemainder = `), candidates AS (
- SELECT i.id AS result_id,i.message_id,i.account_id,i.received_at,e.ordinality::integer-1 AS event_index,e.event,
+ SELECT i.owner_id,i.id AS result_id,i.message_id,i.account_id,i.received_at,e.ordinality::integer-1 AS event_index,e.event,
  CASE WHEN NULLIF(btrim(e.event->>'service'),'') IS NULL THEN jsonb_build_array(i.id,e.ordinality)
  ELSE jsonb_build_array(i.account_id,e.event->'service',e.event->'plan',e.event->'amount',e.event->'currency',e.event->'recurring_amount',e.event->'recurring_currency',e.event->'interval_unit',e.event->'interval_count',e.event->'event_type',e.event->'contract_kind') END AS group_key
  FROM current_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) WITH ORDINALITY e(event,ordinality)
