@@ -226,7 +226,7 @@ func TestRecurringSourcesIgnoreSupersededResultsAndNullSchemaDifferences(t *test
 func TestRecurringSourcesDoNotInvalidateScheduledContractChanges(t *testing.T) {
 	f, r, s, event := recurringSourceFixture(t)
 	ctx := context.Background()
-	date := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
+	date := time.Now().In(time.FixedZone("Asia/Tokyo", 9*3600)).AddDate(0, 0, 1).Format("2006-01-02")
 	change := changeSource(t, f, time.Now().Format(time.RFC3339), ai.Event{Service: s.Service, EventType: "change", RecurringAmount: autoPtr("200"), RecurringCurrency: autoPtr("USD"), EffectiveDate: &date})
 	in := subscriptions.ChangePreviewInput{ExpectedVersion: s.Version, SourceResultID: change}
 	preview, err := r.ScheduledChangePreview(ctx, f.owner, s.ID, in)
