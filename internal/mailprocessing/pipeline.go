@@ -164,6 +164,10 @@ func (s *Service) executeWork(ctx context.Context, l Lease, w Work) (err error) 
 		completion.ErrorCode = "invalid_response"
 		return nil
 	}
+	if len(bytes.TrimSpace(text)) == 0 {
+		completion.ErrorCode = "unsupported_content"
+		return nil
+	}
 	if notifications.IsGeneratedEmailText(text) {
 		label := "not_related"
 		completion.Classification = &label

@@ -69,6 +69,32 @@ func TestFullEmailPipelineStillRejectsPhysicalOverflowAndInvalidUTF8BeforeAI(t *
 	}
 }
 
+func TestPipelineRejectsEmptyBodyBeforeStartingAICall(t *testing.T) {
+	for _, full := range []bool{false, true} {
+		for _, body := range []string{"", " \t\r\n", "\u3000", "a", "料金のお知らせ"} {
+			r, keys, lease := pipelineFixture(t)
+			r.w.FullEmail = full
+			reader := textReader(func(context.Context, string, []byte, mailcontent.Source) ([]byte, error) {
+				return []byte(body), nil
+			})
+			client := inference(func(context.Context, ai.Request) (ai.Response, error) {
+				return ai.Response{Classification: &ai.Classification{Label: "not_related"}}, nil
+			})
+			service := NewService(r, keys, reader, client, func(context.Context, string) ([]byte, error) { return []byte("synthetic"), nil })
+			if err := service.Execute(context.Background(), lease); err != nil {
+				t.Fatal(err)
+			}
+			if strings.TrimSpace(body) == "" {
+				if r.calls != 0 || r.records != 0 || r.completion.State != "failed" || r.completion.ErrorCode != "unsupported_content" {
+					t.Fatalf("full=%v body=%q: empty body started AI: calls=%d records=%d completion=%+v", full, body, r.calls, r.records, r.completion)
+				}
+			} else if r.calls != 1 || r.completion.State != "not_related" {
+				t.Fatalf("nonempty body blocked: calls=%d completion=%+v", r.calls, r.completion)
+			}
+		}
+	}
+}
+
 func TestFullEmailRequestSurvivesSerialization(t *testing.T) {
 	var in Input
 	if err := json.Unmarshal([]byte(`{"full_email":true}`), &in); err != nil {
