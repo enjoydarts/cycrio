@@ -44,9 +44,13 @@ func pushError(err error) error {
 	}
 	return pushnotifications.ErrUnavailable
 }
-func pushOwner(ctx context.Context, tx pgx.Tx, owner string) error {
+func pushOwner(ctx context.Context, tx pgx.Tx, owner string, forUpdate bool) error {
+	query := `SELECT state FROM users WHERE id=$1`
+	if forUpdate {
+		query += ` FOR NO KEY UPDATE`
+	}
 	var state string
-	e := tx.QueryRow(ctx, `SELECT state FROM users WHERE id=$1 FOR NO KEY UPDATE`, owner).Scan(&state)
+	e := tx.QueryRow(ctx, query, owner).Scan(&state)
 	if errors.Is(e, pgx.ErrNoRows) || e == nil && state != "active" {
 		return pushnotifications.ErrNotReady
 	}
@@ -60,18 +64,26 @@ func (r *PushNotificationRepository) transaction(ctx context.Context, owner stri
 	if e != nil {
 		return nil, e
 	}
-	if e = pushOwner(ctx, tx, strings.ToLower(owner)); e != nil {
+	if e = pushOwner(ctx, tx, strings.ToLower(owner), true); e != nil {
 		tx.Rollback(ctx)
 		return nil, e
 	}
 	return tx, nil
 }
 func (r *PushNotificationRepository) credential(ctx context.Context, tx pgx.Tx) (credentials.CredentialVersion, pushnotifications.Credentials, error) {
+	return r.resolveCredential(ctx, tx, true)
+}
+
+func (r *PushNotificationRepository) resolveCredential(ctx context.Context, tx pgx.Tx, lock bool) (credentials.CredentialVersion, pushnotifications.Credentials, error) {
 	var v credentials.CredentialVersion
 	if !r.enabled || r.keys == nil {
 		return v, pushnotifications.Credentials{}, pushnotifications.ErrNotReady
 	}
-	e := tx.QueryRow(ctx, `SELECT v.id,v.provider,v.version,v.key_id,v.ciphertext FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider AND v.version=p.version WHERE p.provider='onesignal' AND p.state='configured' AND v.state='active' FOR SHARE OF p,v`).Scan(&v.ID, &v.Provider, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext)
+	query := `SELECT v.id,v.provider,v.version,v.key_id,v.ciphertext FROM provider_credentials p JOIN credential_versions v ON v.provider=p.provider AND v.version=p.version WHERE p.provider='onesignal' AND p.state='configured' AND v.state='active'`
+	if lock {
+		query += ` FOR SHARE OF p,v`
+	}
+	e := tx.QueryRow(ctx, query).Scan(&v.ID, &v.Provider, &v.Version, &v.Envelope.KeyID, &v.Envelope.Ciphertext)
 	if errors.Is(e, pgx.ErrNoRows) {
 		return v, pushnotifications.Credentials{}, pushnotifications.ErrNotReady
 	}
@@ -107,12 +119,21 @@ func pushDevice(id, state string, created, updated time.Time) pushnotifications.
 
 func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner string) (pushnotifications.Page, error) {
 	page := pushnotifications.Page{Devices: []pushnotifications.Device{}}
-	tx, e := r.transaction(ctx, owner)
+	if !pushnotifications.ValidID(owner) {
+		return page, pushnotifications.ErrInvalid
+	}
+	owner = strings.ToLower(owner)
+	// The owner, credential and device states come from one read-only snapshot.
+	// Confirmation and other mutations can take their row locks concurrently.
+	tx, e := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if e != nil {
 		return page, pushError(e)
 	}
 	defer tx.Rollback(ctx)
-	_, c, e := r.credential(ctx, tx)
+	if e = pushOwner(ctx, tx, owner, false); e != nil {
+		return page, pushError(e)
+	}
+	_, c, e := r.resolveCredential(ctx, tx, false)
 	if errors.Is(e, pushnotifications.ErrNotReady) {
 		page.Reason = "not_configured"
 		if !r.enabled {

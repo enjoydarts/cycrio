@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createPushController, type PushStorage } from './push-controller.ts';
-import { deriveRevocationToken } from './push-api.ts';
+import { deriveRevocationToken, type PushAPI } from './push-api.ts';
 import { ApiError } from './api.ts';
 const a = '11111111-1111-4111-8111-111111111111',
   b = '22222222-2222-4222-8222-222222222222',
@@ -34,7 +34,7 @@ function fixture(shared?: PushStorage) {
     clock = 0;
   const registration = deferred<any>();
   const confirmation = deferred<any>();
-  const api = {
+  const api: PushAPI = {
     list: async () => ({
       app_id: a,
       available: true,
@@ -471,10 +471,10 @@ test('別タブの所有者変更と古い通知は新所有者の記録を上�
 test('旧タブtokenが有効でも遅着登録応答から同ownerの新世代activeを停止しない', async () => {
   const old = fixture();
   let next: ReturnType<typeof fixture>;
-  old.api.disable = async (...args: any[]) => {
-    assert.equal(await args[1](), 'token');
+  old.api.disable = async (id, token) => {
+    assert.equal(await token(), 'token');
     old.calls.push('disable');
-    await next.api.disable();
+    await next.api.disable(id, token);
   };
   await old.c.load();
   await old.c.prepare();
@@ -649,6 +649,105 @@ test('確認応答喪失はGETで有効状態を照合し登録や確認POSTを�
   assert.equal(f.c.state().status, 'active');
   assert.equal(f.calls.filter((v) => v === 'register').length, 1);
 });
+for (const deviceState of ['pending', 'active', 'expired'] as const)
+  test(`確認が一時失敗した後、同じ端末が${deviceState}の場合の再確認`, async () => {
+    const f = fixture();
+    const device = {
+      id: b,
+      created_at: '2026-11-10T00:00:00Z',
+      updated_at: '2026-11-10T00:00:00Z',
+    };
+    const requests: Parameters<PushAPI['confirm']>[0][] = [];
+    let state: typeof deviceState | 'active' = deviceState;
+    f.api.list = async () => ({
+      app_id: a,
+      available: true,
+      reason: '',
+      devices: [{ ...device, state }],
+    });
+    const revocation_token = await deriveRevocationToken(secret);
+    f.api.confirm = async (proof) => {
+      requests.push(proof);
+      if (requests.length === 1) throw new ApiError('dependency_unavailable');
+      state = 'active';
+      return { device: { ...device, state }, revocation_token };
+    };
+    await f.c.load();
+    await f.c.prepare();
+    f.registration.resolve({
+      device_id: b,
+      challenge_id: challenge,
+      state: 'pending',
+      expires_at: new Date(300000).toISOString(),
+    });
+    await f.c.allow();
+    f.emit();
+    await flush();
+    const proof = { challenge_id: challenge, secret };
+    assert.deepEqual(
+      requests,
+      deviceState === 'pending' ? [proof, proof] : [proof],
+    );
+    assert.equal(
+      f.c.state().status,
+      deviceState === 'expired' ? 'uncertain' : 'active',
+    );
+    assert.equal(f.calls.filter((v) => v === 'register').length, 1);
+  });
+for (const result of ['response', 'recovered'] as const)
+  test(`確認成功後の${result}を古い端末一覧で上書きしない`, async () => {
+    const f = fixture();
+    const pendingPage = {
+      app_id: a,
+      available: true,
+      reason: '' as const,
+      devices: [
+        {
+          id: b,
+          state: 'pending' as const,
+          created_at: '2026-11-10T00:00:00Z',
+          updated_at: '2026-11-10T00:00:00Z',
+        },
+      ],
+    };
+    await f.c.load();
+    await f.c.prepare();
+    f.registration.resolve({
+      device_id: b,
+      challenge_id: challenge,
+      state: 'pending',
+      expires_at: new Date(300000).toISOString(),
+    });
+    await f.c.allow();
+    const list = f.api.list;
+    const stale = deferred<Awaited<ReturnType<PushAPI['list']>>>();
+    f.api.list = () => stale.promise;
+    const reading = f.c.load();
+    await flush();
+    if (result === 'recovered') {
+      const confirm = f.api.confirm;
+      f.api.confirm = async (proof, token) => {
+        await confirm(proof, token);
+        throw new ApiError('dependency_unavailable');
+      };
+    }
+    f.emit();
+    await flush();
+    f.api.list = async () => pendingPage;
+    await f.c.load();
+    f.api.list = list;
+    f.confirmation.resolve({
+      device: { id: b, state: 'active' },
+      revocation_token: await deriveRevocationToken(secret),
+    });
+    await flush();
+    assert.equal(f.c.state().currentDevice, b);
+    stale.resolve(pendingPage);
+    await reading;
+    assert.equal(f.c.state().status, 'active');
+    assert.equal(f.c.state().currentDevice, b);
+    assert.equal(f.c.state().page?.devices[0]?.state, 'active');
+  });
 test('共有ownerが変わったタブはstorageイベント前でも追加の許可を要求しない', async () => {
   const old = fixture();
   await old.c.load();

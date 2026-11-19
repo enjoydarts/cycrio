@@ -27,6 +27,35 @@ func pushSetup(t *testing.T) (processingFixture, *PushNotificationRepository, *c
 	return f, NewPushNotificationRepository(f.runtime.pool, f.keys, true), cs
 }
 
+func TestPushSettingsDoesNotWaitForUserMutation(t *testing.T) {
+	f, r, _ := pushSetup(t)
+	ctx := context.Background()
+	sender := pushSenderFunc(func(context.Context, []byte, pushnotifications.Message) (pushnotifications.SendResult, error) {
+		return pushnotifications.SendResult{State: "accepted"}, nil
+	})
+	registered, err := r.RegisterPushDevice(ctx, f.owner, pushnotifications.RegistrationInput{SubscriptionID: uuid.NewString(), RequestID: uuid.NewString()}, sender)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mutation, err := f.runtime.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer mutation.Rollback(ctx)
+	if _, err = mutation.Exec(ctx, `SELECT id FROM users WHERE id=$1 FOR NO KEY UPDATE`, f.owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = mutation.Exec(ctx, `SELECT provider FROM provider_credentials WHERE provider='onesignal' FOR UPDATE`); err != nil {
+		t.Fatal(err)
+	}
+	read, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	page, err := r.PushSettings(read, f.owner)
+	if err != nil || !page.Available || len(page.Devices) != 1 || page.Devices[0].ID != registered.DeviceID || page.Devices[0].State != "pending" {
+		t.Fatalf("device settings should stay readable during a user mutation: %+v, %v", page, err)
+	}
+}
+
 func TestPushOnlyCiphertextPreventsKeyringReplacement(t *testing.T) {
 	store, pool := testStore(t)
 	ctx := context.Background()

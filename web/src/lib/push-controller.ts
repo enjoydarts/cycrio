@@ -100,6 +100,11 @@ export function createPushController({
     view = { ...view, ...patch };
     listeners.forEach((fn) => fn(view));
   };
+  let confirmationVersion = 0;
+  function publishConfirmedDevice(deviceID: string, page = view.page) {
+    confirmationVersion++;
+    publish({ page, status: 'active', busy: false, currentDevice: deviceID });
+  }
   function sharedOwner(): { owner: string | null; epoch: string } | null {
     const raw = storage.getItem(ownerKey);
     if (!raw) return null;
@@ -164,6 +169,7 @@ export function createPushController({
   async function load() {
     if (!owner) return;
     const expected = owner;
+    const previousConfirmation = confirmationVersion;
     let g = generation;
     let permissionRevoked = false;
     const stoppedIDs = new Set<string>();
@@ -216,6 +222,7 @@ export function createPushController({
       if (
         owner !== expected ||
         g !== generation ||
+        previousConfirmation !== confirmationVersion ||
         sharedOwner()?.owner !== expected ||
         sharedOwner()?.epoch !== epoch
       )
@@ -261,8 +268,18 @@ export function createPushController({
             : {}),
       });
     } catch (error) {
-      if (owner === expected && g === generation) await rejectAccess(error);
-      if (owner === expected && g === generation)
+      if (
+        owner !== expected ||
+        g !== generation ||
+        previousConfirmation !== confirmationVersion
+      )
+        return;
+      await rejectAccess(error);
+      if (
+        owner === expected &&
+        g === generation &&
+        previousConfirmation === confirmationVersion
+      )
         publish({
           status: permissionRevoked ? 'denied' : 'error',
           busy: false,
@@ -286,7 +303,8 @@ export function createPushController({
     } catch {
       return;
     }
-    if (!a.registration) {
+    const registration = a.registration;
+    if (!registration) {
       if (buffer.length >= 8) buffer.shift();
       buffer.push({ data, attempt: a });
       return;
@@ -294,7 +312,7 @@ export function createPushController({
     if (
       a.confirming ||
       a.sent ||
-      data.cycrio_challenge_id !== a.registration.challenge_id
+      data.cycrio_challenge_id !== registration.challenge_id
     )
       return;
     a.confirming = true;
@@ -306,7 +324,7 @@ export function createPushController({
       receipt = {
         owner: a.owner,
         operation: a.operation,
-        device_id: a.registration.device_id,
+        device_id: registration.device_id,
         revocation_token,
         stop: false,
       };
@@ -322,13 +340,39 @@ export function createPushController({
         currentDevice: receipt.device_id,
       });
       a.sent = true;
-      const confirmed = await api.confirm(
-        {
-          challenge_id: a.registration.challenge_id,
-          secret: data.cycrio_challenge_secret as string,
-        },
-        a.token,
-      );
+      const proof = {
+        challenge_id: registration.challenge_id,
+        secret: data.cycrio_challenge_secret as string,
+      };
+      let confirmed: Awaited<ReturnType<PushAPI['confirm']>>;
+      try {
+        confirmed = await api.confirm(proof, a.token);
+      } catch (error) {
+        if (
+          !(error instanceof ApiError) ||
+          error.code !== 'dependency_unavailable' ||
+          !current(a)
+        )
+          throw error;
+        const page = await api.list(a.token);
+        if (!current(a)) return;
+        const device = page.devices.find(
+          (d) => d.id === registration.device_id,
+        );
+        if (device?.state === 'active') {
+          publishConfirmedDevice(device.id, page);
+          return;
+        }
+        if (
+          !page.available ||
+          device?.state !== 'pending' ||
+          now() >= Date.parse(registration.expires_at)
+        ) {
+          publish({ page, status: 'uncertain', busy: false });
+          return;
+        }
+        confirmed = await api.confirm(proof, a.token);
+      }
       if (
         confirmed.device.id !== receipt.device_id ||
         confirmed.revocation_token !== revocation_token
@@ -338,7 +382,7 @@ export function createPushController({
         await revoke(receipt);
         return;
       }
-      publish({ status: 'active', busy: false });
+      publishConfirmedDevice(receipt.device_id);
       await load();
     } catch (error) {
       if (current(a)) await rejectAccess(error);
@@ -351,14 +395,11 @@ export function createPushController({
             if (receipt) await revoke(receipt);
             return;
           }
-          const active = page.devices.some(
+          const device = page.devices.find(
             (d) => d.id === receipt?.device_id && d.state === 'active',
           );
-          publish({
-            page,
-            status: active ? 'active' : 'uncertain',
-            busy: false,
-          });
+          if (device) publishConfirmedDevice(device.id, page);
+          else publish({ page, status: 'uncertain', busy: false });
         } catch (error) {
           if (current(a)) await rejectAccess(error);
           if (current(a)) publish({ status: 'uncertain', busy: false });
