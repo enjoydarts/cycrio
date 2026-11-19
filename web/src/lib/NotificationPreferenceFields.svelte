@@ -153,7 +153,7 @@
   /><span>登録した端末へPush通知を送る</span></label
 >
 <p class="muted">
-  Pushとメールの同意はそれぞれ独立しています。Pushには、この端末の通知許可と受信確認も必要です。
+  Pushとメールの同意はそれぞれ独立しています。Pushを受け取る端末で通知を許可してください。
 </p>
 {#if !push.available}<p class="notice">{deliveryReason(push.reason)}</p>{/if}
 

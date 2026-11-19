@@ -12,8 +12,9 @@ import (
 )
 
 type pushFixture struct {
-	calls int
-	owner string
+	calls        int
+	owner        string
+	registration pushnotifications.RegistrationInput
 }
 
 func TestPushCredentialHTTPMaximumEscapedAPIKey(t *testing.T) {
@@ -38,10 +39,42 @@ func (f *pushFixture) PushSettings(_ context.Context, owner string) (pushnotific
 	f.owner = owner
 	return pushnotifications.Page{}, nil
 }
-func (f *pushFixture) RegisterPushDevice(_ context.Context, owner string, _ pushnotifications.RegistrationInput, _ pushnotifications.Sender) (pushnotifications.Registration, error) {
+func (f *pushFixture) RegisterPushDevice(_ context.Context, owner string, in pushnotifications.RegistrationInput, _ pushnotifications.Sender) (pushnotifications.Registration, error) {
 	f.calls++
 	f.owner = owner
+	f.registration = in
 	return pushnotifications.Registration{DeviceID: subscriptionUUID, ChallengeID: subscriptionUUID, State: "pending", ExpiresAt: "2026-11-10T00:05:00.123456Z"}, nil
+}
+
+func TestPushHTTPVerifiedRegistrationRequiresBothVerificationFields(t *testing.T) {
+	const auth = "AAAAAAAAAAAAAAAAAAAAAA=="
+	id := subscriptionUUID
+	for _, tc := range []struct {
+		name, fields string
+		status       int
+	}{
+		{"valid", `,"onesignal_user_id":"` + id + `","web_auth":"` + auth + `"`, 200},
+		{"only id", `,"onesignal_user_id":"` + id + `"`, 400},
+		{"only auth", `,"web_auth":"` + auth + `"`, 400},
+		{"null", `,"onesignal_user_id":"` + id + `","web_auth":null`, 400},
+		{"empty", `,"onesignal_user_id":"","web_auth":""`, 400},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &pushFixture{}
+			body := `{"subscription_id":"` + id + `","request_id":"` + id + `"` + tc.fields + `}`
+			w := credentialRequest(pushHandler(f, "user"), "POST", "/v1/push-devices", body, "Bearer valid", "http://localhost:3100", "application/json")
+			if w.Code != tc.status || strings.Contains(w.Body.String(), auth) {
+				t.Fatal("unexpected response", w.Code)
+			}
+			if tc.status == 200 {
+				if f.registration.OneSignalUserID != id || f.registration.WebAuth != auth || w.Header().Get("Cache-Control") != "no-store" {
+					t.Fatal("verification contract")
+				}
+			} else if f.calls != 0 {
+				t.Fatal("invalid request reached service")
+			}
+		})
+	}
 }
 func (f *pushFixture) ConfirmPushDevice(_ context.Context, owner string, _ pushnotifications.ConfirmationInput) (pushnotifications.Confirmed, error) {
 	f.calls++

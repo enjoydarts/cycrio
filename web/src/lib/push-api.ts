@@ -26,6 +26,11 @@ export type PushRegistration = {
   device_id: string;
   challenge_id: string;
   state: 'pending' | 'unknown' | 'failed';
+  activation_secret?: string;
+};
+export type PushSubscriptionProof = {
+  onesignal_user_id: string;
+  web_auth: string;
 };
 export type PushCapability = { device_id: string; revocation_token: string };
 export const pushSecret = (v: unknown): string => {
@@ -122,22 +127,52 @@ export function createPushAPI(base: string, fetcher: typeof fetch = fetch) {
       return parsePushPage(await request('/v1/push-devices', token));
     },
     async register(
-      value: { subscription_id: string; request_id: string },
+      value: {
+        subscription_id: string;
+        request_id: string;
+      } & Partial<PushSubscriptionProof>,
       token: TokenProvider,
     ): Promise<PushRegistration> {
-      const body = input(() => ({
-        subscription_id: uuid(value.subscription_id),
-        request_id: uuid(value.request_id),
-      }));
+      const body = input(() => {
+        const ids = {
+          subscription_id: uuid(value.subscription_id),
+          request_id: uuid(value.request_id),
+        };
+        if (
+          value.onesignal_user_id === undefined &&
+          value.web_auth === undefined
+        )
+          return ids;
+        if (
+          typeof value.web_auth !== 'string' ||
+          !/^[A-Za-z0-9+/]{21}[AQgw]==$/.test(value.web_auth)
+        )
+          return invalid();
+        return {
+          ...ids,
+          onesignal_user_id: uuid(value.onesignal_user_id),
+          web_auth: value.web_auth,
+        };
+      });
       const v = record(
         await request('/v1/push-devices', token, undefined, 'POST', body),
       );
-      exact(v, ['device_id', 'challenge_id', 'state', 'expires_at']);
+      const state = choice(v.state, ['pending', 'unknown', 'failed']);
+      const keys = ['device_id', 'challenge_id', 'state', 'expires_at'];
+      const secret = 'activation_secret' in v;
+      if (secret) {
+        if (!value.onesignal_user_id || state !== 'pending') return invalid();
+        keys.push('activation_secret');
+      }
+      exact(v, keys);
       return {
         expires_at: timestamp(v.expires_at),
         device_id: uuid(v.device_id),
         challenge_id: uuid(v.challenge_id),
-        state: choice(v.state, ['pending', 'unknown', 'failed']),
+        state,
+        ...(secret
+          ? { activation_secret: pushSecret(v.activation_secret) }
+          : {}),
       };
     },
     async confirm(

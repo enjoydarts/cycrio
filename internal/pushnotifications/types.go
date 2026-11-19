@@ -36,3 +36,7 @@ type Sender interface {
 	// Sendの[]byteは復号したAPIキー単体で、資格情報のJSON全体ではない。
 	Send(context.Context, []byte, Message) (SendResult, error)
 }
+
+type WebSubscriptionVerifier interface {
+	VerifyWebSubscription(ctx context.Context, apiKey []byte, appID, subscriptionID, userID, webAuth string) error
+}

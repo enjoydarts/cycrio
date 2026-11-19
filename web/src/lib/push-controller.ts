@@ -301,9 +301,14 @@ export function createPushController({
         g === generation &&
         previousConfirmation === confirmationVersion &&
         (permissionRevoked ||
-          !['waiting', 'confirming', 'uncertain', 'active'].includes(
-            view.status,
-          ))
+          ![
+            'preparing',
+            'registering',
+            'waiting',
+            'confirming',
+            'uncertain',
+            'active',
+          ].includes(view.status))
       )
         publish({
           status: permissionRevoked ? 'denied' : 'error',
@@ -500,6 +505,54 @@ export function createPushController({
       if (shared?.owner === owner && shared?.epoch === epoch) await load();
     },
     load,
+    async enable(consentSaved?: Promise<boolean>) {
+      const shared = sharedOwner();
+      if (
+        !owner ||
+        !view.page?.available ||
+        view.busy ||
+        view.cleanupPending ||
+        ['waiting', 'uncertain', 'reload', 'active'].includes(view.status) ||
+        shared?.owner !== owner ||
+        shared?.epoch !== epoch
+      )
+        return;
+      const availability = sdk.availability();
+      if (availability !== 'supported') {
+        publish({ status: availability });
+        return;
+      }
+      const expected = owner;
+      const g = generation;
+      const stillCurrent = () =>
+        owner === expected &&
+        generation === g &&
+        sharedOwner()?.owner === expected &&
+        sharedOwner()?.epoch === epoch;
+      publish({ status: 'preparing', busy: true });
+      try {
+        // iOSの許可要求はSDK読込や通信より先に、ボタン操作の中で開始する。
+        const permission = await sdk.permission();
+        if (!stillCurrent()) return;
+        if (permission !== 'granted') {
+          publish({
+            status: permission === 'denied' ? 'denied' : 'idle',
+            busy: false,
+          });
+          return;
+        }
+        if (consentSaved && !(await consentSaved)) {
+          if (stillCurrent()) publish({ status: 'idle', busy: false });
+          return;
+        }
+        if (!stillCurrent()) return;
+        publish({ busy: false });
+        await controller.prepare();
+        if (stillCurrent()) await controller.allow(permission);
+      } catch {
+        if (stillCurrent()) publish({ status: 'error', busy: false });
+      }
+    },
     async prepare() {
       if (
         !owner ||
@@ -546,7 +599,7 @@ export function createPushController({
           });
       }
     },
-    async allow() {
+    async allow(granted?: 'granted') {
       if (!owner || view.status !== 'permission_ready' || view.busy) return;
       const a: Attempt = {
         owner,
@@ -562,9 +615,10 @@ export function createPushController({
       attempt = a;
       publish({ status: 'registering', busy: true });
       let registrationStarted = false;
+      let verifiedRegistration = false;
       try {
         // この呼出しより前にawaitを置かず、明示クリックのuser activationを使う。
-        const permission = await sdk.permission();
+        const permission = granted ?? (await sdk.permission());
         if (!current(a)) return;
         if (permission !== 'granted') {
           publish({
@@ -575,15 +629,36 @@ export function createPushController({
         }
         a.permissionGranted = true;
         const subscription_id = await sdk.subscription();
+        const subscriptionProof = await sdk.subscriptionProof?.();
+        verifiedRegistration = subscriptionProof !== undefined;
         if (!current(a)) return;
+        if (verifiedRegistration && sdk.currentPermission() !== 'granted') {
+          publish({ status: 'denied', busy: false });
+          return;
+        }
         registrationStarted = true;
-        const reg = await api.register(
-          { subscription_id, request_id: a.operation },
+        const { activation_secret, ...reg } = await api.register(
+          { subscription_id, request_id: a.operation, ...subscriptionProof },
           a.token,
         );
         a.registration = reg;
         if (!current(a)) {
           // 証明のない旧登録は未確認のまま失効させ、再利用された端末IDを停止しない。
+          return;
+        }
+        if (subscriptionProof) {
+          if (!activation_secret) {
+            publish({ status: 'error', busy: false });
+            return;
+          }
+          if (sdk.currentPermission() !== 'granted') {
+            publish({ status: 'denied', busy: false });
+            return;
+          }
+          await receive({
+            cycrio_challenge_id: reg.challenge_id,
+            cycrio_challenge_secret: activation_secret,
+          });
           return;
         }
         publish({
@@ -597,7 +672,10 @@ export function createPushController({
         if (current(a)) await rejectAccess(error);
         if (current(a))
           publish({
-            status: registrationStarted ? 'uncertain' : 'error',
+            status:
+              registrationStarted && !verifiedRegistration
+                ? 'uncertain'
+                : 'error',
             busy: false,
           });
       }

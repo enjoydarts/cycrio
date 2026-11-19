@@ -51,8 +51,8 @@ function fixture() {
         fn(view);
         return () => {};
       },
-      prepare: async () => {
-        calls.push('prepare');
+      enable: async (consentSaved?: Promise<boolean>) => {
+        if (await consentSaved) calls.push('enable');
       },
     },
     notifications: {
@@ -149,13 +149,13 @@ test('有効化済み・拒否済み・非対応・設定中・未設定では�
     c.dispose();
   }
 });
-test('有効にするの明示操作後だけ独立したPush設定を保存しSDK準備へ進む', async () => {
+test('有効にするの明示操作で独立したPush設定を保存し端末を有効にする', async () => {
   const f = fixture(),
     original = structuredClone(f.page.preferences),
     c = createPushInvitation(f.options);
   await c.offer('/');
   await c.enable();
-  assert.deepEqual(f.calls, ['read', 'save', 'prepare']);
+  assert.deepEqual(f.calls, ['read', 'save', 'enable']);
   assert.equal(c.state().deviceReady, true);
   assert.equal(f.page.preferences.push_opt_in, true);
   assert.equal(f.page.preferences.kinds.renewal.push, true);
@@ -174,7 +174,7 @@ test('有効にするの明示操作後だけ独立したPush設定を保存しS
   assert.equal(f.page.preferences.lead_days, original.lead_days);
   c.dispose();
 });
-test('保存競合ではSDKもブラウザー許可も開始しない', async () => {
+test('保存競合では端末を登録しない', async () => {
   const f = fixture();
   f.fail();
   const c = createPushInvitation(f.options);

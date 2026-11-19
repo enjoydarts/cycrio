@@ -66,10 +66,23 @@ func registerPushNotifications(mux *http.ServeMux, service PushNotificationServi
 		return p, e
 	})
 	register("POST /v1/push-devices", func(w http.ResponseWriter, r *http.Request, owner string) (any, error) {
-		var in pushnotifications.RegistrationInput
-		keys := []string{"subscription_id", "request_id"}
-		if readSubscriptionJSON(w, r, &in, keys, keys...) != nil || !pushnotifications.ValidID(in.SubscriptionID) || !pushnotifications.ValidID(in.RequestID) {
+		var body struct {
+			SubscriptionID  string  `json:"subscription_id"`
+			RequestID       string  `json:"request_id"`
+			OneSignalUserID *string `json:"onesignal_user_id"`
+			WebAuth         *string `json:"web_auth"`
+		}
+		keys := []string{"subscription_id", "request_id", "onesignal_user_id", "web_auth"}
+		optional := []string{"onesignal_user_id", "web_auth"}
+		if readSubscriptionJSONOptional(w, r, &body, keys, optional, keys...) != nil || !pushnotifications.ValidID(body.SubscriptionID) || !pushnotifications.ValidID(body.RequestID) {
 			return nil, pushnotifications.ErrInvalid
+		}
+		in := pushnotifications.RegistrationInput{SubscriptionID: body.SubscriptionID, RequestID: body.RequestID}
+		if body.OneSignalUserID != nil || body.WebAuth != nil {
+			if body.OneSignalUserID == nil || body.WebAuth == nil || !pushnotifications.ValidID(*body.OneSignalUserID) || !pushnotifications.ValidWebAuth(*body.WebAuth) {
+				return nil, pushnotifications.ErrInvalid
+			}
+			in.OneSignalUserID, in.WebAuth = *body.OneSignalUserID, *body.WebAuth
 		}
 		return service.RegisterPushDevice(r.Context(), owner, in, sender)
 	})

@@ -3,6 +3,7 @@ package pushnotifications
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -43,6 +44,55 @@ func NewOneSignalSender(client *http.Client, origin string) Sender {
 
 func safeHTTPSURL(value *url.URL) bool {
 	return value != nil && value.Scheme == "https" && value.Hostname() != "" && value.User == nil && value.Opaque == "" && !strings.ContainsAny(value.Host, "\\%")
+}
+
+func (s *oneSignalSender) VerifyWebSubscription(ctx context.Context, apiKey []byte, appID, subscriptionID, userID, webAuth string) error {
+	if !validUUID(appID) || !validUUID(subscriptionID) || !validUUID(userID) || !ValidWebAuth(webAuth) || !printableToken(string(apiKey), 4096) {
+		return ErrInvalid
+	}
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	endpoint := "https://api.onesignal.com/apps/" + strings.ToLower(appID) + "/users/by/onesignal_id/" + strings.ToLower(userID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return ErrUnavailable
+	}
+	req.Header.Set("Authorization", "Key "+string(apiKey))
+	req.Header.Set("Accept", "application/json")
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return ErrUnavailable
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound {
+		return ErrConflict
+	}
+	if resp.StatusCode != http.StatusOK {
+		return ErrUnavailable
+	}
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
+	if err != nil || len(body) > maxResponseBytes {
+		return ErrUnavailable
+	}
+	var user struct {
+		Subscriptions []struct {
+			ID      string `json:"id"`
+			AppID   string `json:"app_id"`
+			Enabled bool   `json:"enabled"`
+			WebAuth string `json:"web_auth"`
+		} `json:"subscriptions"`
+	}
+	if json.Unmarshal(body, &user) != nil {
+		return ErrUnavailable
+	}
+	for _, subscription := range user.Subscriptions {
+		if subscription.Enabled && strings.EqualFold(subscription.ID, subscriptionID) &&
+			strings.EqualFold(subscription.AppID, appID) &&
+			subtle.ConstantTimeCompare([]byte(subscription.WebAuth), []byte(webAuth)) == 1 {
+			return nil
+		}
+	}
+	return ErrConflict
 }
 
 func (s *oneSignalSender) Send(ctx context.Context, apiKey []byte, message Message) (SendResult, error) {

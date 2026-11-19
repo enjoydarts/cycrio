@@ -25,14 +25,17 @@ type Page struct {
 	Devices   []Device `json:"devices"`
 }
 type RegistrationInput struct {
-	SubscriptionID string `json:"subscription_id"`
-	RequestID      string `json:"request_id"`
+	SubscriptionID  string `json:"subscription_id"`
+	RequestID       string `json:"request_id"`
+	OneSignalUserID string `json:"onesignal_user_id,omitempty"`
+	WebAuth         string `json:"web_auth,omitempty"`
 }
 type Registration struct {
-	DeviceID    string `json:"device_id"`
-	ChallengeID string `json:"challenge_id"`
-	State       string `json:"state"`
-	ExpiresAt   string `json:"expires_at"`
+	DeviceID         string `json:"device_id"`
+	ChallengeID      string `json:"challenge_id"`
+	State            string `json:"state"`
+	ExpiresAt        string `json:"expires_at"`
+	ActivationSecret string `json:"activation_secret,omitempty"`
 }
 type ConfirmationInput struct {
 	ChallengeID string `json:"challenge_id"`
@@ -47,6 +50,14 @@ func ValidID(value string) bool { return validUUID(value) }
 func ValidSecret(value string) bool {
 	raw, err := base64.RawURLEncoding.DecodeString(value)
 	return err == nil && len(raw) == 32 && base64.RawURLEncoding.EncodeToString(raw) == value
+}
+
+func ValidWebAuth(value string) bool {
+	if len(value) != 24 {
+		return false
+	}
+	raw, err := base64.StdEncoding.DecodeString(value)
+	return err == nil && len(raw) == 16 && base64.StdEncoding.EncodeToString(raw) == value
 }
 
 // DeriveRevocationTokenは受信後・確認要求前にも保持できる解除専用tokenを導出する。

@@ -25,6 +25,44 @@ func response(status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}
 }
 
+func TestOneSignalVerifiesWebSubscriptionWithoutSending(t *testing.T) {
+	const auth = "AAAAAAAAAAAAAAAAAAAAAA=="
+	for _, tc := range []struct {
+		name, subscription, app, webAuth string
+		enabled                          bool
+		want                             error
+	}{
+		{"matched", testSubscriptionID, testAppID, auth, true, nil},
+		{"other subscription", testOtherID, testAppID, auth, true, ErrConflict},
+		{"other app", testSubscriptionID, testOtherID, auth, true, ErrConflict},
+		{"wrong secret", testSubscriptionID, testAppID, "AQAAAAAAAAAAAAAAAAAAAA==", true, ErrConflict},
+		{"disabled", testSubscriptionID, testAppID, auth, false, ErrConflict},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			client := &http.Client{Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+				calls++
+				if req.Method != http.MethodGet || req.URL.String() != "https://api.onesignal.com/apps/"+testAppID+"/users/by/onesignal_id/"+testOtherID || req.Header.Get("Authorization") != "Key "+testKey {
+					t.Fatal("expected authenticated subscription lookup")
+				}
+				raw, _ := json.Marshal(map[string]any{
+					"subscriptions": []any{map[string]any{"id": tc.subscription, "app_id": tc.app, "web_auth": tc.webAuth, "enabled": tc.enabled}},
+				})
+				return response(200, string(raw)), nil
+			})}
+			verifier, ok := NewOneSignalSender(client, "https://app.example.test").(interface {
+				VerifyWebSubscription(context.Context, []byte, string, string, string, string) error
+			})
+			if !ok {
+				t.Fatal("provider cannot verify a web subscription")
+			}
+			if err := verifier.VerifyWebSubscription(context.Background(), []byte(testKey), testAppID, testSubscriptionID, testOtherID, auth); !errors.Is(err, tc.want) || calls != 1 {
+				t.Fatalf("lookup result %v, calls %d", err, calls)
+			}
+		})
+	}
+}
+
 func TestOneSignalRequestUsesFixedEndpointAndGenericContent(t *testing.T) {
 	for _, kind := range []string{"registration", "pending_review", "reminder", "import_error"} {
 		t.Run(kind, func(t *testing.T) {

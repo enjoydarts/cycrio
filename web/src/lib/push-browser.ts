@@ -1,9 +1,12 @@
+import type { PushSubscriptionProof } from './push-api.ts';
+
 export type PushBrowser = {
   currentPermission: () => NotificationPermission | 'unsupported';
   availability: () => 'supported' | 'unsupported' | 'home_screen';
   prepare: (appId: string) => Promise<void>;
   permission: () => Promise<NotificationPermission>;
   subscription: () => Promise<string>;
+  subscriptionProof?: () => Promise<PushSubscriptionProof | undefined>;
   displayedProof: (challengeID: string) => Promise<unknown>;
   listen: (fn: (data: unknown) => void) => () => void;
 };
@@ -18,6 +21,7 @@ export type OneSignalSDK = {
     addEventListener: (name: string, fn: (event: any) => void) => void;
   };
   User: {
+    onesignalId?: string;
     PushSubscription: {
       id: string | null;
       optedIn: boolean;
@@ -159,11 +163,12 @@ export function createPushBrowser(env: {
       return prepared;
     },
     async permission() {
-      if (!sdk) throw Error('prepare required');
-      if (!sdk.Notifications.isPushSupported()) throw Error('unsupported');
-      await sdk.Notifications.requestPermission();
-      return (env.window as Window & { Notification: typeof Notification })
-        .Notification.permission;
+      const notifications = (
+        env.window as Window & { Notification: typeof Notification }
+      ).Notification;
+      return notifications.permission === 'default'
+        ? notifications.requestPermission()
+        : notifications.permission;
     },
     async subscription() {
       if (!sdk) throw Error('prepare required');
@@ -199,6 +204,18 @@ export function createPushBrowser(env: {
       } catch {
         return undefined;
       }
+    },
+    async subscriptionProof() {
+      const registration = await rootRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      const auth = subscription?.getKey('auth');
+      const onesignal_user_id = sdk?.User.onesignalId;
+      if (!onesignal_user_id || auth?.byteLength !== 16)
+        throw Error('subscription unavailable');
+      return {
+        onesignal_user_id,
+        web_auth: btoa(String.fromCharCode(...new Uint8Array(auth))),
+      };
     },
     listen(fn) {
       listeners.add(fn);

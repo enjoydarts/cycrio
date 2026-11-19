@@ -28,13 +28,11 @@ declare global {
       pushCalls?: string[];
       pushActive?: boolean;
       pushStoredBeforeConfirm?: boolean;
-      pushEmit?: () => void;
       pushFinishConfirm?: () => void;
       pushLogout?: () => Promise<void>;
       pushRefreshToken?: () => Promise<void>;
       pushFinishPermission?: () => void;
       pushSetPermission?: (permission: NotificationPermission) => Promise<void>;
-      pushExpire?: () => void;
       pushToggleSettings?: () => void;
     };
   }

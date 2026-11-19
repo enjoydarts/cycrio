@@ -32,16 +32,14 @@
     }
   }
   const messages: Record<PushView['status'], string> = {
-    idle: 'この端末のPush通知は、本人の操作後に準備します。',
-    preparing: '通知の準備中です…',
-    permission_ready:
-      '準備ができました。次のボタンでこの端末の通知を許可してください。',
+    idle: '',
+    preparing: 'この端末の通知を設定しています…',
+    permission_ready: '',
     registering: '端末を登録しています…',
     waiting:
-      '受信確認中です。確認通知の有効期限は5分です。通知を開いても状態が変わらない場合は端末一覧を再取得してください。',
-    expired:
-      '受信確認の期限が切れました。この端末でPush通知を有効にする操作からやり直してください。',
-    confirming: '受信した通知を確認しています…',
+      'この端末の登録を完了できていません。端末一覧を再取得してください。',
+    expired: 'この端末の登録が完了していません。もう一度有効にしてください。',
+    confirming: '端末を登録しています…',
     active: 'この端末のPush通知は有効です。',
     disabled: '端末の通知を停止しました。',
     unsupported:
@@ -51,7 +49,7 @@
     denied:
       '通知が拒否されています。ブラウザーまたは端末のシステム設定で、このサイトの通知を許可してください。',
     error:
-      '端末設定を確認できませんでした。通信状態を確認して再取得してください。',
+      '端末の通知を設定できませんでした。通信状態を確認してもう一度お試しください。',
     uncertain:
       '受付結果を確認できません。端末一覧を再取得して状態を確認してください。',
     reload:
@@ -66,7 +64,7 @@
 
 <section aria-label="Push通知の端末設定">
   <h3>Push通知の端末</h3>
-  <p role="status">{messages[view.status]}</p>
+  {#if messages[view.status]}<p role="status">{messages[view.status]}</p>{/if}
   {#if view.page && !view.page.available}<p>
       {deliveryReason(view.page.reason)}
     </p>{/if}
@@ -78,20 +76,14 @@
     >{/if}
   <ActionGroup stackOnMobile spacing="after">
     {#if view.page?.available && !['active', 'waiting', 'confirming', 'registering', 'reload', 'uncertain'].includes(view.status)}
-      {#if view.status === 'permission_ready'}<Button
-          type="button"
-          variant="primary"
-          wrap
-          disabled={view.busy}
-          onclick={() => controller.allow()}>この端末の通知を許可する</Button
-        >
-      {:else}<Button
-          type="button"
-          wrap
-          disabled={view.busy || view.cleanupPending}
-          onclick={() => controller.prepare()}
-          >この端末でPush通知を有効にする</Button
-        >{/if}
+      <Button
+        type="button"
+        wrap
+        variant="primary"
+        disabled={view.busy || view.cleanupPending}
+        onclick={() => controller.enable()}
+        >この端末でPush通知を有効にする</Button
+      >
     {/if}
     <Button
       type="button"
@@ -118,11 +110,9 @@
               ><td data-label="状態"
                 >{device.state === 'active'
                   ? '有効'
-                  : device.state === 'pending'
-                    ? '受信確認中'
-                    : device.state === 'expired'
-                      ? '受信確認の期限切れ'
-                      : '停止'}</td
+                  : device.state === 'disabled'
+                    ? '停止'
+                    : '登録未完了'}</td
               ><td data-actions
                 >{#if device.state !== 'disabled'}<Button
                     type="button"

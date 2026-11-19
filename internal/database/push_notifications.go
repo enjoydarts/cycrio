@@ -166,6 +166,30 @@ func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner str
 }
 
 func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, owner string, in pushnotifications.RegistrationInput, sender pushnotifications.Sender) (pushnotifications.Registration, error) {
+	if in.WebAuth == "" && in.OneSignalUserID == "" {
+		return r.registerPushDevice(ctx, owner, in, sender, nil)
+	}
+	if !pushnotifications.ValidID(owner) || !pushnotifications.ValidID(in.OneSignalUserID) || !pushnotifications.ValidWebAuth(in.WebAuth) {
+		return pushnotifications.Registration{}, pushnotifications.ErrInvalid
+	}
+	verifier, ok := sender.(pushnotifications.WebSubscriptionVerifier)
+	if !ok {
+		return pushnotifications.Registration{}, pushnotifications.ErrUnavailable
+	}
+	owner = strings.ToLower(owner)
+	var reg pushnotifications.Registration
+	result := pushnotifications.ErrNotReady
+	err := WithUserOperation(ctx, r.pool, owner, func(ctx context.Context) error {
+		reg, result = r.registerPushDevice(ctx, owner, in, sender, verifier)
+		return result
+	})
+	if err != nil {
+		return pushnotifications.Registration{}, pushError(err)
+	}
+	return reg, result
+}
+
+func (r *PushNotificationRepository) registerPushDevice(ctx context.Context, owner string, in pushnotifications.RegistrationInput, sender pushnotifications.Sender, verifier pushnotifications.WebSubscriptionVerifier) (pushnotifications.Registration, error) {
 	reg := pushnotifications.Registration{}
 	if !pushnotifications.ValidID(in.SubscriptionID) || !pushnotifications.ValidID(in.RequestID) {
 		return reg, pushnotifications.ErrInvalid
@@ -201,6 +225,18 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	if e != nil {
 		return reg, pushError(e)
 	}
+	var count int
+	if e = tx.QueryRow(ctx, `SELECT count(*) FROM push_device_requests WHERE owner_id=$1 AND created_at>$2`, owner, r.now().Add(-5*time.Minute)).Scan(&count); e != nil {
+		return reg, pushError(e)
+	}
+	if count >= 5 {
+		return reg, pushnotifications.ErrConflict
+	}
+	if verifier != nil {
+		if e = verifier.VerifyWebSubscription(ctx, []byte(c.APIKey), c.AppID, in.SubscriptionID, in.OneSignalUserID, in.WebAuth); e != nil {
+			return reg, pushError(e)
+		}
+	}
 	now := r.now()
 	hash := sha256.Sum256([]byte(c.AppID + ":" + in.SubscriptionID))
 	// 他人の対象端末と本人の整理対象を相互に待たないよう、最初の端末ロック前に
@@ -226,17 +262,10 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	if exists && deviceOwner != owner {
 		return reg, pushnotifications.ErrConflict
 	}
-	var count int
 	if e = tx.QueryRow(ctx, `SELECT count(*) FROM push_devices WHERE owner_id=$1 AND state IN ('pending','active')`, owner).Scan(&count); e != nil {
 		return reg, pushError(e)
 	}
 	if count >= 20 && (!exists || deviceState == "disabled") {
-		return reg, pushnotifications.ErrConflict
-	}
-	if e = tx.QueryRow(ctx, `SELECT count(*) FROM push_device_requests WHERE owner_id=$1 AND created_at>$2`, owner, now.Add(-5*time.Minute)).Scan(&count); e != nil {
-		return reg, pushError(e)
-	}
-	if count >= 5 {
 		return reg, pushnotifications.ErrConflict
 	}
 	if !exists {
@@ -244,6 +273,9 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	}
 	reg.ChallengeID = uuid.NewString()
 	reg.State = "unknown"
+	if verifier != nil {
+		reg.State = "pending"
+	}
 	generation := uuid.NewString()
 	secret, e := pushRandom()
 	if e != nil {
@@ -275,12 +307,16 @@ func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, own
 	}
 	reg.ExpiresAt = expires.UTC().Format(time.RFC3339Nano)
 	idempotency := uuid.NewString()
-	_, e = tx.Exec(ctx, `INSERT INTO push_device_requests(id,owner_id,request_id,device_id,challenge_id,state,created_at) VALUES($1,$2,$3,$4,$5,'unknown',$6)`, idempotency, owner, in.RequestID, reg.DeviceID, reg.ChallengeID, now)
+	_, e = tx.Exec(ctx, `INSERT INTO push_device_requests(id,owner_id,request_id,device_id,challenge_id,state,created_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, idempotency, owner, in.RequestID, reg.DeviceID, reg.ChallengeID, reg.State, now)
 	if e != nil {
 		return reg, pushError(e)
 	}
 	if e = tx.Commit(ctx); e != nil {
 		return reg, pushError(e)
+	}
+	if verifier != nil {
+		reg.ActivationSecret = secret
+		return reg, nil
 	}
 	// 退会保護と送信直前の再検査。資格情報は同じtxで復号する。
 	_ = WithUserOperation(ctx, r.pool, owner, func(ctx context.Context) error {

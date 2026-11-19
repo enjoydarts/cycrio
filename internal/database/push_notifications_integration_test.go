@@ -19,6 +19,71 @@ import (
 
 type pushSenderFunc func(context.Context, []byte, pushnotifications.Message) (pushnotifications.SendResult, error)
 
+type verifiedPushSender struct {
+	verify func(context.Context, []byte, string, string, string, string) error
+	sends  int
+}
+
+func (s *verifiedPushSender) Send(context.Context, []byte, pushnotifications.Message) (pushnotifications.SendResult, error) {
+	s.sends++
+	return pushnotifications.SendResult{State: "failed"}, pushnotifications.ErrUnavailable
+}
+
+func (s *verifiedPushSender) VerifyWebSubscription(ctx context.Context, key []byte, app, subscription, user, auth string) error {
+	return s.verify(ctx, key, app, subscription, user, auth)
+}
+
+func TestPushVerifiedRegistrationActivatesWithoutNotification(t *testing.T) {
+	f := processingSetup(t)
+	ctx := context.Background()
+	app := uuid.NewString()
+	if _, err := credentials.NewService(NewCredentialRepository(f.runtime.pool), f.keys).Put(ctx, f.admin, "onesignal", 0, `{"app_id":"`+app+`","api_key":"synthetic-push-key"}`); err != nil {
+		t.Fatal(err)
+	}
+	r := NewPushNotificationRepository(f.runtime.pool, f.keys, true)
+	input := pushnotifications.RegistrationInput{
+		SubscriptionID:  uuid.NewString(),
+		RequestID:       uuid.NewString(),
+		OneSignalUserID: uuid.NewString(),
+		WebAuth:         "AAAAAAAAAAAAAAAAAAAAAA==",
+	}
+	verifications := 0
+	rejected := true
+	sender := &verifiedPushSender{verify: func(_ context.Context, key []byte, gotApp, gotSubscription, gotUser, gotAuth string) error {
+		verifications++
+		if string(key) != "synthetic-push-key" || gotApp != app || gotSubscription != input.SubscriptionID || gotUser != input.OneSignalUserID || gotAuth != input.WebAuth {
+			t.Fatal("incorrect verification input")
+		}
+		if rejected {
+			return pushnotifications.ErrConflict
+		}
+		return nil
+	}}
+	if _, err := r.RegisterPushDevice(ctx, f.owner, input, sender); !errors.Is(err, pushnotifications.ErrConflict) {
+		t.Fatal("unverified subscription", err)
+	}
+	if page, err := r.PushSettings(ctx, f.owner); err != nil || len(page.Devices) != 0 {
+		t.Fatal("unverified attempt changed devices", err)
+	}
+	rejected = false
+	reg, err := r.RegisterPushDevice(ctx, f.owner, input, sender)
+	if err != nil || reg.State != "pending" || !pushnotifications.ValidSecret(reg.ActivationSecret) {
+		t.Fatal("missing activation grant", err)
+	}
+	proof := pushnotifications.ConfirmationInput{ChallengeID: reg.ChallengeID, Secret: reg.ActivationSecret}
+	if _, err = r.ConfirmPushDevice(ctx, f.admin, proof); !errors.Is(err, pushnotifications.ErrNotFound) {
+		t.Fatal("different owner confirmed registration", err)
+	}
+	confirmed, err := r.ConfirmPushDevice(ctx, f.owner, proof)
+	if err != nil || confirmed.Device.ID != reg.DeviceID || confirmed.Device.State != "active" {
+		t.Fatal("registered device must be active", err)
+	}
+	replay, err := r.RegisterPushDevice(ctx, f.owner, input, sender)
+	if err != nil || replay.DeviceID != reg.DeviceID || replay.ActivationSecret != "" || verifications != 2 || sender.sends != 0 {
+		t.Fatal("register replay reissued proof or sent a notification", err)
+	}
+}
+
 func TestPushChallengeDeadlineAndExpiredList(t *testing.T) {
 	f := processingSetup(t)
 	ctx := context.Background()

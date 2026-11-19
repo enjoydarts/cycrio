@@ -88,6 +88,9 @@ function fixture(shared?: PushStorage) {
       calls.push('subscription');
       return b;
     },
+    subscriptionProof: async (): Promise<
+      { onesignal_user_id: string; web_auth: string } | undefined
+    > => undefined,
     displayedProof: async (_challengeID: string): Promise<unknown> => undefined,
     listen: (cb: (v: unknown) => void) => {
       listener = cb;
@@ -124,6 +127,43 @@ function fixture(shared?: PushStorage) {
   };
 }
 const flush = () => new Promise((r) => setTimeout(r, 15));
+test('端末が通知を許可したら確認通知を待たず有効になる', async () => {
+  const f = fixture();
+  const browserProof = {
+    onesignal_user_id: a,
+    web_auth: 'AAAAAAAAAAAAAAAAAAAAAA==',
+  };
+  f.sdk.subscriptionProof = async () => browserProof;
+  const register = f.api.register;
+  f.api.register = async (input, token) => {
+    assert.equal(input.onesignal_user_id, browserProof.onesignal_user_id);
+    assert.equal(input.web_auth, browserProof.web_auth);
+    return register(input, token);
+  };
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+    activation_secret: secret,
+  });
+  f.confirmation.resolve({
+    revocation_token: await deriveRevocationToken(secret),
+    device: { id: b, state: 'active' },
+  });
+  await f.c.load();
+  const enabling = f.c.enable();
+  assert.deepEqual(f.calls, ['permission']);
+  await enabling;
+  assert.equal(f.c.state().status, 'active');
+  assert.deepEqual(f.calls, [
+    'permission',
+    'prepare',
+    'subscription',
+    'register',
+    'confirm',
+  ]);
+});
 test('一覧を再取得しても受信確認中の端末を保持し、失敗後にも再取得できる', async () => {
   const f = fixture();
   await f.c.prepare();

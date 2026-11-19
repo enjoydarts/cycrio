@@ -37,7 +37,7 @@ export function createPushInvitation(options: {
   pathname: string;
   storage: Pick<Storage, 'getItem' | 'setItem'>;
   browser: Pick<PushBrowser, 'availability' | 'currentPermission'>;
-  push: Pick<PushController, 'subscribe' | 'prepare'>;
+  push: Pick<PushController, 'subscribe' | 'enable'>;
   notifications: Pick<NotificationsAPI, 'settings' | 'updateSettings'>;
   denied: () => void;
   blocked?: () => boolean;
@@ -153,21 +153,22 @@ export function createPushInvitation(options: {
       if (!prior) return;
       publish({ stage: 'setup', busy: true, error: false });
       try {
-        if (
+        const needsSave =
           !prior.push_opt_in ||
-          !notificationKinds.some((kind) => prior.kinds[kind].push)
-        ) {
+          !notificationKinds.some((kind) => prior.kinds[kind].push);
+        let saved = Promise.resolve(true);
+        if (needsSave) {
           settings.edit(invitationPreferences(prior));
           settings.confirm(true);
-          await settings.save();
-          if (disposed) return;
-          if (!settings.state().saved) {
-            publish({ error: true, busy: false });
-            return;
-          }
+          saved = settings
+            .save()
+            .then(() => !disposed && settings.state().saved);
         }
-        if (disposed) return;
-        await options.push.prepare();
+        await options.push.enable(saved);
+        if (!(await saved)) {
+          publish({ error: true, busy: false });
+          return;
+        }
         publish({ deviceReady: true, busy: false });
       } catch {
         publish({ error: true, busy: false });

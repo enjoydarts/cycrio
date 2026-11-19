@@ -43,12 +43,6 @@ export async function runPushInvitationProbe({
     await visit('push-invitation', width);
     await wait(open + '?.textContent.includes("Push通知を有効にしますか？")');
     await click(button('有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    assert.deepEqual(await js('return window.browserTest.pushCalls'), [
-      'preferences',
-      'prepare',
-    ]);
-    await click(button('この端末の通知を許可する'));
     await wait('window.browserTest.pushActive===true');
     await wait(open + '?.textContent.includes("この端末のPush通知は有効です")');
     assert.equal(

@@ -66,15 +66,16 @@ export async function runPushProbe({
     );
     assert.deepEqual(await js('return window.browserTest.pushCalls'), []);
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    assert.deepEqual(await js('return window.browserTest.pushCalls'), [
-      'prepare',
-    ]);
-    await screenshot('push-permission-' + width);
-    await click(button('この端末の通知を許可する'));
     await wait(
       'document.body.textContent.includes("この端末のPush通知は有効です")',
     );
+    assert.deepEqual(await js('return window.browserTest.pushCalls'), [
+      'permission',
+      'prepare',
+      'subscription',
+      'register',
+      'confirm',
+    ]);
     assert.equal(
       await js('return window.browserTest.pushStoredBeforeConfirm'),
       true,
@@ -127,19 +128,39 @@ export async function runPushProbe({
     );
     await js('window.browserTest.pushLogout()');
     await wait('window.browserTest.pushActive===false');
+    await visit('push-settings-on', width);
+    await click(
+      'document.querySelector(\'a[href="/settings/notifications"]\')',
+    );
+    const pushToggle =
+      'document.querySelector(\'input[aria-label="登録した端末へPush通知を送る"]\')';
+    await wait(pushToggle + '!==null');
+    await click(pushToggle);
+    await click(
+      'document.querySelector(\'section[aria-label="本人の通知設定"] form > label:last-of-type input\')',
+    );
+    await click(button('通知設定を保存'));
+    await wait('window.browserTest.pushActive===true');
+    await wait(
+      'document.body.textContent.includes("この端末のPush通知は有効です")',
+    );
+    assert.equal(
+      await js(
+        'return window.browserTest.pushCalls.filter(x=>x==="permission").length',
+      ),
+      1,
+    );
     await visit('push-prompt-wait', width);
     await click(
       'document.querySelector(\'a[href="/settings/notifications"]\')',
     );
     await wait(button('この端末でPush通知を有効にする') + '!==undefined');
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
     await wait('window.browserTest.pushCalls.includes("permission")');
     await js('return window.browserTest.pushSetPermission("default")');
     assert.equal(
       await js(
-        'return document.body.textContent.includes("端末を登録しています")',
+        'return document.body.textContent.includes("この端末の通知を設定しています")',
       ),
       true,
     );
@@ -163,8 +184,6 @@ export async function runPushProbe({
       );
       await wait(button('この端末でPush通知を有効にする') + '!==undefined');
       await click(button('この端末でPush通知を有効にする'));
-      await wait(button('この端末の通知を許可する') + '!==undefined');
-      await click(button('この端末の通知を許可する'));
       await wait('window.browserTest.pushActive===true');
       await js(
         'window.browserTest.pushSetPermission(' +
@@ -189,15 +208,17 @@ export async function runPushProbe({
     );
     await wait(button('この端末でPush通知を有効にする') + '!==undefined');
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
-    await wait('document.body.textContent.includes("受信確認中です")');
+    await wait(
+      'document.body.textContent.includes("この端末のPush通知は有効です")',
+    );
     await click(button('端末一覧を再取得'));
     await wait(
       'document.body.textContent.includes("端末一覧を再取得できませんでした。")',
     );
     assert.equal(
-      await js('return document.body.textContent.includes("受信確認中です")'),
+      await js(
+        'return document.body.textContent.includes("この端末のPush通知は有効です")',
+      ),
       true,
     );
     await click(button('端末一覧を再取得'));
@@ -214,34 +235,6 @@ export async function runPushProbe({
       ['register', 'confirm'],
     );
     await layout();
-    await visit('push-expired', width);
-    await click(
-      'document.querySelector(\'a[href="/settings/notifications"]\')',
-    );
-    await wait(button('この端末でPush通知を有効にする') + '!==undefined');
-    await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
-    await wait('document.body.textContent.includes("受信確認中です")');
-    await js('window.browserTest.pushExpire()');
-    await click(button('端末一覧を再取得'));
-    await wait(
-      'document.body.textContent.includes("受信確認の期限が切れました")',
-    );
-    assert.equal(
-      await js(
-        'return window.browserTest.pushCalls.filter(x=>x==="register").length',
-      ),
-      1,
-    );
-    await screenshot('push-expired-' + width);
-    await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
-    await wait(
-      'window.browserTest.pushCalls.filter(x=>x==="register").length===2',
-    );
-    await layout();
     for (const mode of ['push-sdk-retry', 'push-sdk-reload']) {
       await visit(mode, width);
       await click(
@@ -251,11 +244,11 @@ export async function runPushProbe({
       await click(button('この端末でPush通知を有効にする'));
       if (mode === 'push-sdk-retry') {
         await wait(
-          'document.body.textContent.includes("端末設定を確認できませんでした")',
+          'document.body.textContent.includes("端末の通知を設定できませんでした")',
         );
         await click(button('端末一覧を再取得'));
         await click(button('この端末でPush通知を有効にする'));
-        await wait(button('この端末の通知を許可する') + '!==undefined');
+        await wait('window.browserTest.pushActive===true');
       } else {
         await wait(
           'document.body.textContent.includes("ページを再読み込みしてから操作してください")',
@@ -277,10 +270,6 @@ export async function runPushProbe({
     );
     await wait(button('この端末でPush通知を有効にする') + '!==undefined');
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
-    await wait('document.body.textContent.includes("受信確認中です")');
-    await js('window.browserTest.pushEmit()');
     await wait('window.browserTest.pushCalls.includes("confirm")');
     await js('window.browserTest.pushLogout()');
     await js('window.browserTest.pushFinishConfirm()');
@@ -296,10 +285,6 @@ export async function runPushProbe({
       );
       await wait(button('この端末でPush通知を有効にする') + '!==undefined');
       await click(button('この端末でPush通知を有効にする'));
-      if (mode === 'push-denied') {
-        await wait(button('この端末の通知を許可する') + '!==undefined');
-        await click(button('この端末の通知を許可する'));
-      }
       await wait(
         'document.body.textContent.includes(' + JSON.stringify(message) + ')',
       );
@@ -311,10 +296,8 @@ export async function runPushProbe({
     );
     await wait(button('この端末でPush通知を有効にする') + '!==undefined');
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
     await wait(
-      'document.body.textContent.includes("端末設定を確認できませんでした")',
+      'document.body.textContent.includes("端末の通知を設定できませんでした")',
     );
     assert.equal(
       await js(
@@ -324,8 +307,6 @@ export async function runPushProbe({
     );
     await click(button('端末一覧を再取得'));
     await click(button('この端末でPush通知を有効にする'));
-    await wait(button('この端末の通知を許可する') + '!==undefined');
-    await click(button('この端末の通知を許可する'));
     await wait(
       'document.body.textContent.includes("この端末のPush通知は有効です")',
     );

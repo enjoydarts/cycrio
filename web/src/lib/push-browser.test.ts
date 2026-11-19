@@ -58,7 +58,13 @@ test('SDK準備は本人操作まで0回でApp IDごとに一度・自動prompt�
   };
   const window: any = {
     isSecureContext: true,
-    Notification: { permission: 'default' },
+    Notification: {
+      permission: 'default',
+      requestPermission: async () => {
+        permissions++;
+        return 'granted';
+      },
+    },
     navigator: { userAgent: 'synthetic', platform: 'Linux', serviceWorker: {} },
     PushManager: {},
     matchMedia: () => ({ matches: false }),
@@ -155,6 +161,43 @@ test('ルートworkerが表示した確認通知の証明だけを取得する',
   assert.equal(await browser.displayedProof('another-challenge'), undefined);
   registration.active.scriptURL = origin + '/other-worker.js';
   assert.equal(await browser.displayedProof('challenge'), undefined);
+});
+test('端末登録はルートworkerが保有するWeb Push購読の認証情報を使う', async () => {
+  const origin = 'https://cycrio.example';
+  const registration = {
+    active: { scriptURL: origin + '/OneSignalSDKWorker.js?appId=app' },
+    update: async () => {},
+    pushManager: {
+      getSubscription: async () => ({
+        getKey: () => new Uint8Array(16).buffer,
+      }),
+    },
+  };
+  const sdk = {
+    init: async () => {},
+    Notifications: { addEventListener: () => {} },
+    User: { onesignalId: 'external-user' },
+  } as unknown as OneSignalSDK;
+  const browser = createPushBrowser({
+    window: {
+      location: { origin },
+      navigator: {
+        serviceWorker: { getRegistration: async () => registration },
+      },
+    } as unknown as Window,
+    document: {} as Document,
+    load: async () => sdk,
+  });
+  await browser.prepare('app');
+  assert.deepEqual(await browser.subscriptionProof!(), {
+    onesignal_user_id: 'external-user',
+    web_auth: 'AAAAAAAAAAAAAAAAAAAAAA==',
+  });
+  registration.active.scriptURL = origin + '/different-worker.js';
+  await assert.rejects(
+    browser.subscriptionProof!(),
+    /subscription unavailable/,
+  );
 });
 test('script読込タイムアウト後の遅着は初期化せず再読込を要求する', async () => {
   let timeout!: () => void;

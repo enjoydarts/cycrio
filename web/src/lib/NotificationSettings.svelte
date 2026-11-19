@@ -52,6 +52,15 @@
       return false;
     }
   });
+  function savePreferences() {
+    const settings = controller;
+    if (!settings) return;
+    const enabling =
+      view.values?.push_opt_in && !view.page?.preferences.push_opt_in;
+    const save = settings.save();
+    if (enabling && pushController)
+      void pushController.enable(save.then(() => settings.state().saved));
+  }
   onMount(() => {
     controller = createNotificationSettings(
       api,
@@ -82,7 +91,7 @@
   {#if view.values && view.page}<form
       onsubmit={(event) => {
         event.preventDefault();
-        void controller?.save();
+        savePreferences();
       }}
     >
       <NotificationPreferenceFields

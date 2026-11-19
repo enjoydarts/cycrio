@@ -25,15 +25,13 @@
   const trace = window.browserTest;
   trace.pushCalls = [];
   trace.pushActive = false;
-  let receive: (data: unknown) => void = () => {};
-  let deviceState: 'pending' | 'active' | 'disabled' | 'expired' | null = null;
+  let deviceState: 'pending' | 'active' | 'disabled' | null = null;
   let nativePermission: NotificationPermission =
     mode === 'push-prompt-wait' || mode.startsWith('push-invitation')
       ? 'default'
       : 'granted';
   let finishPermission: () => void = () => {};
-  let clock = Date.now(),
-    preparations = 0;
+  let preparations = 0;
   let finish: () => void = () => {};
   let subscriptions = 0;
   let refreshes = 0;
@@ -43,11 +41,6 @@
     created_at: '2026-11-10T00:00:00Z',
     updated_at: '2026-11-10T00:00:00Z',
   });
-  const emit = () =>
-    receive({
-      cycrio_challenge_id: challenge,
-      cycrio_challenge_secret: secret,
-    });
   const sdk: PushBrowser = {
     currentPermission: () => nativePermission,
     availability: () =>
@@ -75,21 +68,19 @@
       return nativePermission;
     },
     subscription: async () => {
+      trace.pushCalls!.push('subscription');
       if (mode === 'push-subscription-retry' && ++subscriptions === 1)
         throw Error('合成の購読取得失敗');
       return deviceID;
     },
-    displayedProof: async (challengeID) =>
-      mode === 'push-refresh' && challengeID === challenge
-        ? { cycrio_challenge_id: challenge, cycrio_challenge_secret: secret }
-        : undefined,
-    listen: (cb) => {
-      receive = cb;
-      return () => {};
-    },
+    subscriptionProof: async () => ({
+      onesignal_user_id: app,
+      web_auth: 'AAAAAAAAAAAAAAAAAAAAAA==',
+    }),
+    displayedProof: async () => undefined,
+    listen: () => () => {},
   } as const;
   const controller = createPushController({
-    now: () => clock,
     storage: localStorage,
     sdk,
     api: createPushAPI('/synthetic-push', async (url, init) => {
@@ -100,8 +91,8 @@
       ) {
         if (
           mode === 'push-refresh' &&
-          deviceState === 'pending' &&
-          ++refreshes === 1
+          deviceState === 'active' &&
+          ++refreshes === 2
         )
           return Response.json(
             { error: { code: 'dependency_unavailable' } },
@@ -118,15 +109,20 @@
         path === '/synthetic-push/v1/push-devices' &&
         init?.method === 'POST'
       ) {
+        const input = JSON.parse(String(init.body));
+        if (
+          input.onesignal_user_id !== app ||
+          input.web_auth !== 'AAAAAAAAAAAAAAAAAAAAAA=='
+        )
+          throw Error('購読情報を照合できない');
         trace.pushCalls!.push('register');
         deviceState = 'pending';
-        if (!['push-late', 'push-expired', 'push-refresh'].includes(mode))
-          emit();
         return Response.json({
           device_id: deviceID,
           challenge_id: challenge,
           state: 'pending',
-          expires_at: new Date(clock + 300000).toISOString(),
+          expires_at: new Date(Date.now() + 300000).toISOString(),
+          activation_secret: secret,
         });
       }
       if (path === '/synthetic-push/v1/push-devices/confirm') {
@@ -185,7 +181,6 @@
   let settings = $state(false),
     shown = $state(true);
   void controller.bind(app, async () => 'synthetic');
-  trace.pushEmit = emit;
   trace.pushFinishConfirm = () => finish();
   trace.pushFinishPermission = () => finishPermission();
   trace.pushLogout = () => controller.bind(null);
@@ -193,10 +188,6 @@
   trace.pushSetPermission = async (permission) => {
     nativePermission = permission;
     await controller.synchronize();
-  };
-  trace.pushExpire = () => {
-    clock += 300000;
-    deviceState = 'expired';
   };
   trace.pushToggleSettings = () => {
     shown = !shown;

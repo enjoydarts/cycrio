@@ -134,7 +134,7 @@
   {:else}
     {#if view.error}
       <p role="alert">
-        通知設定の保存を確認できませんでした。通知設定を開いて現在の設定を確認してください。通知の許可はまだ要求していません。
+        通知設定を保存できませんでした。通知設定を開いて現在の設定を確認してください。
       </p>
     {:else if view.deviceReady}
       <PushSettings controller={pushController} loadOnMount={false} />
