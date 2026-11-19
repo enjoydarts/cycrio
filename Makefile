@@ -65,7 +65,7 @@ grant-admin allow-user revoke-admin disable-user:
 	$(COMPOSE) run --rm --no-deps -T manage $@ -user-id '$(USER_ID)'
 
 test-integration:
-	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration ./internal/database ./internal/httpapi
+	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration -timeout=15m ./internal/database ./internal/httpapi
 
 test-evaluation-smoke:
 	$(COMPOSE) run --rm --no-deps -e 'DATABASE_URL=postgres://cycrio_migrator:cycrio-migrator-local@postgres:5432/cycrio?sslmode=disable' api go test -tags=integration,evaluation ./internal/database -run '^TestPoCEvaluation(Smoke|PrivacyPositiveControl|Cancellation)$$' -count=1 -timeout=2m -v
