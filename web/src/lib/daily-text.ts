@@ -34,6 +34,12 @@ export const money = (amount: string | null, currency: string | null) =>
       ? `金額不明 ${currency}`
       : '金額不明'
     : `${amount} ${currency ?? '通貨不明'}`;
+export function candidateAmount(event: ProcessingEvent): string {
+  if (event.amount === null && event.recurring_amount != null) {
+    return `通常継続料金 ${money(event.recurring_amount, event.recurring_currency ?? null)}`;
+  }
+  return money(event.amount, event.currency);
+}
 export const runNames: Record<ProcessingRun['state'], string> = {
   queued: '解析待ち',
   leased: '解析の準備中',

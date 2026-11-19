@@ -59,6 +59,38 @@ test('candidate list exposes extracted price and a review action without technic
   assert.doesNotMatch(body, /関連メール\s*1\s*件/);
   assert.doesNotMatch(body, /解析失敗|自動登録待ち|メール件名|差出人/);
 });
+test('candidate list shows a known recurring price when the transaction amount is missing', async () => {
+  const body = await html('CandidatesPanel', {
+    page: {
+      candidates: [
+        {
+          result_id: 'result',
+          event_index: 0,
+          account_id: 'account',
+          account_label: '個人メール',
+          mail_count: 1,
+          event: {
+            service: null,
+            plan: null,
+            event_type: 'renewal',
+            amount: null,
+            currency: null,
+            interval_unit: null,
+            interval_count: null,
+            recurring_amount: '1200',
+            recurring_currency: 'JPY',
+          },
+        },
+      ],
+      total: 1,
+      limit: 20,
+      offset: 0,
+    },
+    onSelect: () => {},
+  });
+  assert.match(body, /通常継続料金 1200 JPY/);
+  assert.doesNotMatch(body, /金額不明/);
+});
 test('candidate list offers page selection, clear and bulk exclusion without merging contracts', async () => {
   const candidate = {
     result_id: 'a',

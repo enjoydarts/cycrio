@@ -33,6 +33,8 @@ const candidateCTERemainder = `), candidates AS (
  ELSE jsonb_build_array(i.account_id,e.event->'service',e.event->'plan',e.event->'amount',e.event->'currency',e.event->'recurring_amount',e.event->'recurring_currency',e.event->'interval_unit',e.event->'interval_count',e.event->'event_type',e.event->'contract_kind') END AS group_key
  FROM current_items i CROSS JOIN LATERAL jsonb_array_elements(i.events) WITH ORDINALITY e(event,ordinality)
  WHERE i.state='succeeded'
+ AND COALESCE(NULLIF(btrim(e.event->>'service'),''),
+  e.event->>'amount',e.event->>'recurring_amount',e.event->>'interval_unit',e.event->>'interval_count') IS NOT NULL
  AND NOT (` + reanalysisPriorDecision + `)
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(i.events) WITH ORDINALITY earlier(event,n) WHERE earlier.n<e.ordinality AND earlier.event=e.event)
  AND NOT EXISTS(SELECT 1 FROM subscription_sources s WHERE s.owner_id=i.owner_id AND s.result_id=i.id AND i.events->s.event_index=e.event)

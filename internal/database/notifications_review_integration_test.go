@@ -60,6 +60,41 @@ func enableNotificationReviewPush(t *testing.T, f processingFixture, r *Notifica
 	return r
 }
 
+func TestNotificationReviewCountsCandidatesWithServiceAmountOrCycle(t *testing.T) {
+	f, r, now := notificationReviewFixture(t)
+	ctx := context.Background()
+	notificationReviewResult(t, f, *now, ai.Event{EventType: "renewal"})
+	if n, err := r.GenerateNotifications(ctx, f.owner); err != nil || n != 0 {
+		t.Errorf("run with only an event type should not create a review notification: %d, %v", n, err)
+	}
+
+	*now = now.Add(time.Minute)
+	result := notificationReviewResult(t, f, *now,
+		ai.Event{EventType: "invoice", Service: "Named service"},
+		ai.Event{EventType: "invoice", Amount: autoPtr("0"), Currency: autoPtr("JPY")},
+		ai.Event{EventType: "invoice", RecurringAmount: autoPtr("1200"), RecurringCurrency: autoPtr("JPY")},
+		ai.Event{EventType: "renewal", IntervalUnit: autoPtr("month")},
+		ai.Event{EventType: "renewal", IntervalCount: autoPtr(int64(2))},
+		ai.Event{EventType: "invoice", Currency: autoPtr("JPY")},
+	)
+	if n, err := r.GenerateNotifications(ctx, f.owner); err != nil || n != 1 {
+		t.Fatalf("mixed run should create one review notification: %d, %v", n, err)
+	}
+	var count int
+	if err := r.pool.QueryRow(ctx, `SELECT review_count FROM notification_review_runs WHERE run_id=(SELECT run_id FROM mail_processing_items WHERE id=$1)`, result).Scan(&count); err != nil || count != 5 {
+		t.Errorf("notification should count each candidate with a known fact: %d, %v", count, err)
+	}
+	candidates, err := NewSubscriptionRepository(r.pool).Candidates(ctx, f.owner, subscriptions.AnalysisFilter{Limit: 20})
+	if err != nil || candidates.Total != 5 || len(candidates.Candidates) != 5 {
+		t.Fatalf("review list should include the same five candidates: %+v, %v", candidates, err)
+	}
+	for index, candidate := range candidates.Candidates {
+		if candidate.ResultID != result || candidate.EventIndex != index {
+			t.Errorf("unexpected candidate at position %d: %+v", index, candidate)
+		}
+	}
+}
+
 func TestNotificationReviewPushBulkAndChannelSwitch(t *testing.T) {
 	f, r, now := notificationReviewFixture(t)
 	ctx := context.Background()

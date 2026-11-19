@@ -6,7 +6,7 @@
   import Button from './Button.svelte';
   import SelectionToolbar from './SelectionToolbar.svelte';
   import type { Candidate, CandidatePage } from './approval-api.ts';
-  import { money, cycle, eventNames } from './daily-text.ts';
+  import { candidateAmount, cycle, eventNames } from './daily-text.ts';
   let {
     page,
     onSelect,
@@ -107,7 +107,7 @@
       'part-CandidatesPanel-candidate-table',
     ]}
   >
-    <thead><tr><th>契約候補</th><th>取引金額・周期</th><th>確認</th></tr></thead
+    <thead><tr><th>契約候補</th><th>金額・周期</th><th>確認</th></tr></thead
     ><tbody>
       {#each page.candidates as candidate (`${candidate.result_id}/${candidate.event_index}`)}
         <tr
@@ -130,10 +130,9 @@
                 {@render identity(candidate)}
               </div>{/if}
           </td>
-          <td data-label="取引金額・周期" class="candidate-price"
-            ><span class="money"
-              >{money(candidate.event.amount, candidate.event.currency)}</span
-            ><span class="secondary"
+          <td data-label="金額・周期" class="candidate-price"
+            ><span class="money">{candidateAmount(candidate.event)}</span><span
+              class="secondary"
               >{cycle(
                 candidate.event.interval_unit,
                 candidate.event.interval_count,

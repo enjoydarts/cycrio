@@ -4,6 +4,7 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { compile } from 'svelte/compiler';
 import { render } from 'svelte/server';
+import type { ProcessingEvent } from './mail-processing-api.ts';
 const moduleURL = (code: string) =>
   `data:text/javascript;base64,${Buffer.from(code).toString('base64')}`;
 async function componentURL(name: string): Promise<string> {
@@ -47,7 +48,11 @@ const event = {
 test('bulk exclusion confirmation compiles without stale callback captures', async () => {
   await componentURL('CandidateBulkDismiss');
 });
-async function review(related_count: number, mail_count: number) {
+async function review(
+  related_count: number,
+  mail_count: number,
+  extracted: Partial<ProcessingEvent> = {},
+) {
   return render((await import(await componentURL('CandidateReview'))).default, {
     props: {
       candidate: {
@@ -55,7 +60,7 @@ async function review(related_count: number, mail_count: number) {
         event_index: 0,
         account_label: '個人メール',
         received_at: '2026-11-01T00:00:00Z',
-        event,
+        event: { ...event, ...extracted },
         related_count,
         mail_count,
       },
@@ -65,6 +70,20 @@ async function review(related_count: number, mail_count: number) {
     },
   }).body;
 }
+test('review summary displays recurring price when it is the only known amount', async () => {
+  const body = await review(1, 1, {
+    amount: null,
+    currency: null,
+    recurring_amount: '1200',
+    recurring_currency: 'JPY',
+  });
+  const summary = body.match(
+    /class="[^"]*\breview-summary\b[^"]*">([\s\S]*?)<\/div>/,
+  )?.[1];
+  assert.ok(summary);
+  assert.match(summary, /通常継続料金 1200 JPY/);
+  assert.doesNotMatch(summary, /金額不明/);
+});
 test('related comparison is optional and initially collapsed with plain selection copy', async () => {
   const body = await review(51, 51);
   assert.match(body, /関連メールを比較・選択/);

@@ -4,7 +4,7 @@
   import { untrack, onMount, onDestroy } from 'svelte';
   import Pagination from './Pagination.svelte';
   import DataTable from './DataTable.svelte';
-  import { money, cycle, eventNames } from './daily-text.ts';
+  import { candidateAmount, money, cycle, eventNames } from './daily-text.ts';
   import { createFeed, type FeedView } from './daily-controller.ts';
   import {
     createCandidateSelection,
@@ -195,7 +195,7 @@
     <div class="review-summary">
       <strong>{candidate.event.service ?? 'サービス名未確認'}</strong>
       <p>
-        {money(candidate.event.amount, candidate.event.currency)} · {cycle(
+        {candidateAmount(candidate.event)} · {cycle(
           candidate.event.interval_unit,
           candidate.event.interval_count,
         )}

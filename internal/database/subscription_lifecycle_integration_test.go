@@ -79,15 +79,30 @@ func TestSubscriptionLifecycleRoundTripAndScheduleGuard(t *testing.T) {
 	}
 }
 
-func TestSubscriptionUnnamedCandidatePreservesFactsAndRequiresApproval(t *testing.T) {
+func TestSubscriptionUnnamedCancellationWithoutAmountOrCycleStaysInHistory(t *testing.T) {
 	f := processingSetup(t)
 	ctx := context.Background()
 	r := NewSubscriptionRepository(f.runtime.pool)
 	end := "2026-11-30"
 	result := automationResult(t, f, ai.Event{EventType: "cancellation", AccessEndDate: &end})
 	p, e := r.Candidates(ctx, f.owner, subscriptions.AnalysisFilter{AccountID: f.account, Limit: 20})
-	if e != nil || len(p.Candidates) != 1 || p.Candidates[0].Event.Service != "" || p.Candidates[0].Event.AccessEndDate == nil || *p.Candidates[0].Event.AccessEndDate != end {
-		t.Fatal("unnamed event lost", p, e)
+	if e != nil || p.Total != 0 || len(p.Candidates) != 0 {
+		t.Errorf("event without service, amount or cycle appeared in review: %+v, %v", p, e)
+	}
+	if _, e = r.Candidate(ctx, f.owner, result, 0); !errors.Is(e, subscriptions.ErrNotFound) {
+		t.Errorf("event without service, amount or cycle was available as a review candidate: %v", e)
+	}
+	var message string
+	if e = f.runtime.pool.QueryRow(ctx, `SELECT message_id FROM mail_processing_items WHERE id=$1`, result).Scan(&message); e != nil {
+		t.Fatal(e)
+	}
+	history, e := r.AnalysisMessage(ctx, f.owner, message)
+	if e != nil || history.Result == nil || len(history.Result.Events) != 1 {
+		t.Fatalf("event missing from import history: %+v, %v", history, e)
+	}
+	event := history.Result.Events[0]
+	if event.Service != "" || event.EventType != "cancellation" || event.AccessEndDate == nil || *event.AccessEndDate != end {
+		t.Fatalf("import history lost extracted facts: %+v", event)
 	}
 	in := subscriptionInput()
 	in.Service = "User-confirmed membership"
