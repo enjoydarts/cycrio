@@ -1,6 +1,5 @@
 <script lang="ts">
   import AdminCredentials from '../src/lib/AdminCredentials.svelte';
-  import PushFixture from './PushFixture.svelte';
   import MailAccounts from '../src/lib/MailAccounts.svelte';
   import { createMailAPI } from '../src/lib/mail-api.ts';
   import { createAPI } from '../src/lib/api.ts';
@@ -49,8 +48,6 @@
   import { gettingStartedFixture } from '../src/lib/getting-started-fixtures.ts';
   import { overviewFixture } from '../src/lib/overview-fixtures.ts';
   import { installAPI, resultID } from './synthetic-api.ts';
-  import '../src/lib/brand.css';
-  import '../src/lib/app.css';
   import '../src/lib/daily.css';
 
   const mode = new URL(location.href).searchParams.get('mode') ?? 'register';
@@ -226,8 +223,7 @@
   }}
 />
 
-{#if mode.startsWith('push')}<PushFixture {mode} />
-{:else if mode === 'mobile-overview' || mode === 'mobile-subscriptions'}
+{#if mode === 'mobile-overview' || mode === 'mobile-subscriptions'}
   <AppShell
     user={{ id: initial.id, role: 'user' }}
     pathname={mode === 'mobile-overview' ? '/' : fixturePage.url.pathname}

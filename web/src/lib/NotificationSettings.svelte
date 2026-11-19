@@ -10,11 +10,13 @@
     type NotificationSettingsView,
   } from './notification-settings-controller.ts';
   import NotificationPreferenceFields from './NotificationPreferenceFields.svelte';
+  import ActionGroup from './ActionGroup.svelte';
   import Button from './Button.svelte';
   import PushSettings from './PushSettings.svelte';
   import type { PushController } from './push-controller.ts';
   import LibraryHeader from './LibraryHeader.svelte';
   import { processingErrors } from './mail-processing-text.ts';
+  import './daily.css';
   let {
     api,
     token,
@@ -98,12 +100,15 @@
           onchange={(event) => controller?.confirm(event.currentTarget.checked)}
         /><span>通知の種類とタイミングを確認しました</span></label
       >
-      {#if !view.uncertain && !view.conflict}<Button
-          type="submit"
-          wrap
-          variant="primary"
-          disabled={locked || !valid || !view.confirmed}>通知設定を保存</Button
-        >{/if}
+      {#if !view.uncertain && !view.conflict}<ActionGroup stackOnMobile>
+          <Button
+            type="submit"
+            wrap
+            variant="primary"
+            disabled={locked || !valid || !view.confirmed}
+            >通知設定を保存</Button
+          >
+        </ActionGroup>{/if}
     </form>{/if}
   {#if view.saved}<p role="status" class="notice">
       通知設定を保存しました。
@@ -114,23 +119,27 @@
   {#if view.uncertain}<p role="status" class="notice">
       保存の受付状況が不明です。入力を保持したまま、現在の設定を読み取り確認します。
     </p>
-    <Button
-      type="button"
-      wrap
-      disabled={view.busy}
-      onclick={() => controller?.reconcile()}>保存状況を再確認</Button
-    >
+    <ActionGroup stackOnMobile>
+      <Button
+        type="button"
+        wrap
+        disabled={view.busy}
+        onclick={() => controller?.reconcile()}>保存状況を再確認</Button
+      >
+    </ActionGroup>
   {:else if view.conflict}<p class="notice">
       設定が更新されています。現在の設定を読み直し、選び直して確認してください。
     </p>
-    <Button type="button" wrap onclick={() => controller?.load()}
-      >最新の通知設定を読み込む</Button
-    >
-  {:else if view.error && !view.page}<Button
-      type="button"
-      wrap
-      onclick={() => controller?.load()}>通知設定を再取得</Button
-    >{/if}
+    <ActionGroup stackOnMobile>
+      <Button type="button" wrap onclick={() => controller?.load()}
+        >最新の通知設定を読み込む</Button
+      >
+    </ActionGroup>
+  {:else if view.error && !view.page}<ActionGroup stackOnMobile>
+      <Button type="button" wrap onclick={() => controller?.load()}
+        >通知設定を再取得</Button
+      >
+    </ActionGroup>{/if}
 </section>
 {#if pushController}<PushSettings controller={pushController} />{/if}
 

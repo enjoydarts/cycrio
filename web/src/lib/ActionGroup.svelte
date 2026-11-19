@@ -5,12 +5,14 @@
     children,
     class: className,
     stack = false,
+    stackOnMobile = false,
     align = 'start',
     spacing = 'none',
     ...attributes
   }: HTMLAttributes<HTMLDivElement> & {
     children: Snippet;
     stack?: boolean;
+    stackOnMobile?: boolean;
     align?: 'start' | 'end' | 'between';
     spacing?: 'none' | 'before' | 'after' | 'both';
   } = $props();
@@ -20,6 +22,7 @@
   {...attributes}
   class={['ui-actions', className]}
   class:stack
+  class:stack-mobile={stackOnMobile}
   class:end={align === 'end'}
   class:between={align === 'between'}
   class:space-before={spacing === 'before' || spacing === 'both'}
@@ -52,5 +55,14 @@
   }
   .between {
     justify-content: space-between;
+  }
+  @media (max-width: 700px) {
+    .stack-mobile {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .stack-mobile > :global(.ui-action) {
+      width: 100%;
+    }
   }
 </style>

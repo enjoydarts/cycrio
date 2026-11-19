@@ -36,6 +36,7 @@
     preparations = 0;
   let finish: () => void = () => {};
   let subscriptions = 0;
+  let refreshes = 0;
   const device = () => ({
     id: deviceID,
     state: deviceState,
@@ -78,6 +79,10 @@
         throw Error('合成の購読取得失敗');
       return deviceID;
     },
+    displayedProof: async (challengeID) =>
+      mode === 'push-refresh' && challengeID === challenge
+        ? { cycrio_challenge_id: challenge, cycrio_challenge_secret: secret }
+        : undefined,
     listen: (cb) => {
       receive = cb;
       return () => {};
@@ -92,20 +97,31 @@
       if (
         path === '/synthetic-push/v1/push-devices' &&
         (!init?.method || init.method === 'GET')
-      )
+      ) {
+        if (
+          mode === 'push-refresh' &&
+          deviceState === 'pending' &&
+          ++refreshes === 1
+        )
+          return Response.json(
+            { error: { code: 'dependency_unavailable' } },
+            { status: 503 },
+          );
         return Response.json({
           app_id: app,
           available: true,
           reason: '',
           devices: deviceState ? [device()] : [],
         });
+      }
       if (
         path === '/synthetic-push/v1/push-devices' &&
         init?.method === 'POST'
       ) {
         trace.pushCalls!.push('register');
         deviceState = 'pending';
-        if (!['push-late', 'push-expired'].includes(mode)) emit();
+        if (!['push-late', 'push-expired', 'push-refresh'].includes(mode))
+          emit();
         return Response.json({
           device_id: deviceID,
           challenge_id: challenge,

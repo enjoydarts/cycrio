@@ -88,6 +88,7 @@ function fixture(shared?: PushStorage) {
       calls.push('subscription');
       return b;
     },
+    displayedProof: async (_challengeID: string): Promise<unknown> => undefined,
     listen: (cb: (v: unknown) => void) => {
       listener = cb;
       return () => {};
@@ -123,6 +124,78 @@ function fixture(shared?: PushStorage) {
   };
 }
 const flush = () => new Promise((r) => setTimeout(r, 15));
+test('一覧を再取得しても受信確認中の端末を保持し、失敗後にも再取得できる', async () => {
+  const f = fixture();
+  await f.c.prepare();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+  });
+  await f.c.allow();
+  const page = await f.api.list(f.token);
+  f.api.list = async () => {
+    throw Error('offline');
+  };
+  assert.equal(await f.c.load(), false);
+  assert.equal(f.c.state().status, 'waiting');
+  f.api.list = async () => ({
+    ...page,
+    devices: [
+      {
+        id: b,
+        state: 'pending',
+        created_at: '2026-11-10T00:00:00Z',
+        updated_at: '2026-11-10T00:00:00Z',
+      },
+    ],
+  });
+  assert.equal(await f.c.load(), true);
+  assert.equal(f.c.state().currentDevice, b);
+  assert.equal(f.c.state().status, 'waiting');
+  assert.equal(f.calls.filter((call) => call === 'register').length, 1);
+});
+test('再取得でこの端末に表示済みの確認通知を照合し、再送せずに有効化する', async () => {
+  const f = fixture();
+  await f.c.prepare();
+  f.registration.resolve({
+    device_id: b,
+    challenge_id: challenge,
+    state: 'pending',
+    expires_at: new Date(300000).toISOString(),
+  });
+  await f.c.allow();
+  const page = await f.api.list(f.token);
+  f.api.list = async () => ({
+    ...page,
+    devices: [
+      {
+        id: b,
+        state: f.active ? 'active' : 'pending',
+        created_at: '2026-11-10T00:00:00Z',
+        updated_at: '2026-11-10T00:00:00Z',
+      },
+    ],
+  });
+  f.sdk.displayedProof = async (challengeID) => {
+    assert.equal(challengeID, challenge);
+    return {
+      cycrio_challenge_id: challenge,
+      cycrio_challenge_secret: secret,
+    };
+  };
+  f.confirmation.resolve({
+    revocation_token: await deriveRevocationToken(secret),
+    device: { id: b, state: 'active' },
+  });
+  assert.equal(await f.c.load(), true);
+  assert.equal(f.c.state().status, 'active');
+  assert.deepEqual(
+    f.calls.filter((call) => ['confirm', 'register'].includes(call)),
+    ['register', 'confirm'],
+  );
+});
 for (const outcome of ['granted', 'denied', 'owner_changed'] as const)
   test(`初回許可の回答待ちで復帰同期した後の${outcome}を区別する`, async () => {
     const f = fixture();

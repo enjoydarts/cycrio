@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { preparePushAssets } from './prepare-push-assets.mjs';
 import { prepareSourceMaps, verifySourceMaps } from './source-maps.mjs';
 
@@ -47,9 +48,10 @@ test('official assets match pinned hashes and preparation strips only source map
   }
   const workerPath = join(staticDir, 'OneSignalSDKWorker.js');
   const worker = await readFile(workerPath, 'utf8');
-  assert.equal(
-    worker,
-    "importScripts('/vendor/onesignal/160800/OneSignalSDK.sw.js');\n",
+  assert.ok(
+    worker.startsWith(
+      "importScripts('/vendor/onesignal/160800/OneSignalSDK.sw.js');\n",
+    ),
   );
   assert.doesNotMatch(worker, /https?:|caches|fetch|CacheStorage/);
   const before = digest(await readFile(workerPath));
@@ -63,6 +65,73 @@ test('official assets match pinned hashes and preparation strips only source map
     await readFile(join(staticDir, 'vendor/onesignal/160800/LICENSE'), 'utf8'),
     await readFile(join(vendorDir, 'LICENSE'), 'utf8'),
   );
+});
+
+test('the worker relays a test notification regardless of the current page without interfering with OneSignal', async (t) => {
+  const staticDir = await mkdtemp(join(tmpdir(), 'cycrio-push-receipt-'));
+  t.after(() => rm(staticDir, { recursive: true, force: true }));
+  await preparePushAssets({ vendorDir, staticDir });
+  const handlers = new Map();
+  const messages = [];
+  const origin = 'https://cycrio.example';
+  runInNewContext(
+    await readFile(join(staticDir, 'OneSignalSDKWorker.js'), 'utf8'),
+    {
+      importScripts: () => {},
+      self: {
+        location: { origin },
+        addEventListener: (name, handler) => handlers.set(name, handler),
+        clients: {
+          matchAll: async ({ type, includeUncontrolled }) => {
+            assert.equal(type, 'window');
+            assert.equal(includeUncontrolled, true);
+            return [
+              {
+                url: origin + '/mail',
+                postMessage: (data) => messages.push(data),
+              },
+            ];
+          },
+        },
+      },
+    },
+  );
+  async function dispatch(name, event) {
+    const work = [];
+    handlers.get(name)({
+      ...event,
+      waitUntil: (promise) => work.push(promise),
+    });
+    await Promise.all(work);
+  }
+  const proof = {
+    cycrio_challenge_id: '33333333-3333-4333-8333-333333333333',
+    cycrio_challenge_secret: 'A'.repeat(43),
+  };
+  const settings = origin + '/settings/notifications';
+  await dispatch('push', {
+    data: { json: () => ({ custom: { u: settings } }) },
+  });
+  await dispatch('push', {
+    data: {
+      json: () => {
+        throw new SyntaxError();
+      },
+    },
+  });
+  await dispatch('push', {
+    data: { json: () => ({ custom: { u: settings, a: proof } }) },
+  });
+  await dispatch('notificationclick', {
+    notification: { data: { launchURL: settings, additionalData: proof } },
+  });
+  await dispatch('notificationclick', {
+    notification: {
+      data: { launchURL: origin + '/mail', additionalData: proof },
+    },
+  });
+  const expected = { type: 'cycrio.push.proof', proof };
+  assert.deepEqual(structuredClone(messages), [expected, expected]);
 });
 
 test('integrity failure rejects all publication before creating public files', async (t) => {

@@ -4,6 +4,7 @@ export type PushBrowser = {
   prepare: (appId: string) => Promise<void>;
   permission: () => Promise<NotificationPermission>;
   subscription: () => Promise<string>;
+  displayedProof: (challengeID: string) => Promise<unknown>;
   listen: (fn: (data: unknown) => void) => () => void;
 };
 // 読込が実行前に確定失敗した場合だけ再試行できる。
@@ -29,6 +30,7 @@ export type OneSignalSDK = {
 type PushWindow = Window & {
   OneSignalDeferred?: { push: (fn: (sdk: OneSignalSDK) => void) => unknown };
 };
+const workerPath = '/OneSignalSDKWorker.js';
 export function createPushBrowser(env: {
   window: Window;
   document: Document;
@@ -38,6 +40,24 @@ export function createPushBrowser(env: {
     prepared: Promise<void> | undefined,
     sdk: OneSignalSDK | undefined;
   const listeners = new Set<(data: unknown) => void>();
+  function isPushWorker(source: MessageEventSource | null) {
+    if (!source || !('scriptURL' in source)) return false;
+    const url = new URL(source.scriptURL);
+    return (
+      url.origin === env.window.location.origin && url.pathname === workerPath
+    );
+  }
+  function relayWorkerProof(event: MessageEvent) {
+    if (event.data?.type === 'cycrio.push.proof' && isPushWorker(event.source))
+      listeners.forEach((fn) => fn(event.data.proof));
+  }
+  async function rootRegistration() {
+    const registration =
+      await env.window.navigator?.serviceWorker?.getRegistration?.('/');
+    return isPushWorker(registration?.active ?? null)
+      ? registration
+      : undefined;
+  }
   const load =
     env.load ??
     (() =>
@@ -100,7 +120,7 @@ export function createPushBrowser(env: {
         sdk = await load();
         await sdk.init({
           appId,
-          serviceWorkerPath: '/OneSignalSDKWorker.js',
+          serviceWorkerPath: workerPath,
           serviceWorkerParam: { scope: '/' },
           autoResubscribe: false,
           notifyButton: { enable: false },
@@ -110,6 +130,10 @@ export function createPushBrowser(env: {
             slidedown: { prompts: [{ type: 'push', autoPrompt: false }] },
           },
         });
+        env.window.navigator?.serviceWorker?.addEventListener?.(
+          'message',
+          relayWorkerProof,
+        );
         for (const name of ['foregroundWillDisplay', 'click'])
           sdk.Notifications.addEventListener(name, (event) => {
             const data = event?.notification?.additionalData;
@@ -118,6 +142,12 @@ export function createPushBrowser(env: {
               listeners.forEach((fn) => fn(data));
             }
           });
+        // 既存の購読でも、次の受信確認に備えてルートworkerを更新する。
+        try {
+          await (await rootRegistration())?.update();
+        } catch {
+          // 更新できないときも、起動済みSDKの受信イベントを使える。
+        }
       })().catch((error) => {
         if (!sdk && error instanceof PushSDKLoadError) {
           prepared = undefined;
@@ -155,6 +185,20 @@ export function createPushBrowser(env: {
         subscription.addEventListener('change', changed);
         changed();
       });
+    },
+    async displayedProof(challengeID) {
+      try {
+        const registration = await rootRegistration();
+        const notifications = await registration?.getNotifications();
+        return notifications?.find(
+          ({ data }) =>
+            data?.launchURL ===
+              env.window.location.origin + '/settings/notifications' &&
+            data.additionalData?.cycrio_challenge_id === challengeID,
+        )?.data.additionalData;
+      } catch {
+        return undefined;
+      }
     },
     listen(fn) {
       listeners.add(fn);

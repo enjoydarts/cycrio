@@ -27,6 +27,39 @@ export async function runPushProbe({
     await wait(
       'document.querySelector(\'input[aria-label="本人の検証済みメールへ通知を送る"]\')!==null',
     );
+    if (width < 700) {
+      await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+      const settingsLayout = await js(`
+        const settings = document.querySelector('section[aria-label="本人の通知設定"]');
+        const devices = document.querySelector('section[aria-label="Push通知の端末設定"]');
+        const fills = (control, section) => {
+          const outer = section.getBoundingClientRect();
+          const bounds = control.getBoundingClientRect();
+          return Math.abs(bounds.left - outer.left) <= 1 && Math.abs(bounds.right - outer.right) <= 1;
+        };
+        const timing = [...settings.querySelectorAll('input[type="number"], select')];
+        const [enable, refresh] = devices.querySelectorAll('button');
+        return {
+          timingFullWidth: timing.every(control => fills(control, settings)),
+          timingStacked: timing[0].getBoundingClientRect().bottom < timing[1].getBoundingClientRect().top,
+          saveFullWidth: fills(settings.querySelector('button[type="submit"]'), settings),
+          pushActionsFullWidth: fills(enable, devices) && fills(refresh, devices),
+          pushActionsStacked: enable.getBoundingClientRect().bottom < refresh.getBoundingClientRect().top,
+        };
+      `);
+      assert.deepEqual(
+        settingsLayout,
+        {
+          timingFullWidth: true,
+          timingStacked: true,
+          saveFullWidth: true,
+          pushActionsFullWidth: true,
+          pushActionsStacked: true,
+        },
+        `Notification settings at ${width}px`,
+      );
+    }
+    await screenshot(`notification-settings-page-${width}`);
     assert.deepEqual(await js('return window.browserTest.pushCalls'), []);
     await click(
       'document.querySelector(\'input[aria-label="本人の検証済みメールへ通知を送る"]\')',
@@ -50,6 +83,24 @@ export async function runPushProbe({
     await js('window.scrollTo(0,document.body.scrollHeight)');
     await screenshot('push-devices-' + width);
     await layout();
+    if (width < 700) {
+      assert.equal(
+        await js(`
+          const devices = document.querySelector('section[aria-label="Push通知の端末設定"]');
+          const table = devices.querySelector('.ui-table-scroll');
+          const refresh = devices.querySelector('button');
+          const { left, right } = devices.getBoundingClientRect();
+          return table.scrollWidth <= table.clientWidth &&
+            table.getBoundingClientRect().top > refresh.getBoundingClientRect().bottom &&
+            [...devices.querySelectorAll('button')].every(button => {
+              const bounds = button.getBoundingClientRect();
+              return bounds.left >= left && bounds.right <= right;
+            });
+        `),
+        true,
+        `Push device controls fit at ${width}px`,
+      );
+    }
     assert.equal(
       await js(
         'return document.querySelectorAll("script[src*=onesignal]").length',
@@ -132,6 +183,37 @@ export async function runPushProbe({
       );
       await layout();
     }
+    await visit('push-refresh', width);
+    await click(
+      'document.querySelector(\'a[href="/settings/notifications"]\')',
+    );
+    await wait(button('この端末でPush通知を有効にする') + '!==undefined');
+    await click(button('この端末でPush通知を有効にする'));
+    await wait(button('この端末の通知を許可する') + '!==undefined');
+    await click(button('この端末の通知を許可する'));
+    await wait('document.body.textContent.includes("受信確認中です")');
+    await click(button('端末一覧を再取得'));
+    await wait(
+      'document.body.textContent.includes("端末一覧を再取得できませんでした。")',
+    );
+    assert.equal(
+      await js('return document.body.textContent.includes("受信確認中です")'),
+      true,
+    );
+    await click(button('端末一覧を再取得'));
+    await wait(
+      'document.body.textContent.includes("端末一覧を更新しました。")',
+    );
+    await wait(
+      'document.body.textContent.includes("この端末のPush通知は有効です")',
+    );
+    assert.deepEqual(
+      await js(
+        'return window.browserTest.pushCalls.filter(call=>["register","confirm"].includes(call))',
+      ),
+      ['register', 'confirm'],
+    );
+    await layout();
     await visit('push-expired', width);
     await click(
       'document.querySelector(\'a[href="/settings/notifications"]\')',

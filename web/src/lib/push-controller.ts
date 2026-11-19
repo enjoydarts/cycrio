@@ -167,7 +167,7 @@ export function createPushController({
     publish({ cleanupPending: results.some((ok) => !ok) });
   }
   async function load() {
-    if (!owner) return;
+    if (!owner) return false;
     const expected = owner;
     const previousConfirmation = confirmationVersion;
     let g = generation;
@@ -181,7 +181,7 @@ export function createPushController({
         sharedOwner()?.owner !== owner ||
         sharedOwner()?.epoch !== epoch
       )
-        return;
+        return false;
       const permission = sdk.currentPermission();
       if (permission === 'granted' && attempt && current(attempt))
         attempt.permissionGranted = true;
@@ -207,7 +207,7 @@ export function createPushController({
             g !== generation ||
             sharedOwner()?.epoch !== epoch
           )
-            return;
+            return false;
           if (await revoke(receipt)) stoppedIDs.add(receipt.device_id);
         }
         if (
@@ -215,7 +215,7 @@ export function createPushController({
           g !== generation ||
           sharedOwner()?.epoch !== epoch
         )
-          return;
+          return false;
         publish({ currentDevice: null, status: 'denied', busy: false });
       }
       const page = await api.list(token);
@@ -226,13 +226,13 @@ export function createPushController({
         sharedOwner()?.owner !== expected ||
         sharedOwner()?.epoch !== epoch
       )
-        return;
+        return false;
       if (permissionRevoked) {
         page.devices = page.devices.map((d) =>
           stoppedIDs.has(d.id) ? { ...d, state: 'disabled' } : d,
         );
         publish({ page });
-        return;
+        return true;
       }
       const expired =
         attempt &&
@@ -258,32 +258,58 @@ export function createPushController({
             (d) => d.id === r.device_id && d.state === 'active',
           ),
         );
+      const a = attempt && current(attempt) ? attempt : undefined;
+      const registration = a?.registration;
+      const pending =
+        registration &&
+        page.devices.find(
+          (device) =>
+            device.id === registration.device_id && device.state === 'pending',
+        );
       publish({
         page,
-        currentDevice: local?.device_id ?? null,
+        currentDevice: local?.device_id ?? pending?.id ?? null,
         ...(local
           ? { status: 'active' as const }
           : view.status === 'active'
             ? { status: 'disabled' as const }
             : {}),
       });
+      if (
+        a &&
+        registration &&
+        pending &&
+        !a.sent &&
+        !a.confirming &&
+        permission === 'granted' &&
+        page.available
+      ) {
+        const proof = await sdk.displayedProof(registration.challenge_id);
+        if (a === attempt) await receive(proof);
+      }
+      return true;
     } catch (error) {
       if (
         owner !== expected ||
         g !== generation ||
         previousConfirmation !== confirmationVersion
       )
-        return;
+        return false;
       await rejectAccess(error);
       if (
         owner === expected &&
         g === generation &&
-        previousConfirmation === confirmationVersion
+        previousConfirmation === confirmationVersion &&
+        (permissionRevoked ||
+          !['waiting', 'confirming', 'uncertain', 'active'].includes(
+            view.status,
+          ))
       )
         publish({
           status: permissionRevoked ? 'denied' : 'error',
           busy: false,
         });
+      return false;
     }
   }
   async function receive(value: unknown) {

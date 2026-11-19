@@ -18,6 +18,19 @@
     cleanupPending: false,
     currentDevice: null,
   });
+  let refreshing = $state(false);
+  let refreshResult = $state('');
+  async function refresh() {
+    refreshing = true;
+    refreshResult = '';
+    try {
+      refreshResult = (await controller.load())
+        ? '端末一覧を更新しました。'
+        : '端末一覧を再取得できませんでした。';
+    } finally {
+      refreshing = false;
+    }
+  }
   const messages: Record<PushView['status'], string> = {
     idle: 'この端末のPush通知は、本人の操作後に準備します。',
     preparing: '通知の準備中です…',
@@ -25,7 +38,7 @@
       '準備ができました。次のボタンでこの端末の通知を許可してください。',
     registering: '端末を登録しています…',
     waiting:
-      '受信確認中です。確認通知の有効期限は5分です。届かない場合は端末一覧を再取得してください。',
+      '受信確認中です。確認通知の有効期限は5分です。通知を開いても状態が変わらない場合は端末一覧を再取得してください。',
     expired:
       '受信確認の期限が切れました。この端末でPush通知を有効にする操作からやり直してください。',
     confirming: '受信した通知を確認しています…',
@@ -63,7 +76,7 @@
     <Button type="button" wrap onclick={() => controller.retryCleanup()}
       >端末停止を再試行</Button
     >{/if}
-  <ActionGroup>
+  <ActionGroup stackOnMobile spacing="after">
     {#if view.page?.available && !['active', 'waiting', 'confirming', 'registering', 'reload', 'uncertain'].includes(view.status)}
       {#if view.status === 'permission_ready'}<Button
           type="button"
@@ -83,10 +96,12 @@
     <Button
       type="button"
       wrap
-      disabled={view.busy}
-      onclick={() => controller.load()}>端末一覧を再取得</Button
+      disabled={view.busy || refreshing}
+      onclick={refresh}
+      >{refreshing ? '端末一覧を再取得中…' : '端末一覧を再取得'}</Button
     >
   </ActionGroup>
+  {#if refreshResult}<p role="status">{refreshResult}</p>{/if}
   {#if view.page}<LibraryPanel
       ><DataTable responsive="cards"
         ><thead

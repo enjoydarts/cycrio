@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createPushBrowser, PushSDKLoadError } from './push-browser.ts';
+import {
+  createPushBrowser,
+  PushSDKLoadError,
+  type OneSignalSDK,
+} from './push-browser.ts';
 test('native permission読取はSDKも許可要求も実行しない', () => {
   const b = createPushBrowser({
     window: { Notification: { permission: 'denied' } } as any,
@@ -89,6 +93,68 @@ test('SDK準備は本人操作まで0回でApp IDごとに一度・自動prompt�
   assert.deepEqual(received, { cycrio_challenge_id: 'challenge' });
   await browser.permission();
   assert.equal(permissions, 1);
+});
+test('待機中のページはCycrioのルートworkerから届いた受信証明だけを中継する', async () => {
+  const events = new EventTarget();
+  const origin = 'https://cycrio.example';
+  const sdk = {
+    init: async () => {},
+    Notifications: { addEventListener: () => {} },
+  } as unknown as OneSignalSDK;
+  const browser = createPushBrowser({
+    window: {
+      location: { origin },
+      navigator: { serviceWorker: events },
+    } as unknown as Window,
+    document: {} as Document,
+    load: async () => sdk,
+  });
+  const received: unknown[] = [];
+  browser.listen((proof) => received.push(proof));
+  await browser.prepare('app');
+  const proof = { cycrio_challenge_id: 'challenge' };
+  function emit(path: string, type = 'cycrio.push.proof') {
+    const event = new Event('message');
+    Object.assign(event, {
+      data: { type, proof },
+      source: { scriptURL: new URL(path, origin).href },
+    });
+    events.dispatchEvent(event);
+  }
+  emit('https://other.example/OneSignalSDKWorker.js');
+  emit('/another-worker.js');
+  emit('/OneSignalSDKWorker.js', 'unrelated');
+  emit('/OneSignalSDKWorker.js?appId=app&sdkVersion=160800');
+  assert.deepEqual(received, [proof]);
+});
+test('ルートworkerが表示した確認通知の証明だけを取得する', async () => {
+  const origin = 'https://cycrio.example';
+  const proof = { cycrio_challenge_id: 'challenge' };
+  const registration = {
+    active: { scriptURL: origin + '/OneSignalSDKWorker.js?appId=app' },
+    getNotifications: async () => [
+      { data: { launchURL: origin + '/mail', additionalData: proof } },
+      {
+        data: {
+          launchURL: origin + '/settings/notifications',
+          additionalData: proof,
+        },
+      },
+    ],
+  };
+  const browser = createPushBrowser({
+    window: {
+      location: { origin },
+      navigator: {
+        serviceWorker: { getRegistration: async () => registration },
+      },
+    } as unknown as Window,
+    document: {} as Document,
+  });
+  assert.deepEqual(await browser.displayedProof('challenge'), proof);
+  assert.equal(await browser.displayedProof('another-challenge'), undefined);
+  registration.active.scriptURL = origin + '/other-worker.js';
+  assert.equal(await browser.displayedProof('challenge'), undefined);
 });
 test('script読込タイムアウト後の遅着は初期化せず再読込を要求する', async () => {
   let timeout!: () => void;

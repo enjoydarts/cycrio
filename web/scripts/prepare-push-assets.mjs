@@ -33,6 +33,10 @@ export async function preparePushAssets({
   }
   const targetDir = join(staticDir, 'vendor/onesignal', version);
   const license = await readFile(join(vendorDir, 'LICENSE'));
+  const worker = await readFile(
+    new URL('./push-worker.js', import.meta.url),
+    'utf8',
+  );
   await mkdir(targetDir, { recursive: true });
   for (const [name, script] of assets) {
     await writeFile(join(targetDir, name), script);
@@ -40,7 +44,7 @@ export async function preparePushAssets({
   await writeFile(join(targetDir, 'LICENSE'), license);
   await writeFile(
     join(staticDir, 'OneSignalSDKWorker.js'),
-    `importScripts('/vendor/onesignal/${version}/OneSignalSDK.sw.js');\n`,
+    `importScripts('/vendor/onesignal/${version}/OneSignalSDK.sw.js');\n${worker}`,
   );
 }
 
