@@ -413,6 +413,9 @@ func (g *contentResponseGuard) validateFetch(tokens []string, complete bool) err
 		return nil
 	}
 	phase := g.phase.Load()
+	if complete && phase == 0 && isUnsolicitedFlagUpdate(tokens) {
+		return nil
+	}
 	if phase < 1 || phase > 2 {
 		return errInvalidFraming
 	}
@@ -447,6 +450,42 @@ func (g *contentResponseGuard) validateFetch(tokens []string, complete bool) err
 		return errInvalidFraming
 	}
 	return nil
+}
+
+// Outside a requested FETCH, an IMAP server may report flag changes as an
+// untagged FETCH. Accept only FLAGS and its optional UID, with no literals.
+// When a FETCH is pending, the SDK can attribute a matching UID to that command.
+func isUnsolicitedFlagUpdate(tokens []string) bool {
+	if len(tokens) < 8 || tokens[3] != "(" || tokens[len(tokens)-1] != ")" || !positiveIMAPNumber(tokens[1]) {
+		return false
+	}
+	items := tokens[4 : len(tokens)-1]
+	switch {
+	case strings.EqualFold(items[0], "UID"):
+		if !positiveIMAPNumber(items[1]) {
+			return false
+		}
+		items = items[2:]
+	case items[len(items)-3] == ")" && strings.EqualFold(items[len(items)-2], "UID"):
+		if !positiveIMAPNumber(items[len(items)-1]) {
+			return false
+		}
+		items = items[:len(items)-2]
+	}
+	if len(items) < 3 || !strings.EqualFold(items[0], "FLAGS") || items[1] != "(" || items[len(items)-1] != ")" {
+		return false
+	}
+	for _, flag := range items[2 : len(items)-1] {
+		if flag == "" || flag == "(" || flag == ")" {
+			return false
+		}
+	}
+	return true
+}
+
+func positiveIMAPNumber(value string) bool {
+	n, err := strconv.ParseUint(value, 10, 32)
+	return err == nil && n != 0
 }
 
 func contentTokens(line []byte) ([]string, error) {

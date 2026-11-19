@@ -12,7 +12,7 @@ import (
 	"github.com/enjoydarts/cycrio/internal/mailsync"
 )
 
-func discoveryClient(t *testing.T, validity, next uint32, result string) (*Client, <-chan struct{}, *[]string) {
+func discoveryClient(t *testing.T, validity, next uint32, result string, searchPreamble ...string) (*Client, <-chan struct{}, *[]string) {
 	t.Helper()
 	commands := []string{}
 	c, done := scriptedClient(t, func(server net.Conn) {
@@ -48,6 +48,9 @@ func discoveryClient(t *testing.T, validity, next uint32, result string) (*Clien
 					t.Error("discovery modified mailbox")
 					return
 				}
+				for _, response := range searchPreamble {
+					fmt.Fprint(server, response)
+				}
 				if strings.HasPrefix(result, "ESEARCH:") {
 					body := "ALL " + strings.TrimPrefix(result, "ESEARCH:")
 					if result == "ESEARCH:EMPTY" {
@@ -73,6 +76,34 @@ func discoveryClient(t *testing.T, validity, next uint32, result string) (*Clien
 		}
 	})
 	return c, done, &commands
+}
+
+func TestIncrementalDiscoveryAcceptsUnsolicitedFlagUpdatesDuringSearch(t *testing.T) {
+	for _, update := range []string{
+		"* 1 FETCH (FLAGS (\\Seen))\r\n",
+		"* 1 FETCH (UID 5 FLAGS ())\r\n",
+		"* 1 FETCH (FLAGS (\\Seen UID))\r\n",
+	} {
+		t.Run(strings.TrimSpace(update), func(t *testing.T) {
+			c, done, _ := discoveryClient(t, 77, 10, "7", update)
+			input := mailsync.PageRequest{Mode: "incremental", Folder: "INBOX", UIDValidity: 77, Limit: 10}
+			p, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"), input)
+			waitClosed(t, done)
+			if err != nil || !reflect.DeepEqual(p.UIDs, []uint32{7}) || !p.Done {
+				t.Fatalf("flag update interrupted discovery or populated its UID result: %+v, %v", p, err)
+			}
+		})
+	}
+}
+
+func TestIncrementalDiscoveryRejectsUnrequestedFetchDuringSearch(t *testing.T) {
+	c, done, _ := discoveryClient(t, 77, 10, "7", "* 1 FETCH (FLAGS () UID 5 INTERNALDATE \"19-Nov-2026 09:00:00 +0900\")\r\n")
+	input := mailsync.PageRequest{Mode: "incremental", Folder: "INBOX", UIDValidity: 77, Limit: 10}
+	p, err := c.Discover(context.Background(), "synthetic@example.test", []byte("synthetic-private-password"), input)
+	waitClosed(t, done)
+	if adapterCode(err) != "invalid_response" || len(p.UIDs) != 0 {
+		t.Fatalf("unrequested metadata was accepted: %+v, %v", p, err)
+	}
 }
 
 func TestDiscoveryAcceptsEmptyESearchWithoutAll(t *testing.T) {

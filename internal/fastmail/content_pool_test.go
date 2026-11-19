@@ -423,7 +423,11 @@ func TestContentPoolCloseInterruptsActiveAndRejectsNewReads(t *testing.T) {
 var _ mailcontent.Reader = (*pooledContentReader)(nil)
 
 func TestContentPoolRequiresExactlyOneBoundedSearchResponse(t *testing.T) {
-	for _, response := range []string{"OMIT", "* SEARCH 8\r\n", "* SEARCH 9 9\r\n", "* SEARCH 9\r\n* SEARCH 9\r\n", "* ESEARCH ALL 9\r\n"} {
+	for _, response := range []string{
+		"OMIT", "* SEARCH 8\r\n", "* SEARCH 9 9\r\n", "* SEARCH 9\r\n* SEARCH 9\r\n", "* ESEARCH ALL 9\r\n",
+		"* 1 FETCH (UID 9 FLAGS () BODY[TEXT] {5}\r\nhello)\r\n* SEARCH 9\r\n",
+		"* 1 FETCH (UID 9 FLAGS ((\\Seen)))\r\n* SEARCH 9\r\n",
+	} {
 		t.Run(response, func(t *testing.T) {
 			s, c := newPoolServer(t, true)
 			s.searchResponse = response
@@ -432,6 +436,24 @@ func TestContentPoolRequiresExactlyOneBoundedSearchResponse(t *testing.T) {
 			body, err := p.Reader(poolScope(), c).ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
 			if body != nil || adapterCode(err) != "invalid_response" {
 				t.Fatalf("invalid search accepted: %s", adapterCode(err))
+			}
+		})
+	}
+}
+
+func TestContentPoolAcceptsUnsolicitedFlagUpdatesDuringSearch(t *testing.T) {
+	for _, update := range []string{
+		"* 1 FETCH (FLAGS (\\Seen))\r\n",
+		"* 1 FETCH (FLAGS (\\Seen $Junk) UID 8)\r\n",
+	} {
+		t.Run(strings.TrimSpace(update), func(t *testing.T) {
+			s, c := newPoolServer(t, true)
+			s.searchResponse = update + "* SEARCH 9\r\n" + update
+			p := NewContentPool()
+			defer p.Close()
+			body, err := p.Reader(poolScope(), c).ReadText(context.Background(), "synthetic@example.test", []byte("password"), contentSource())
+			if err != nil || string(body) != "hello" {
+				t.Fatalf("flag updates interrupted body retrieval: %s, %v", body, err)
 			}
 		})
 	}

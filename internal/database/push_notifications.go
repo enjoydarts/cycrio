@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
@@ -44,6 +45,25 @@ func pushError(err error) error {
 	}
 	return pushnotifications.ErrUnavailable
 }
+
+func pushSettingsError(ctx context.Context, err error, step string) error {
+	public := pushError(err)
+	if public != pushnotifications.ErrUnavailable {
+		return public
+	}
+	// Keep the HTTP error generic and record only fixed operation labels or
+	// typed context errors. Driver and credential failures may contain secrets.
+	switch {
+	case diagnostics.OnlyCancellation(err):
+		diagnostics.Record(ctx, context.Canceled)
+	case errors.Is(err, context.DeadlineExceeded):
+		diagnostics.Record(ctx, context.DeadlineExceeded)
+	default:
+		diagnostics.Record(ctx, errors.New("push settings: "+step))
+	}
+	return public
+}
+
 func pushOwner(ctx context.Context, tx pgx.Tx, owner string, forUpdate bool) error {
 	query := `SELECT state FROM users WHERE id=$1`
 	if forUpdate {
@@ -127,11 +147,11 @@ func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner str
 	// Confirmation and other mutations can take their row locks concurrently.
 	tx, e := r.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly})
 	if e != nil {
-		return page, pushError(e)
+		return page, pushSettingsError(ctx, e, "open read-only snapshot")
 	}
 	defer tx.Rollback(ctx)
 	if e = pushOwner(ctx, tx, owner, false); e != nil {
-		return page, pushError(e)
+		return page, pushSettingsError(ctx, e, "read owner state")
 	}
 	_, c, e := r.resolveCredential(ctx, tx, false)
 	if errors.Is(e, pushnotifications.ErrNotReady) {
@@ -140,14 +160,14 @@ func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner str
 			page.Reason = "environment_disabled"
 		}
 	} else if e != nil {
-		return page, pushError(e)
+		return page, pushSettingsError(ctx, e, "load OneSignal configuration")
 	} else {
 		page.Available = true
 		page.AppID = c.AppID
 	}
 	rows, e := tx.Query(ctx, `SELECT d.id,CASE WHEN d.state='pending' AND NOT EXISTS(SELECT 1 FROM push_device_challenges c WHERE c.device_id=d.id AND c.generation=d.generation AND c.state='pending' AND c.expires_at>$2 AND c.attempts<5) THEN 'expired' ELSE d.state END,d.created_at,d.updated_at,d.app_id::text,EXISTS(SELECT 1 FROM credential_versions v WHERE v.id=d.credential_id AND v.state IN ('active','superseded')) FROM push_devices d WHERE d.owner_id=$1 ORDER BY d.created_at,d.id`, owner, r.now())
 	if e != nil {
-		return page, pushError(e)
+		return page, pushSettingsError(ctx, e, "read device list")
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -155,14 +175,14 @@ func (r *PushNotificationRepository) PushSettings(ctx context.Context, owner str
 		var created, updated time.Time
 		var usable bool
 		if e = rows.Scan(&id, &state, &created, &updated, &app, &usable); e != nil {
-			return page, pushError(e)
+			return page, pushSettingsError(ctx, e, "decode device list")
 		}
 		if !page.Available || app != page.AppID || !usable {
 			state = "disabled"
 		}
 		page.Devices = append(page.Devices, pushDevice(id, state, created, updated))
 	}
-	return page, pushError(rows.Err())
+	return page, pushSettingsError(ctx, rows.Err(), "read device list")
 }
 
 func (r *PushNotificationRepository) RegisterPushDevice(ctx context.Context, owner string, in pushnotifications.RegistrationInput, sender pushnotifications.Sender) (pushnotifications.Registration, error) {

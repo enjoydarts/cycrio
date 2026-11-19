@@ -73,6 +73,38 @@ func Stack(err error) (pcs []uintptr) {
 	return nil
 }
 
+// OnlyCancellation reports whether every leaf is a confirmed cancellation.
+// Joined failures, deadlines, and unrecognized causes remain reportable.
+func OnlyCancellation(err error) bool {
+	return onlyCancellation(err, 0)
+}
+
+func onlyCancellation(err error, depth int) bool {
+	if err == nil || depth >= 16 {
+		return false
+	}
+	if err == context.Canceled {
+		return true
+	}
+	switch wrapped := err.(type) {
+	case interface{ Unwrap() []error }:
+		causes := wrapped.Unwrap()
+		if len(causes) == 0 {
+			return false
+		}
+		for _, cause := range causes {
+			if !onlyCancellation(cause, depth+1) {
+				return false
+			}
+		}
+		return true
+	case interface{ Unwrap() error }:
+		return onlyCancellation(wrapped.Unwrap(), depth+1)
+	default:
+		return false
+	}
+}
+
 type scopeKey struct{}
 type Scope struct {
 	mu      sync.Mutex

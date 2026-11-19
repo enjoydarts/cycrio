@@ -109,6 +109,9 @@ func (g *automaticDiscoveryGuard) accept(b byte, literal, headerEnd bool) error 
 		return nil
 	}
 	expected := g.expected.Load()
+	if expected == nil && isUnsolicitedFlagUpdate(tokens) {
+		return nil
+	}
 	if expected == nil || len(tokens) != 9 || tokens[3] != "(" || tokens[8] != ")" {
 		return errInvalidFraming
 	}

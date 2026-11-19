@@ -70,7 +70,7 @@ func (c *pooledContentConn) end() bool {
 		return false
 	}
 	c.active = false
-	// Keep the same parser and reject unsolicited FETCH while the SDK waits.
+	// Keep checking for unsolicited message data while the SDK waits.
 	c.guard = &contentResponseGuard{}
 	c.deadline = time.Now().Add(contentIdle)
 	if c.deadline.After(c.expires) {

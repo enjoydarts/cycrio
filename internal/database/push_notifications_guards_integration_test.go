@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/enjoydarts/cycrio/internal/credentials"
+	"github.com/enjoydarts/cycrio/internal/diagnostics"
 	"github.com/enjoydarts/cycrio/internal/pushnotifications"
 	"github.com/enjoydarts/cycrio/internal/secretstore"
 	"github.com/google/uuid"
@@ -53,6 +54,58 @@ func TestPushSettingsDoesNotWaitForUserMutation(t *testing.T) {
 	page, err := r.PushSettings(read, f.owner)
 	if err != nil || !page.Available || len(page.Devices) != 1 || page.Devices[0].ID != registered.DeviceID || page.Devices[0].State != "pending" {
 		t.Fatalf("device settings should stay readable during a user mutation: %+v, %v", page, err)
+	}
+}
+
+func TestPushSettingsRecordsSafeReadFailures(t *testing.T) {
+	f, r, _ := pushSetup(t)
+	for _, tc := range []struct {
+		name       string
+		newContext func(context.Context) (context.Context, context.CancelFunc)
+		cause      error
+	}{
+		{"cancelled", func(ctx context.Context) (context.Context, context.CancelFunc) {
+			ctx, cancel := context.WithCancel(ctx)
+			cancel()
+			return ctx, cancel
+		}, context.Canceled},
+		{"expired", func(ctx context.Context) (context.Context, context.CancelFunc) {
+			return context.WithTimeout(ctx, 0)
+		}, context.DeadlineExceeded},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, scope := diagnostics.WithScope(context.Background())
+			ctx, cancel := tc.newContext(ctx)
+			defer cancel()
+			_, err := r.PushSettings(ctx, f.owner)
+			if err != pushnotifications.ErrUnavailable || !errors.Is(scope.Error(), tc.cause) {
+				t.Fatalf("public error = %v, recorded cause = %v, want %v", err, scope.Error(), tc.cause)
+			}
+		})
+	}
+	ctx, scope := diagnostics.WithScope(context.Background())
+	_, err := r.PushSettings(ctx, f.owner)
+	if err != nil || scope.Error() != nil {
+		t.Fatalf("successful read recorded a failure: %v, %v", err, scope.Error())
+	}
+	closed, err := pgxpool.NewWithConfig(ctx, f.runtime.pool.Config())
+	if err != nil {
+		t.Fatal(err)
+	}
+	closed.Close()
+	_, err = NewPushNotificationRepository(closed, f.keys, true).PushSettings(ctx, f.owner)
+	cause := errors.Unwrap(scope.Error())
+	if err != pushnotifications.ErrUnavailable || cause == nil || cause.Error() != "push settings: open read-only snapshot" {
+		t.Fatalf("public error = %v, recorded cause = %v", err, cause)
+	}
+
+	ctx, scope = diagnostics.WithScope(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
+	cancel()
+	err = pushSettingsError(ctx, errors.Join(context.Canceled, errors.New("synthetic private DB detail")), "read owner state")
+	cause = errors.Unwrap(scope.Error())
+	if err != pushnotifications.ErrUnavailable || cause == nil || cause.Error() != "push settings: read owner state" {
+		t.Fatalf("independent failure must remain reportable with a safe label: %v, %v", err, cause)
 	}
 }
 
