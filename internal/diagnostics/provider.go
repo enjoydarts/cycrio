@@ -107,7 +107,11 @@ func Snapshot(err error, scrub func(string) string) (result error) {
 		if current == nil || depth >= 16 {
 			return nil
 		}
-		return &snapshot{typeName: reflect.TypeOf(current).String(), message: scrub(current.Error()), cause: copyCause(errors.Unwrap(current), depth+1)}
+		typeName := reflect.TypeOf(current).String()
+		if typed, ok := current.(interface{ DiagnosticType() string }); ok {
+			typeName = typed.DiagnosticType()
+		}
+		return &snapshot{typeName: scrub(typeName), message: scrub(current.Error()), cause: copyCause(errors.Unwrap(current), depth+1)}
 	}
 	return copyCause(err, 0)
 }

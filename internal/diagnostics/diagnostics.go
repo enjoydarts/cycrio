@@ -31,6 +31,11 @@ func (e *wrapped) Format(state fmt.State, verb rune) {
 func (e *wrapped) MarshalJSON() ([]byte, error) { return json.Marshal(e.public) }
 func (e *wrapped) DiagnosticStack() []uintptr   { return append([]uintptr(nil), e.pcs...) }
 
+// DiagnosticType names the public failure boundary instead of the shared
+// wrapper implementation. The telemetry sender sanitizes this label just like
+// exception messages; the original concrete cause remains in the chain.
+func (e *wrapped) DiagnosticType() string { return e.public.Error() }
+
 // Wrap keeps Error, formatting and JSON public while preserving cause identity.
 // Existing origin stacks survive subsequent service-layer wrappers.
 func Wrap(public, cause error) error {

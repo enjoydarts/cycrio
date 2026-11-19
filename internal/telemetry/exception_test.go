@@ -25,6 +25,28 @@ func TestPreservesSanitizedOriginalErrorType(t *testing.T) {
 	}
 }
 
+func TestWrappedExceptionsHaveDistinctReadableNames(t *testing.T) {
+	for _, message := range []string{"mail account service unavailable", "subscription unavailable"} {
+		t.Run(message, func(t *testing.T) {
+			err := diagnostics.Wrap(errors.New(message), context.DeadlineExceeded)
+			for _, value := range []error{err, diagnostics.Snapshot(err, diagnostics.ScrubText)} {
+				items := sanitizeExceptions(value, "poller_failed")
+				if len(items) != 2 || items[0].Type != message || items[0].Value != message || items[1].Type != "context.deadlineExceededError" {
+					t.Fatalf("readable error name or original cause lost: %+v", items)
+				}
+			}
+		})
+	}
+}
+
+func TestWrappedExceptionNameIsSanitized(t *testing.T) {
+	err := diagnostics.Wrap(errors.New("mail failed user=private-user"), context.DeadlineExceeded)
+	items := sanitizeExceptions(err, "poller_failed")
+	if len(items) == 0 || !strings.HasPrefix(items[0].Type, "mail failed") || strings.Contains(items[0].Type, "private-user") {
+		t.Fatalf("unsafe or unhelpful name: %+v", items)
+	}
+}
+
 func TestProviderValidationDetailsReachOfficialSDKWithoutInput(t *testing.T) {
 	client := ai.NewClient(&http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 422, Header: http.Header{"X-Request-Id": []string{"req_68f2ca9753aa410d"}}, Body: io.NopCloser(strings.NewReader(`{"detail":[{"type":"string_too_long","loc":["body","state"],"msg":"String should have at most 32768 characters","input":"private mail body private@example.com","ctx":{"max_length":32768}}]}`))}, nil
