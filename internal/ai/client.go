@@ -338,16 +338,22 @@ func (c *Client) call(ctx context.Context, method, endpoint string, body []byte,
 		return nil, resp.StatusCode, resp.Header, &Error{Code: "response_too_large", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 	}
 	v, err := decodeJSON(b)
-	if err != nil {
-		cause := responseDiagnostic("response is not valid JSON", resp.StatusCode, resp.Header, input)
-		return nil, resp.StatusCode, resp.Header, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
-	}
 	m, ok := v.(map[string]any)
-	if !ok {
-		cause := responseDiagnostic("JSON response must be an object", resp.StatusCode, resp.Header, input)
-		return nil, resp.StatusCode, resp.Header, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
+	if err == nil && ok {
+		return m, resp.StatusCode, resp.Header, nil
 	}
-	return m, resp.StatusCode, resp.Header, nil
+	// A gateway can return an HTML or empty error response. Keep the known
+	// HTTP failure and leave usage unknown when there is no response object.
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		cause := failureDiagnostic("provider_http", resp.StatusCode, nil, resp.Header, input)
+		return nil, resp.StatusCode, resp.Header, &Error{Code: "provider_http", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
+	}
+	reason := "response is not valid JSON"
+	if err == nil {
+		reason = "JSON response must be an object"
+	}
+	cause := responseDiagnostic(reason, resp.StatusCode, resp.Header, input)
+	return nil, resp.StatusCode, resp.Header, &Error{Code: "invalid_json", HTTPStatus: resp.StatusCode, cause: diagnostics.Wrap(cause, cause)}
 }
 func (c *Client) Reconcile(ctx context.Context, r ReconcileRequest) (Reconciliation, error) {
 	out := Reconciliation{Cost: unknownCost("missing_reported_cost")}

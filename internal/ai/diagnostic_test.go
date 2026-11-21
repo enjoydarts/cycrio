@@ -15,6 +15,39 @@ import (
 	"github.com/enjoydarts/cycrio/internal/diagnostics"
 )
 
+func TestProviderHTTPStatusWithUnusableResponseBody(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, code string
+		status           int
+	}{
+		{"service unavailable", "<html>synthetic gateway response</html>", "provider_http", 503},
+		{"rate limited", "", "provider_http", 429},
+		{"non-object error", "[]", "provider_http", 502},
+		{"malformed success", "<html>synthetic gateway response</html>", "invalid_json", 200},
+		{"non-object success", "[]", "invalid_json", 200},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			calls := 0
+			c := NewClient(&http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				calls++
+				return &http.Response{StatusCode: tc.status, Header: http.Header{"X-Request-Id": []string{"req-739002"}}, Body: io.NopCloser(strings.NewReader(tc.body))}, nil
+			})})
+			out, err := c.Do(context.Background(), Request{Provider: "liquid", ModelID: "d1", Key: []byte("synthetic-key"), Input: RequestInput{Text: "synthetic mail"}})
+			var e *Error
+			if !errors.As(err, &e) || e.Code != tc.code || e.HTTPStatus != tc.status {
+				t.Fatalf("want %s (HTTP %d), got %+v", tc.code, tc.status, e)
+			}
+			if calls != 1 || out.Usage.Present || out.Cost.Status != "unknown" || out.Cost.Amount != nil {
+				t.Fatalf("calls = %d, usage = %+v, cost = %+v", calls, out.Usage, out.Cost)
+			}
+			detail := e.Unwrap().Error()
+			if !strings.Contains(detail, fmt.Sprintf("HTTP %d", tc.status)) || !strings.Contains(detail, "req-739002") || strings.Contains(detail, "synthetic gateway response") {
+				t.Fatalf("unexpected diagnostic: %s", detail)
+			}
+		})
+	}
+}
+
 func TestProviderDiagnosticPreservesValidationWithoutInput(t *testing.T) {
 	r := Request{Provider: "liquid", ModelID: "d1", Key: []byte("private-key"), Input: RequestInput{Text: "private mail contents", Instructions: "private prompt"}}
 	body := `{"detail":[{"type":"string_too_long","loc":["body","state"],"msg":"String should have at most 10000 characters; actual length 20000; private mail contents private prompt private-key","input":"DO NOT RECORD INPUT","ctx":{"max_length":10000,"actual_length":20000,"input":"CTX SECRET"}}],"request":"SECRET REQUEST"}`
